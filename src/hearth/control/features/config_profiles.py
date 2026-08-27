@@ -12,9 +12,18 @@ WHY TWO TIERS
     Settings segment by what they travel with:
 
       PER-CHARACTER — *how they think*  →  [llm]  temperature, reasoning_effort
-          config/profiles/characters/<character>.toml
+          characters/<character>/profile.toml                (under the data root)
       PER-VOICE     — *how it sounds*   →  [tts]  temperature, top_p, top_k, repetition_penalty
-          config/profiles/voices/<character>/<voice>.toml
+          characters/<character>/voices/<voice>/profile.toml (under the data root)
+
+    Both live in the companion's OWN directory (config_loader.companion_data_dir), so a
+    companion travels — persona, voices, presets, sessions — as one directory. Beside
+    each profile, `overrides.toml` is the LIVE MIRROR: after every panel knob write the
+    identity-scope sections ([llm] for the character, [tts] for the voice) are copied
+    there (config_knobs._AFTER_WRITE hook), so the directory is always complete without
+    an explicit save. The profile stays the deliberate snapshot (save/load/reset
+    semantics unchanged); the mirror is write-through only — config/overrides.toml
+    remains the single live layer the reloader polls.
 
     A character has ONE active persona but MANY voice bundles; both `character` and
     `voice` are stable dir-name IDs already in config/active.toml, so keying presets off
@@ -43,9 +52,9 @@ API  (all bodies JSON; scopes: "character" | "voice" | "all")
       Reset reverts the LIVE overrides only; it never deletes a saved profile file.
 
 FILE HANDLING mirrors config_knobs: read via tomllib, write via its tiny serializer,
-atomic temp→rename, serialized by the shared config_knobs._WRITE_LOCK. The profiles/
-tree gets a `.gitignore` on first write (personal operational state — local-float, like
-active.toml; never committed, and it references personal-use voices).
+    atomic temp→rename, serialized by the shared config_knobs._WRITE_LOCK. Profiles are
+    personal operational state under the data root — never committed (the public
+    .gitignore excludes them even when the data root is the checkout).
 
 Auth: none today — solo-LAN (mirrors control.py /say and config_knobs). M1 WEB_TOKEN
 drops in at the marked seam when non-solo exposure is wanted.
@@ -70,7 +79,8 @@ from hearth.control.features import config_knobs as ck  # reuse the validated ov
 # subtree + honored-key set are keyed by this). Update in lockstep if bot.py's changes.
 _ENGINE = "chatterbox-turbo"
 
-_PROFILES: Path = config_loader.CONFIG_DIR / "profiles"
+_PROFILE_NAME = "profile.toml"    # the deliberate snapshot
+_MIRROR_NAME = "overrides.toml"   # the live identity-scope mirror (write-through)
 _NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")  # dir-name safe; blocks path traversal
 
 # Which override sections each scope owns (the segmentation, in code).
@@ -91,7 +101,7 @@ def _safe(name: str, what: str) -> str:
 
 def _list_voices(character: str) -> list[str]:
     """Voice bundle names for a character (dirs holding a voice.toml). Empty if none."""
-    vdir = config_loader.CHARACTERS_DIR / character / "voices"
+    vdir = config_loader.character_dir(character) / "voices"
     return sorted(p.parent.name for p in vdir.glob("*/voice.toml"))
 
 
@@ -121,25 +131,13 @@ def _defaults() -> dict:
 
 # ── profile files ──────────────────────────────────────────────────────────────────
 
-def _char_path(character: str) -> Path:
-    return _PROFILES / "characters" / f"{_safe(character, 'character')}.toml"
+def _char_path(character: str, name: str = _PROFILE_NAME) -> Path:
+    return config_loader.companion_data_dir(_safe(character, "character")) / name
 
 
-def _voice_path(character: str, voice: str) -> Path:
-    return _PROFILES / "voices" / _safe(character, "character") / f"{_safe(voice, 'voice')}.toml"
-
-
-def _ensure_store() -> None:
-    """Create profiles/ with a .gitignore so presets never reach git (local-float)."""
-    _PROFILES.mkdir(exist_ok=True)
-    gi = _PROFILES / ".gitignore"
-    if not gi.exists():
-        gi.write_text(
-            "# personal knob presets — local operational state; never committed.\n"
-            "# (They also reference personal-use voices.) Same posture as active.toml.\n"
-            "*\n!.gitignore\n",
-            encoding="utf-8",
-        )
+def _voice_path(character: str, voice: str, name: str = _PROFILE_NAME) -> Path:
+    return (config_loader.companion_data_dir(_safe(character, "character"))
+            / "voices" / _safe(voice, "voice") / name)
 
 
 def _read_profile(path: Path) -> dict:
@@ -151,7 +149,6 @@ def _read_profile(path: Path) -> dict:
 
 
 def _atomic_write(path: Path, text: str) -> None:
-    _ensure_store()
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
     tmp.write_text(text, encoding="utf-8")
@@ -195,7 +192,7 @@ def _validate_target(scope: str, character: str, voice: str | None) -> None:
     if scope == "all":
         return
     _safe(character, "character")
-    if not (config_loader.CHARACTERS_DIR / character).is_dir():
+    if not config_loader.character_dir(character).is_dir():
         raise ProfileError(f"no such character: {character!r}")
     if scope == "voice":
         if not voice:
@@ -203,6 +200,28 @@ def _validate_target(scope: str, character: str, voice: str | None) -> None:
         _safe(voice, "voice")
         if voice not in _list_voices(character):
             raise ProfileError(f"no such voice bundle: {character}/{voice}")
+
+
+# ── the live identity mirror (config_knobs after-write hook) ───────────────────────
+
+def mirror_identity(overrides: dict, active: dict | None = None) -> list:
+    """Copy the identity-scope sections of the live overrides into the live companion's
+    directory: [llm] → characters/<c>/overrides.toml, [tts] → .../voices/<v>/overrides.toml.
+    Write-through only (never read back by the reloader). Returns the paths written.
+    Fail-soft by contract: the caller (config_knobs) swallows exceptions."""
+    if active is None:
+        sel = config_loader.load_active_selection()
+        active = {"character": sel["character"], "voice": sel["voice"]}
+    written = []
+    for scope, path in (("character", _char_path(active["character"], _MIRROR_NAME)),
+                        ("voice", _voice_path(active["character"], active["voice"], _MIRROR_NAME))):
+        data = _snapshot(scope, overrides)
+        _atomic_write(path, ck._dump({k: v for k, v in data.items() if v}))
+        written.append(path)
+    return written
+
+
+ck._AFTER_WRITE.append(mirror_identity)
 
 
 # ── the seam contributor ────────────────────────────────────────────────────────

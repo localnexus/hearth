@@ -142,19 +142,29 @@ def test_validation():
 
 def test_io_roundtrip():
     print("test_io_roundtrip")
+    from hearth.config import config_loader as cl
     with tempfile.TemporaryDirectory() as d:
-        orig = cp._PROFILES
-        cp._PROFILES = Path(d) / "profiles"
+        orig = cl._DATA
+        cl._DATA = Path(d)  # relocate the data root; the engine tree stays put
         try:
             p = cp._char_path("example")
+            check("profile lives in the companion's data dir",
+                  p == Path(d) / "characters" / "example" / "profile.toml")
             cp._atomic_write(p, ck._dump({"llm": {"temperature": 0.8, "reasoning_effort": "low"}}))
             check("profile reads back", cp._read_profile(p) == {"llm": {"temperature": 0.8, "reasoning_effort": "low"}})
-            check("gitignore dropped", (cp._PROFILES / ".gitignore").exists())
-            check("gitignore ignores all", "*" in (cp._PROFILES / ".gitignore").read_text())
             check("absent profile → {}", cp._read_profile(cp._voice_path("example", "default")) == {})
             check("no stray .tmp", not p.with_name(p.name + ".tmp").exists())
+            # the identity mirror: [llm] → the character's overrides.toml, [tts] → the voice's
+            written = cp.mirror_identity({"llm": {"temperature": 0.9}, "tts": {"top_p": 0.5}, "vad": {"confidence": 0.4}},
+                                         {"character": "example", "voice": "default"})
+            m_c = Path(d) / "characters" / "example" / "overrides.toml"
+            m_v = Path(d) / "characters" / "example" / "voices" / "default" / "overrides.toml"
+            check("mirror wrote both scope files", set(written) == {m_c, m_v})
+            check("character mirror = [llm] only", cp._read_profile(m_c) == {"llm": {"temperature": 0.9}})
+            check("voice mirror = [tts] only", cp._read_profile(m_v) == {"tts": {"top_p": 0.5}})
+            check("mirror registered as a knob after-write hook", cp.mirror_identity in ck._AFTER_WRITE)
         finally:
-            cp._PROFILES = orig
+            cl._DATA = orig
 
 
 def test_seam_registration():

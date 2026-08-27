@@ -57,6 +57,7 @@ import numpy as np
 from pipecat.frames.frames import Frame, TTSAudioRawFrame
 from pipecat.services.tts_service import TTSService
 
+from hearth.config import config_loader
 from hearth.tts import paralinguistics
 from hearth.tts import tag_profiles
 
@@ -110,14 +111,14 @@ Weights are already cached on this machine from the Step 0 spike; load is ~0.9 s
 """
 
 DEFAULT_REF_WAV: str = str(
-    Path(__file__).resolve().parents[3]
-    / "characters/example/voices/default/sample.wav"
+    config_loader.resolve_data_path("characters/example/voices/default/sample.wav")
 )
 """Reference WAV for the built-in default voice — the shipped example bundle's
 `default` clip (public domain; mono, 24 kHz, Int16).  Chatterbox clones zero-shot
 from this clip at init (prepare_conditionals); no training/embeddings.
 
-Resolved relative to the repo root, never absolute, so the tree stays relocatable.
+Resolved through the config loader (data root, then the engine tree), never a
+literal absolute path, so the tree stays relocatable.
 This is only the FALLBACK: the live voice comes from config/active.toml via
 config_loader → bot.py passes `ref_wav=_CFG.ref_wav` explicitly.  To clone a
 different voice, add a bundle under characters/ and select it there — don't edit

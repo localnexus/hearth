@@ -73,6 +73,11 @@ _OVERRIDES: Path = config_loader.CONFIG_DIR / "overrides.toml"
 # Serialize concurrent writers (aiohttp is single-loop, but a POST does read→merge→write).
 _WRITE_LOCK = asyncio.Lock()
 
+# After-write hooks: called (fail-soft, under the lock) with the new overrides dict after
+# every successful POST /config knob write. config_profiles registers the identity-scope
+# mirror here, so the live companion's directory always carries its current knobs.
+_AFTER_WRITE: list = []
+
 # ── honored surface (keep in step with config_reload._ENGINE_LIVE_KEYS for the active engine) ──
 _REASONING = {"none", "low", "medium", "high"}
 _PERSONA_MAX = 16_000
@@ -175,13 +180,12 @@ def _validate(section: str, key: str, value) -> object:
 
 
 def _resolve_ref_or_raise(ref: str) -> str:
-    """Repo-relative → absolute (against the pipeline root), like config_reload._resolve_ref,
-    but reject a missing file at WRITE time for immediate UI feedback (the reloader would
-    otherwise silently keep the current voice next turn). Stores the ORIGINAL ref string so
-    the file stays portable; only existence is validated here."""
-    p = Path(ref).expanduser()
-    if not p.is_absolute():
-        p = config_loader._ROOT / p
+    """Relative → absolute against the data root (then the engine tree, for the shipped
+    example clip), like config_reload._resolve_ref, but reject a missing file at WRITE
+    time for immediate UI feedback (the reloader would otherwise silently keep the current
+    voice next turn). Stores the ORIGINAL ref string so the file stays portable; only
+    existence is validated here."""
+    p = config_loader.resolve_data_path(ref)
     if not p.resolve().exists():
         raise KnobError(f"ref_wav not found: {p}")
     return ref
@@ -385,6 +389,12 @@ def config_knob_routes(ctx: PanelContext) -> web.RouteTableDef:  # noqa: ARG001 
             except Exception as exc:
                 logger.warning("config_knobs: write failed ({})", type(exc).__name__)
                 return web.json_response({"ok": False, "error": f"write failed: {exc}"}, status=500)
+            for hook in _AFTER_WRITE:
+                try:
+                    hook(new)
+                except Exception as exc:  # noqa: BLE001 — a mirror must never fail the write
+                    logger.warning("config_knobs: after-write hook {} failed ({})",
+                                   getattr(hook, "__name__", hook), type(exc).__name__)
 
         logger.info("config_knobs: overrides updated → {}", {s: list(v) for s, v in new.items()})
         return web.json_response({"ok": True, "overrides": new})

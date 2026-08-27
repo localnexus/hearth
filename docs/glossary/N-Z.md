@@ -19,7 +19,7 @@ Index + how-it's-organized: [`README.md`](README.md). A–M: [`A-M.md`](A-M.md).
 - **RSS** — Resident Set Size. Process RAM in use; watched in the soak test for leaks.
 - **RTF** — Real-Time Factor. Gen-time ÷ audio-duration; **< 1.0 = gapless** (faster than playback). ~0.34 ≈ 3× realtime.
 - **S3Gen / T3** — Chatterbox-Turbo internal sub-models (speaker + speech-token conditioning); cited to explain why cloning is textless / robust to transcription error. (S3Gen decoder conditions on the first ~10 s of a clip; the speaker encoder on the first ~15 s.)
-- **session snapshot** — the atomic per-turn write of the LLM message list to `sessions/<id>.json`, via `<id>.json.tmp` → `os.replace`. The only durable conversational state that needs preserving (persona prompt is injected per-request from settings and is never stored in the file).
+- **session snapshot** — the atomic per-turn write of the LLM message list to the companion's `sessions/<id>.json`, via `<id>.json.tmp` → `os.replace`. The only durable conversational state that needs preserving (persona prompt is injected per-request from settings and is never stored in the file).
 - **Silero** — the VAD model (via onnxruntime; no torch needed).
 - **Smart Turn** (v3.x) — pipecat's semantic end-of-turn model, loaded alongside VAD; can end or hold a turn beyond raw silence.
 - **STT** — Speech-to-Text. Transcription (MLX-Whisper).

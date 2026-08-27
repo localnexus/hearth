@@ -31,8 +31,8 @@ Wiring (bot.py):
 
 Output layout (under the git-ignored sessions/ tree — sensitive plaintext,
 local-only):
-    sessions/captures/<character>/<name>_<YYYY.MM.DD.HH.MM>.m4a         ← mixdown
-    sessions/captures/<character>/<name>_<YYYY.MM.DD.HH.MM>.stems/
+    characters/<character>/captures/<name>_<YYYY.MM.DD.HH.MM>.m4a   ← mixdown (data root)
+    characters/<character>/captures/<name>_<YYYY.MM.DD.HH.MM>.stems/
         tts.wav · mic.wav · music.wav · manifest.json
 
 Passivity guarantee (the measure-tap contract): when disarmed, both taps are
@@ -299,7 +299,7 @@ class Recorder:
         self._name = _slug(name) if name else self.default_name
         ts = _dt.datetime.now().strftime(_TS_FMT)
         base = f"{self._name}_{ts}"
-        char_dir = self.base_dir / self.character
+        char_dir = self.base_dir  # the companion's own captures dir (data root)
         # Back-to-back takes: the timestamp is minute-resolution, so a second
         # segment with the same name inside the same minute would land on the
         # SAME path and overwrite the first. Suffix -2, -3, … — never overwrite

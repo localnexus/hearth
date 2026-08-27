@@ -1,6 +1,6 @@
-# Session continuity — `sessions/` dir and CLI flags
+# Session continuity — the companion's `sessions/` dir and CLI flags
 
-Per-turn transcript saved to `sessions/<id>.json` (dir `0700`, file `0600`, gitignored). Persona prompt NOT stored. No new env vars or deps.
+Per-turn transcript saved to `characters/<character>/sessions/<id>.json` under the data root (dir `0700`, file `0600`, gitignored). Sessions are keyed by companion: the choosers only offer the live character's; `python -m hearth.session.session_store list` shows every companion's. Persona prompt NOT stored. No new env vars or deps.
 
 **Ephemeral by default** — `./stop.sh` deletes on graceful stop; unclean exits leave a recoverable orphan.
 

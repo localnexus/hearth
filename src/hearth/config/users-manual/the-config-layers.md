@@ -10,6 +10,23 @@ the service definitions → `config/launchd/*.plist`. This page is the ownership
 
 ---
 
+## Two roots: the engine tree and your data
+
+Every path below is relative to one of two anchors:
+
+| Anchor | Env var | Holds | Default |
+|---|---|---|---|
+| **Engine tree** | `HEARTH_ROOT` | the code, the shipped baselines (`config/tts/`, `config/vad.toml`), the `example` character and model config, the `.example` templates | the checkout (found from the package) |
+| **Data root** | `HEARTH_DATA` | **everything you own**: `characters/` (persona, voices — and each companion's `sessions/`, `transcripts/`, `captures/`, `profile.toml`), `config/models/`, `config/active.toml`, `config/overrides.toml`, `config/serve.toml` + token | **the engine tree** |
+
+Leave `HEARTH_DATA` unset and the checkout doubles as your data root — the layout is
+exactly the one described here, and the public `.gitignore` keeps your companions, model
+configs, and runtime files out of git. Set it (a vault, `~/.hearth`, anywhere) to keep
+companions outside the checkout entirely: one directory per companion is then the whole
+companion — copy it to move it, delete it to erase it. Lookup is **data root first, then
+the engine tree**, so the shipped `example` stays reachable from an empty data root, and
+your own `characters/example/` would shadow it. `./start.sh --check` prints both roots.
+
 ## The five layers at a glance
 
 The golden rule: **know who writes a file before you edit it.** Some are yours; one is the panel's; one is a
@@ -17,7 +34,7 @@ secret you only ever manage, never read.
 
 | Layer | Who writes it | You do… | Cross-reference |
 |---|---|---|---|
-| **`config/active.toml`** | **You** (operator) | Edit the `character` / `model` / `voice` selection, then restart | [Switching who's live](switching-who-is-live.md) · `docs/config-manual/llm.md` |
+| **`config/active.toml`** | **You** (operator) | Edit the `character` / `model` / `voice` selection (and an optional `persona` variant), then restart | [Switching who's live](switching-who-is-live.md) · `docs/config-manual/llm.md` |
 | **`config/overrides.toml`** | **The :65000 panel** (live knobs) | **Don't hand-edit.** Read it to understand a sticky setting; let the panel manage it | `docs/config-manual/README.md` · `docs/runbook/02.5-control-panel.md` |
 | **`config/models/<model>/`** | **You** | Edit `model.toml` load facts + `system-prompt-template.md` | `docs/config-manual/llm.md` |
 | **`config/serve.toml`** | **You** — but it holds a **bearer** | Manage the gate; **never print its contents** | This page, below · `config/serve.toml.example` |
@@ -92,6 +109,7 @@ install script, not by editing loaded plists live. Details and the reboot-durabi
 ## The one-line takeaways
 
 - **Want to change who's live?** `active.toml` + restart.
+- **Want your companions outside the checkout?** Set `HEARTH_DATA`; the layout is identical there.
 - **A setting won't stick?** The **panel's** `overrides.toml` is probably winning — clear it via the panel,
   don't hand-edit.
 - **Tuning the model or its prompt?** `config/models/<model>/` + restart.

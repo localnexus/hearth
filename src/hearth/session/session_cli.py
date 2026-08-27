@@ -84,8 +84,12 @@ def _startup_menu(cands: list):
     return None
 
 
-def _warn_resume_mismatch(data: dict, current_psha: str, lm_model: str, voice_tag: str) -> None:
-    """Warn (do NOT block) on model/voice/persona-prompt drift since save."""
+def _warn_resume_mismatch(data: dict, current_psha: str, lm_model: str, voice_tag: str,
+                          persona: str = "default") -> None:
+    """Warn (do NOT block) on model/voice/persona-file/persona-prompt drift since save."""
+    saved_persona = str(data.get("persona") or "default")
+    if saved_persona != (persona or "default"):
+        print(f"[session] ⚠ persona variant drift: session={saved_persona} · current={persona} (resuming anyway)")
     if data.get("model") and data["model"] != lm_model:
         print(f"[session] ⚠ model drift: session={data['model']} · current={lm_model} (resuming anyway)")
     if data.get("voice") and data["voice"] != voice_tag:
@@ -94,7 +98,8 @@ def _warn_resume_mismatch(data: dict, current_psha: str, lm_model: str, voice_ta
         print("[session] ⚠ persona-prompt changed since this session was saved (resuming anyway)")
 
 
-def resolve_session(args, lm_model: str, voice_tag: str, prompt_fingerprint: str):
+def resolve_session(args, lm_model: str, voice_tag: str, prompt_fingerprint: str, *,
+                    character: str | None = None, persona: str = "default"):
     """Resolve --resume/--new → (SessionStore, resume_messages | None, descriptor).
 
     ``descriptor`` is a static-at-startup panel label (never content):
@@ -106,11 +111,14 @@ def resolve_session(args, lm_model: str, voice_tag: str, prompt_fingerprint: str
     session with a warning. The ephemeral-orphan guard exits(2) so a bare
     ./start.sh can't silently start-and-discard an unfinished conversation.
 
-    ``lm_model`` / ``voice_tag`` / ``prompt_fingerprint`` are the live identity
-    values (from bot.py's config load) — passed in so this module stays config-free.
+    ``lm_model`` / ``voice_tag`` / ``prompt_fingerprint`` / ``character`` / ``persona``
+    are the live identity values (from bot.py's config load) — passed in so this module
+    stays config-free. Sessions are keyed by companion: everything resolves inside
+    ``characters/<character>/sessions/`` under the data root.
     """
-    session_store.ensure_dir()          # sessions/ 0700 before anything can write
-    session_store.clear_hold_request()  # drop any stale marker from a prior run
+    sdir = session_store.companion_sessions_dir(character)
+    session_store.ensure_dir(sdir)          # 0700 before anything can write
+    session_store.clear_hold_request(sdir)  # drop any stale marker from a prior run
     psha = session_store.prompt_sha256(prompt_fingerprint)  # datetime-free → stable across sessions
 
     resume_data = None
@@ -118,7 +126,7 @@ def resolve_session(args, lm_model: str, voice_tag: str, prompt_fingerprint: str
 
     if args.resume is not None:
         if args.resume == "":  # bare --resume
-            cands = session_store.list_sessions()
+            cands = session_store.list_sessions(sdir)
             if not cands:
                 print("[session] --resume: no sessions found — starting fresh")
             elif len(cands) == 1:
@@ -126,7 +134,7 @@ def resolve_session(args, lm_model: str, voice_tag: str, prompt_fingerprint: str
             else:
                 resume_path = _pick_session(cands)
         else:  # --resume <file|name>
-            resume_path = session_store.resolve_resume_arg(args.resume)
+            resume_path = session_store.resolve_resume_arg(args.resume, sdir)
             if resume_path is None:
                 print(f"[session] --resume {args.resume!r}: not found — starting fresh")
         if resume_path is not None:
@@ -137,20 +145,20 @@ def resolve_session(args, lm_model: str, voice_tag: str, prompt_fingerprint: str
                 resume_data, resume_path = None, None
     elif args.new:
         # Explicit fresh start: discard ephemeral orphans (held sessions untouched).
-        removed = session_store.discard_ephemeral()
+        removed = session_store.discard_ephemeral(sdir)
         if removed:
             print(f"[session] --new: discarded {len(removed)} ephemeral orphan(s)")
     else:
         # Bare ./start.sh. Interactive terminal → offer a chooser (new + resumables,
         # held included so named work-topics are pickable). Non-interactive → keep the
         # hard guard so nothing is silently discarded and no prompt hangs automation.
-        cands = session_store.list_sessions()
+        cands = session_store.list_sessions(sdir)
         if cands and os.isatty(0):
             sel = _startup_menu(cands)
             if sel is None:
                 raise SystemExit(0)                        # cancelled — start nothing
             if sel is _NEW_SESSION:
-                removed = session_store.discard_ephemeral()
+                removed = session_store.discard_ephemeral(sdir)
                 if removed:
                     print(f"[session] new session: discarded {len(removed)} ephemeral orphan(s)")
             else:
@@ -160,12 +168,12 @@ def resolve_session(args, lm_model: str, voice_tag: str, prompt_fingerprint: str
                 except Exception as exc:  # noqa: BLE001 — never crash startup
                     print(f"[session] {resume_path} unreadable ({type(exc).__name__}) — starting fresh")
                     resume_data, resume_path = None, None
-        elif session_store.ephemeral_orphans():
+        elif session_store.ephemeral_orphans(sdir):
             # Non-interactive with orphans present: refuse rather than silently discard.
             print("[session] ephemeral orphan session(s) present — refusing to silently discard:")
-            for m in session_store.ephemeral_orphans():
+            for m in session_store.ephemeral_orphans(sdir):
                 print(f"    orphan  {_fmt_session(m)}")
-            for m in session_store.held_sessions():
+            for m in session_store.held_sessions(sdir):
                 print(f"    held    {_fmt_session(m)}   (untouched)")
             print("  Non-interactive start — re-run with:  --resume <name>   or   --new")
             raise SystemExit(2)
@@ -173,12 +181,15 @@ def resolve_session(args, lm_model: str, voice_tag: str, prompt_fingerprint: str
 
     if resume_data is not None:
         resume_messages = resume_data.get("messages") or []
-        _warn_resume_mismatch(resume_data, psha, lm_model, voice_tag)
+        _warn_resume_mismatch(resume_data, psha, lm_model, voice_tag, persona)
         store = session_store.SessionStore(
             session_id=resume_path.stem,
             model=lm_model,
             voice=voice_tag,
             prompt_sha256=psha,
+            sessions_dir=sdir,
+            character=character,
+            persona=persona,
             started=resume_data.get("started") or session_store._now_iso(),
             name=resume_data.get("name"),
             held=bool(resume_data.get("held", False)),
@@ -196,5 +207,8 @@ def resolve_session(args, lm_model: str, voice_tag: str, prompt_fingerprint: str
         model=lm_model,
         voice=voice_tag,
         prompt_sha256=psha,
+        sessions_dir=sdir,
+        character=character,
+        persona=persona,
     )
     return store, None, "New"

@@ -11,6 +11,8 @@
 #   LM_BASE_URL    default http://127.0.0.1:8080/v1   (LM Studio: http://127.0.0.1:1234/v1)
 #   LM_API_TOKEN   bearer key, only if your server requires one (llama-server --api-key)
 #   LM_PROVIDER    control-panel engine probe: llama-server (default) | lmstudio
+#   HEARTH_DATA    where your companions/selections/sessions live (default: this checkout)
+#   HEARTH_ROOT    the engine tree (only needed for a non-editable install)
 # Preflight resolves the model id the bot will request the same way the bot does
 # (config/active.toml → config/models/<model>/model.toml → .id) and checks the server
 # advertises it. llama-server serves whatever it was launched with regardless of the id
@@ -49,6 +51,12 @@ say "Preflight — Hearth voice loop"
 # --- venv present, with Hearth installed in it ---
 [ -x "$VENV_PY" ] || fail ".venv missing at '$VENV_PY' — create it: uv venv -p 3.12 && uv pip install -e \".[mac]\"  (see README)"
 "$VENV_PY" -c 'import hearth' 2>/dev/null || fail "hearth is not installed in $VENV_PY — run: uv pip install -e \".[mac]\""
+
+# --- where things live: the engine tree and the data root (HEARTH_ROOT / HEARTH_DATA) ---
+ROOTS="$("$VENV_PY" -c 'import hearth.config.config_loader as c; print(c._ROOT); print(c.DATA_DIR)' 2>&1)" \
+  || fail "$ROOTS"
+ok "engine tree: $(printf '%s\n' "$ROOTS" | sed -n 1p)"
+ok "data root:   $(printf '%s\n' "$ROOTS" | sed -n 2p)   (companions, sessions, selections — set HEARTH_DATA to relocate)"
 
 # --- which model does the bot request? resolve it from config the same way the bot does ---
 MODEL="$("$VENV_PY" -c 'import hearth.config.config_loader as c; print(c.load_model(c.load_active_selection()["model"])["id"])' 2>/dev/null || true)"

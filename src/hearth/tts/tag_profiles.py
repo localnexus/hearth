@@ -44,7 +44,7 @@ from loguru import logger
 from hearth.config import config_loader
 from hearth.tts import paralinguistics
 
-TTS_DIR = config_loader.CONFIG_DIR / "tts"
+TTS_DIR = config_loader.ROOT_CONFIG_DIR / "tts"  # shipped baselines; a data-root copy wins (baseline_path)
 
 # Engine-honored live knobs — duplicated small contract (config_reload owns the
 # authoritative copy but imports pipecat; keep in sync with _ENGINE_LIVE_KEYS).
@@ -71,7 +71,7 @@ def load_profiles(engine: str) -> dict[str, dict]:
     log line each) unknown tags, non-table entries, unhonored/non-numeric
     knobs, and clamps temperature to TEMP_CEILING.
     """
-    path = TTS_DIR / engine / "tts.toml"
+    path = config_loader.baseline_path(f"tts/{engine}/tts.toml")
     allowed = _ALLOWED_KNOBS.get(engine, frozenset())
     try:
         if not path.exists():

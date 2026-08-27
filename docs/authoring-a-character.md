@@ -66,6 +66,15 @@ reaches the model. Use comments freely for guidance to yourself or other authors
 - **Make it original.** Write your own character. Don't paste in text or personas that belong
   to someone else.
 
+## Variants of a persona
+
+A companion can have more than one persona file. Keep `persona.md` as the canonical one and
+add siblings named `persona.<variant>.md` (same two sections). Select a variant with
+`persona = "<variant>"` in `config/active.toml`; leave the key out to use `persona.md`. The
+variant is a separate file beside the original, so trying one is a file you can diff and
+delete, never a copy you have to remember to restore. A session records which variant was
+live and warns on resume if it changed.
+
 ## Wiring it up
 
 Once the directory exists, point `config/active.toml` at it:

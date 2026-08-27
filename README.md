@@ -33,8 +33,9 @@ in a continuous, low-latency loop. Every stage runs locally against endpoints yo
   any voices you want beyond the default. This keeps the project small, permissively licensed,
   and puts the choices that carry legal or ethical weight (which model, whose voice) in your
   hands.
-- **Persistent.** A companion you configure once and keep — its persona, its voice, and its
-  settings live in plain files in this repo, not in someone else's account.
+- **Persistent.** A companion you configure once and keep — its persona, its voice, its
+  settings, and its conversations live in plain files in one directory of its own (in this
+  checkout, or anywhere you point `HEARTH_DATA`), not in someone else's account.
 
 ## Requirements — two tiers
 

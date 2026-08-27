@@ -48,7 +48,7 @@ from hearth.config import config_loader
 from . import stt_prep, tts_prep
 from .transcript import TranscriptTap
 
-_REPO_ROOT = config_loader.CONFIG_DIR.parent
+_REPO_ROOT = config_loader.DATA_DIR  # relative serve.toml paths resolve against the data root
 
 
 @dataclass
@@ -413,7 +413,7 @@ async def start(active, cfg: dict, lm_base_url: str, lm_token: str) -> Optional[
         character = str(ident["character"])
         pinned_voice = config_loader.load_voice(character, str(ident["voice"]))
         system_instruction = config_loader.compose_system_instruction(
-            active.model_name, character)
+            active.model_name, character, persona=str(ident.get("persona") or "default"))
         ref_wav = pinned_voice["ref_wav"]
         tts_model = str(pinned_voice.get("model_repo") or cfg["tts_model"])
         # Optional TTS knob pin: pinned keys win over the shared live layer
@@ -443,7 +443,10 @@ async def start(active, cfg: dict, lm_base_url: str, lm_token: str) -> Optional[
         pin_note = ""
     tap = None
     if cfg.get("transcript_tap", True):
-        tap = TranscriptTap(_REPO_ROOT / str(cfg["transcript_dir"]), character,
+        tdir = Path(str(cfg["transcript_dir"])).expanduser()
+        if not tdir.is_absolute():  # relative ⇒ inside the companion's own directory
+            tdir = config_loader.companion_state_dir(character, str(tdir))
+        tap = TranscriptTap(tdir, character,
                             channel="chat", model=active.model_id)
     deps = FacadeDeps(
         system_instruction=system_instruction,

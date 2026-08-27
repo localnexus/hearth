@@ -50,10 +50,11 @@ from pipecat.services.settings import LLMSettings
 
 from hearth.config import config_loader
 
-# Live layer + per-engine persisted baselines live under config/ (reuse the loader's dir).
+# Live layer = the operator's (data root); the persisted baselines ship with the engine
+# tree and are looked up via config_loader.baseline_path (a data-root copy wins).
 OVERRIDES_TOML = config_loader.CONFIG_DIR / "overrides.toml"
-TTS_DIR = config_loader.CONFIG_DIR / "tts"
-VAD_TOML = config_loader.CONFIG_DIR / "vad.toml"
+TTS_DIR = config_loader.ROOT_CONFIG_DIR / "tts"
+VAD_TOML = config_loader.ROOT_CONFIG_DIR / "vad.toml"
 
 # The synth knobs each engine actually HONORS live. Only these keys are accepted
 # from [tts]; anything else (e.g. Turbo's inert exaggeration/cfg_weight/min_p) is
@@ -75,7 +76,7 @@ def load_tts_baseline(engine: str) -> dict:
     the engine honors live are kept; anything else is dropped (defends the
     byte-identical no-op: an [inert] section can never reach generate()).
     """
-    path = TTS_DIR / engine / "tts.toml"
+    path = config_loader.baseline_path(f"tts/{engine}/tts.toml")
     allowed = _ENGINE_LIVE_KEYS.get(engine, frozenset())
     try:
         if not path.exists():
@@ -105,9 +106,10 @@ def load_vad_baseline() -> dict:
     Fail-soft: missing/malformed file ⇒ pure fallback; unknown/non-numeric keys dropped.
     """
     vals = dict(_VAD_FALLBACK)
+    vad_toml = config_loader.baseline_path("vad.toml")
     try:
-        if VAD_TOML.exists():
-            with open(VAD_TOML, "rb") as f:
+        if vad_toml.exists():
+            with open(vad_toml, "rb") as f:
                 data = tomllib.load(f)
             live = data.get("live", {}) or {}
             for k, v in live.items():
@@ -118,7 +120,7 @@ def load_vad_baseline() -> dict:
                 else:
                     vals[k] = float(v)
     except Exception as exc:  # never let a bad baseline break startup wiring
-        logger.warning("config_reload: bad vad baseline {} ({}) — using fallback", VAD_TOML, type(exc).__name__)
+        logger.warning("config_reload: bad vad baseline {} ({}) — using fallback", vad_toml, type(exc).__name__)
     return vals
 
 
@@ -283,10 +285,7 @@ class ConfigReloader:
         """Resolve a ref_wav path (repo-relative → absolute) fail-soft. Missing ⇒
         None (logged; current voice kept). Mirrors config_loader.load_voice's
         resolution but as a soft skip rather than a raise."""
-        p = Path(ref).expanduser()
-        if not p.is_absolute():
-            p = config_loader._ROOT / p
-        p = p.resolve()
+        p = config_loader.resolve_data_path(ref).resolve()
         if not p.exists():
             logger.warning("config_reload: ref_wav not found: {} — keeping current voice.", p)
             return None

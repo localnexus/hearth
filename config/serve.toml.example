@@ -32,7 +32,8 @@ speech_enabled = true
 # flip to true to opt in.
 transcriptions_enabled = false
 
-# Conversation tap: append each turn to a plaintext transcript (the directory is
-# gitignored).
+# Conversation tap: append each turn to a plaintext transcript. A relative directory lives
+# inside the facade's companion directory (characters/<character>/transcripts/ under the
+# data root — gitignored); an absolute path is used as given.
 transcript_tap = true
 transcript_dir = "transcripts"

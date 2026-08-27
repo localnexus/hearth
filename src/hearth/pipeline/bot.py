@@ -329,14 +329,15 @@ async def build_pipeline(
 
     # Session recording. Two passive taps + a Recorder driven by the panel's Record
     # button. Disarmed →
-    # byte-identical pass-throughs (the measure-tap contract). Captures land under
-    # the git-ignored sessions/ tree (sensitive plaintext, local-only). The mic tap
+    # byte-identical pass-throughs (the measure-tap contract). Captures land in the
+    # companion's own directory under the data root (characters/<name>/captures/ —
+    # sensitive, local-only, never the engine tree). The mic tap
     # sits AFTER mute_gate on purpose: Mute is honored — muted audio never touches
     # disk. The TTS tap sits before transport.output() so it sees every
     # TTSAudioRawFrame at the native 24 kHz.
     recorder = Recorder(
         character=_CFG.character,
-        base_dir=Path(__file__).parent / "sessions" / "captures",
+        base_dir=config_loader.companion_state_dir(_CFG.character, "captures"),
         tts_rate=SAMPLE_RATE,
         mic_rate=16000,
     )
@@ -468,6 +469,7 @@ async def main(
     # "Agent | Name: … · Voice: …" line.
     engine_info["character"] = _CFG.character
     engine_info["voice"] = _CFG.voice_name
+    engine_info["persona"] = _CFG.persona_name
     # Gauge the panel against the MEASURED reliable-context line, not the advertised
     # window. None → the panel falls back to `allotted` (advertised) — see control.py.
     engine_info["reliable"] = _CFG.reliable_context
@@ -578,7 +580,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     _store, _resume_messages, _session_desc = resolve_session(
-        args, LM_MODEL, VOICE_TAG, PROMPT_FINGERPRINT
+        args, LM_MODEL, VOICE_TAG, PROMPT_FINGERPRINT,
+        character=_CFG.character, persona=_CFG.persona_name,
     )
 
     asyncio.run(main(

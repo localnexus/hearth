@@ -30,7 +30,7 @@ from hearth.tts import paralinguistics
 from hearth.tts import tag_profiles
 
 OVERRIDES_TOML = config_loader.CONFIG_DIR / "overrides.toml"
-TTS_DIR = config_loader.CONFIG_DIR / "tts"
+TTS_DIR = config_loader.ROOT_CONFIG_DIR / "tts"  # shipped baselines; a data-root copy wins
 TTS_ENGINE = "chatterbox-turbo"  # bot.py's hardcoded engine this pass
 
 # What the mlx-audio SpeechRequest accepts AND the engine honors live — the
@@ -144,7 +144,7 @@ def _read_toml_soft(path) -> dict:
 
 def live_speech_knobs() -> dict:
     """baseline [live] ⊗ overrides [tts], filtered to _SPEECH_KNOBS. Logged on change."""
-    knobs = dict(_read_toml_soft(TTS_DIR / TTS_ENGINE / "tts.toml").get("live", {}) or {})
+    knobs = dict(_read_toml_soft(config_loader.baseline_path(f"tts/{TTS_ENGINE}/tts.toml")).get("live", {}) or {})
     knobs.update(_read_toml_soft(OVERRIDES_TOML).get("tts", {}) or {})
     knobs = {k: v for k, v in knobs.items() if k in _SPEECH_KNOBS}
     if knobs != _last_logged["knobs"]:

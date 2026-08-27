@@ -6,7 +6,8 @@ so preserving that list IS continuity. The system prompt is injected per-request
 from settings (base_llm.py:308-312) and is NEVER in ``messages``, so it is never
 persisted here → zero duplication on reload.
 
-Privacy: a ``sessions/*.json`` file is a full plaintext transcript.
+Privacy: a session file (``characters/<name>/sessions/*.json`` under the data root)
+is a full plaintext transcript.
 It is local-only, gitignored, dir ``0700`` / files ``0600``, and **ephemeral by
 default** — a graceful ``./stop.sh`` truly deletes it (this sensitive class is
 deleted, not retained). ``--hold`` is the deliberate keep; the held
@@ -34,13 +35,37 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-SCHEMA = 1
-_THIS_DIR = Path(__file__).resolve().parent
-SESSIONS_DIR = _THIS_DIR / "sessions"
+SCHEMA = 2  # 2 (2026-08): adds "character" + "persona"; schema-1 files load as persona "default"
 _HOLD_MARKER = ".hold-request"  # stop.sh --hold drops this; the bot honors + consumes it in finally
 
 DIR_MODE = 0o700
 FILE_MODE = 0o600
+
+
+# ── where sessions live: per companion, under the data root ──────────────────
+#
+# DATA/characters/<character>/sessions/ — the companion's own directory, so a
+# conversation history travels (and is erased) with the companion it belongs to.
+# Every function below takes an explicit `sessions_dir`; None means "the ACTIVE
+# companion's" (resolved from config/active.toml at call time — the CLI verbs used
+# by start.sh / stop.sh have no other way to know which companion is live).
+
+def companion_sessions_dir(character: Optional[str] = None) -> Path:
+    from hearth.config import config_loader  # lazy: keeps this module import-light
+    if character is None:
+        character = config_loader.load_active_selection()["character"]
+    return config_loader.companion_state_dir(character, "sessions")
+
+
+def all_sessions_dirs() -> list:
+    """Every companion's sessions dir that exists under the data root (for `list`)."""
+    from hearth.config import config_loader
+    root = config_loader._DATA / "characters"  # the live anchor (tests relocate it)
+    return sorted(p for p in root.glob("*/sessions") if p.is_dir())
+
+
+def _dir(sessions_dir) -> Path:
+    return Path(sessions_dir) if sessions_dir is not None else companion_sessions_dir()
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -59,9 +84,10 @@ def new_session_id() -> str:
     return "session-" + time.strftime("%Y-%m-%dT%H-%M-%S", time.localtime())
 
 
-def ensure_dir(sessions_dir: Path = SESSIONS_DIR) -> Path:
-    """Create sessions/ mode 0700 (and tighten perms if it pre-existed looser)."""
-    sessions_dir = Path(sessions_dir)
+def ensure_dir(sessions_dir: Optional[Path] = None) -> Path:
+    """Create the sessions dir mode 0700 (and tighten perms if it pre-existed looser)."""
+    sessions_dir = _dir(sessions_dir)
+    sessions_dir.parent.mkdir(parents=True, exist_ok=True)
     sessions_dir.mkdir(mode=DIR_MODE, exist_ok=True)
     try:
         os.chmod(sessions_dir, DIR_MODE)
@@ -128,10 +154,16 @@ class SessionStore:
     model: str
     voice: str
     prompt_sha256: str
-    sessions_dir: Path = SESSIONS_DIR
+    sessions_dir: Optional[Path] = None   # None → the companion's dir (character, else active)
     started: str = field(default_factory=_now_iso)
     name: Optional[str] = None
     held: bool = False
+    character: Optional[str] = None
+    persona: str = "default"              # which persona file was live ("default" = persona.md)
+
+    def __post_init__(self) -> None:
+        if self.sessions_dir is None:
+            self.sessions_dir = companion_sessions_dir(self.character)
 
     @property
     def path(self) -> Path:
@@ -144,11 +176,14 @@ class SessionStore:
             "schema": SCHEMA,
             "model": self.model,
             "voice": self.voice,
+            "persona": self.persona,
             "prompt_sha256": self.prompt_sha256,
             "started": self.started,
             "updated": _now_iso(),
             "held": self.held,
         }
+        if self.character:
+            payload["character"] = self.character
         if self.name:
             payload["name"] = self.name
         payload["messages"] = _persistable_messages(messages)
@@ -196,14 +231,16 @@ class SessionMeta:
     started: Optional[str]
     updated: Optional[str]
     turns: int
+    persona: str = "default"
+    character: Optional[str] = None
 
 
-def list_sessions(sessions_dir: Path = SESSIONS_DIR) -> list:
+def list_sessions(sessions_dir: Optional[Path] = None) -> list:
     """Return SessionMeta for every readable session file, newest first.
 
     Malformed/empty files are skipped (never crash). Content is never read out.
     """
-    sessions_dir = Path(sessions_dir)
+    sessions_dir = _dir(sessions_dir)
     metas = []
     if not sessions_dir.exists():
         return metas
@@ -224,23 +261,25 @@ def list_sessions(sessions_dir: Path = SESSIONS_DIR) -> list:
             started=data.get("started"),
             updated=data.get("updated"),
             turns=turns,
+            persona=str(data.get("persona") or "default"),
+            character=data.get("character"),
         ))
     metas.sort(key=lambda m: (m.updated or m.started or ""), reverse=True)
     return metas
 
 
-def ephemeral_orphans(sessions_dir: Path = SESSIONS_DIR) -> list:
+def ephemeral_orphans(sessions_dir: Optional[Path] = None) -> list:
     return [m for m in list_sessions(sessions_dir) if not m.held]
 
 
-def held_sessions(sessions_dir: Path = SESSIONS_DIR) -> list:
+def held_sessions(sessions_dir: Optional[Path] = None) -> list:
     return [m for m in list_sessions(sessions_dir) if m.held]
 
 
-def resolve_resume_arg(arg: str, sessions_dir: Path = SESSIONS_DIR):
+def resolve_resume_arg(arg: str, sessions_dir: Optional[Path] = None):
     """Resolve a ``--resume <arg>`` to a path: explicit file · <arg>.json ·
     session-<arg>.json · a session whose ``name`` field == arg. None if no match."""
-    sessions_dir = Path(sessions_dir)
+    sessions_dir = _dir(sessions_dir)
     p = Path(arg)
     if p.is_file():
         return p
@@ -258,7 +297,7 @@ def resolve_resume_arg(arg: str, sessions_dir: Path = SESSIONS_DIR):
 
 # ── discard verbs (all true-delete for this sensitive class) ────────
 
-def discard_ephemeral(sessions_dir: Path = SESSIONS_DIR) -> list:
+def discard_ephemeral(sessions_dir: Optional[Path] = None) -> list:
     """--new: true-delete ephemeral orphans; held files are left untouched."""
     removed = []
     for m in ephemeral_orphans(sessions_dir):
@@ -270,7 +309,7 @@ def discard_ephemeral(sessions_dir: Path = SESSIONS_DIR) -> list:
     return removed
 
 
-def discard_held(name: Optional[str] = None, sessions_dir: Path = SESSIONS_DIR) -> list:
+def discard_held(name: Optional[str] = None, sessions_dir: Optional[Path] = None) -> list:
     """Explicit discard-held verb: true-delete held sessions (all, or one by name/id)."""
     removed = []
     for m in held_sessions(sessions_dir):
@@ -285,11 +324,11 @@ def discard_held(name: Optional[str] = None, sessions_dir: Path = SESSIONS_DIR) 
 
 # ── hold plumbing (stop-time intent → the bot's shutdown delete-decision) ────
 
-def marker_path(sessions_dir: Path = SESSIONS_DIR) -> Path:
-    return Path(sessions_dir) / _HOLD_MARKER
+def marker_path(sessions_dir: Optional[Path] = None) -> Path:
+    return _dir(sessions_dir) / _HOLD_MARKER
 
 
-def write_hold_request(name: Optional[str] = None, sessions_dir: Path = SESSIONS_DIR) -> None:
+def write_hold_request(name: Optional[str] = None, sessions_dir: Optional[Path] = None) -> None:
     """stop.sh --hold (bot running): mark hold intent; the bot consumes it in finally."""
     ensure_dir(sessions_dir)
     m = marker_path(sessions_dir)
@@ -298,7 +337,7 @@ def write_hold_request(name: Optional[str] = None, sessions_dir: Path = SESSIONS
         f.write(name or "")
 
 
-def read_hold_request(sessions_dir: Path = SESSIONS_DIR):
+def read_hold_request(sessions_dir: Optional[Path] = None):
     """Consume the marker. Returns (requested: bool, name: Optional[str])."""
     m = marker_path(sessions_dir)
     if not m.exists():
@@ -311,14 +350,14 @@ def read_hold_request(sessions_dir: Path = SESSIONS_DIR):
     return (True, name)
 
 
-def clear_hold_request(sessions_dir: Path = SESSIONS_DIR) -> None:
+def clear_hold_request(sessions_dir: Optional[Path] = None) -> None:
     try:
         marker_path(sessions_dir).unlink()
     except FileNotFoundError:
         pass
 
 
-def hold_latest_orphan(name: Optional[str] = None, sessions_dir: Path = SESSIONS_DIR):
+def hold_latest_orphan(name: Optional[str] = None, sessions_dir: Optional[Path] = None):
     """stop.sh --hold with no bot running: promote the newest ephemeral orphan to
     held (optionally naming/renaming it). Returns its new id, or None if none exist."""
     orphans = ephemeral_orphans(sessions_dir)
@@ -330,7 +369,7 @@ def hold_latest_orphan(name: Optional[str] = None, sessions_dir: Path = SESSIONS
     target = m.path
     if name:
         data["name"] = name
-        target = Path(sessions_dir) / f"{name}.json"
+        target = _dir(sessions_dir) / f"{name}.json"
     _atomic_write_json(target, data)
     if target != m.path:
         try:
@@ -370,7 +409,8 @@ def finalize(store: "SessionStore", messages) -> str:
 def _fmt_meta(m: "SessionMeta") -> str:
     tag = " [HELD]" if m.held else ""
     nm = f" · {m.name}" if m.name else ""
-    return f"{m.updated or m.started or '?'}  ·  {m.turns} turns  ·  {m.model}  ·  {m.voice}{nm}{tag}"
+    pv = f" · persona.{m.persona}.md" if m.persona not in (None, "", "default") else ""
+    return f"{m.updated or m.started or '?'}  ·  {m.turns} turns  ·  {m.model}  ·  {m.voice}{pv}{nm}{tag}"
 
 
 def _main(argv) -> int:
@@ -381,11 +421,18 @@ def _main(argv) -> int:
     cmd, rest = argv[0], argv[1:]
     arg = rest[0] if rest else None
     if cmd == "list":
-        metas = list_sessions()
-        if not metas:
+        dirs = all_sessions_dirs()
+        shown = 0
+        for d in dirs:
+            metas = list_sessions(d)
+            if not metas:
+                continue
+            print(f"{d.parent.name}:")
+            for m in metas:
+                print(f"  {_fmt_meta(m)}")
+            shown += len(metas)
+        if not shown:
             print("(no sessions)")
-        for m in metas:
-            print(f"  {_fmt_meta(m)}")
         return 0
     if cmd == "request-hold":
         write_hold_request(arg)

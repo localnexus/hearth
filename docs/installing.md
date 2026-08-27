@@ -219,6 +219,10 @@ voice you have the rights to ([Bring your own voice](bring-your-own-voice.md)), 
 files you edit versus which edit themselves ([The config layers](the-config-layers.md)).
 `config/overrides.toml` and `config/serve.toml` are optional and not needed to start.
 
+To keep your companions, selections, and conversations **outside the checkout**, set
+`HEARTH_DATA` to any directory before you launch — it uses the same `characters/` + `config/`
+layout, and the shipped example stays reachable from it. Unset, the checkout is the data root.
+
 ## 7. Microphone permission (do this before the first launch)
 
 macOS attributes microphone access to the **app that owns the terminal** — not to Python.
@@ -278,8 +282,9 @@ git pull
 uv pip install -e ".[mac]"      # picks up any dependency change; re-applies the pins
 ```
 
-Your `config/active.toml`, `config/overrides.toml`, `config/serve.toml`, `config/profiles/`,
-your own characters' voices, and `sessions/` are gitignored, so a pull never touches them.
+Your `config/active.toml`, `config/overrides.toml`, `config/serve.toml`, your own characters
+and model configs, and every companion's `sessions/` / `captures/` are gitignored (or live
+under `HEARTH_DATA`), so a pull never touches them.
 Model weights live in the Hugging Face cache and are untouched too.
 
 ## Quick troubleshooting

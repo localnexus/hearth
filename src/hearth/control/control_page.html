@@ -340,6 +340,8 @@ function renderAgent() {
   }
   $('s-agent').textContent =
     `Agent  | Name: ${engine.character || DASH} · Voice: ${v}`;
+  const pv = engine.persona && engine.persona !== 'default' ? `persona.${engine.persona}.md` : 'persona.md';
+  if ($('k-persona')) $('k-persona').textContent = `· ${pv}`;
 }
 
 async function loadEngine() {

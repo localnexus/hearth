@@ -9,6 +9,23 @@ you use it.
 
 ---
 
+## Two roots: the engine tree and your data
+
+Every path below is relative to one of two anchors:
+
+| Anchor | Env var | Holds | Default |
+|---|---|---|---|
+| **Engine tree** | `HEARTH_ROOT` | the code, the shipped baselines (`config/tts/`, `config/vad.toml`), the `example` character and model config, the `.example` templates | the checkout (found from the package) |
+| **Data root** | `HEARTH_DATA` | **everything you own**: `characters/` (persona, voices — and each companion's `sessions/`, `transcripts/`, `captures/`, `profile.toml`), `config/models/`, `config/active.toml`, `config/overrides.toml`, `config/serve.toml` + token | **the engine tree** |
+
+Leave `HEARTH_DATA` unset and the checkout doubles as your data root — the layout is
+exactly the one described here, and the public `.gitignore` keeps your companions, model
+configs, and runtime files out of git. Set it (a vault, `~/.hearth`, anywhere) to keep
+companions outside the checkout entirely: one directory per companion is then the whole
+companion — copy it to move it, delete it to erase it. Lookup is **data root first, then
+the engine tree**, so the shipped `example` stays reachable from an empty data root, and
+your own `characters/example/` would shadow it. `./start.sh --check` prints both roots.
+
 ## The layers at a glance
 
 The golden rule: **know who writes a file before you edit it.** Some are yours; one is the
@@ -16,18 +33,20 @@ control panel's; one is a secret you only ever manage, never read.
 
 | Layer | Who writes it | You do… |
 |---|---|---|
-| **`config/active.toml`** | **You** (operator) | Edit the `character` / `model` / `voice` selection, then restart |
+| **`config/active.toml`** | **You** (operator) | Edit the `character` / `model` / `voice` selection (and an optional `persona` variant), then restart |
 | **`config/overrides.toml`** | **The control panel** (live knobs) | **Don't hand-edit.** Read it to understand a sticky setting; let the panel manage it |
 | **`config/models/<model>/`** | **You** | Edit `model.toml` load facts + `system-prompt-template.md` |
 | **`config/serve.toml`** | **You** — but it holds a **bearer token path** | Manage the gate; **never print its contents** |
-| **`config/tts/<engine>/tts.toml`**, **`config/vad.toml`** | **Shipped baselines** (calibrated) | Leave alone unless you are re-calibrating by ear/mic; the panel's `overrides.toml` layers over them |
+| **`config/tts/<engine>/tts.toml`**, **`config/vad.toml`** | **Shipped baselines** (calibrated) | Leave alone unless you are re-calibrating by ear/mic; the panel's `overrides.toml` layers over them. A copy under your data root replaces the shipped file |
+| **`characters/<name>/profile.toml`**, **`…/overrides.toml`** (and per voice) | **The control panel** | The companion's saved knob preset, and a live mirror of its identity-scope knobs — they travel with the companion. Hands off |
 
 ---
 
 ## `active.toml` — the selection pointer (edit + restart)
 
-Your one deliberate lever for *who's live*: `character`, `model`, `voice`. It's read **once at
-startup** — nothing hot-swaps. Edit, then restart.
+Your one deliberate lever for *who's live*: `character`, `model`, `voice` — plus an optional
+`persona = "<variant>"` that picks `persona.<variant>.md` beside the character's `persona.md`.
+It's read **once at startup** — nothing hot-swaps. Edit, then restart.
 
 ## `overrides.toml` — the panel's layer (hands off)
 
@@ -96,6 +115,7 @@ exposing the live file:
 ## The one-line takeaways
 
 - **Want to change who's live?** `active.toml` + restart.
+- **Want your companions outside the checkout?** Set `HEARTH_DATA`; the layout is identical there.
 - **A setting won't stick?** The **panel's** `overrides.toml` is probably winning — clear it
   via the panel, don't hand-edit.
 - **Tuning the model or its prompt?** `config/models/<model>/` + restart.

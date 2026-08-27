@@ -20,3 +20,7 @@ model = "example"
 
 # Which voice of the character is live (dir name under characters/<character>/voices/).
 voice = "default"
+
+# Optional: which persona VARIANT is live. Omit (or "default") for persona.md; a name
+# selects the sibling file characters/<character>/persona.<name>.md.
+# persona = "default"

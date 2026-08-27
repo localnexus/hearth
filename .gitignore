@@ -21,7 +21,19 @@ config/active.toml
 config/overrides.toml
 config/serve.toml
 config/serve-token
+config/openclaw.toml
 config/profiles/
+
+# YOUR companions and model configs never enter the engine repo (when HEARTH_DATA is
+# unset the checkout doubles as the data root). Only the shipped examples are tracked —
+# and even inside those, the files the runtime/panel writes stay out.
+characters/*
+!characters/example/
+config/models/*
+!config/models/example/
+config/models/example/model.toml
+characters/**/profile.toml
+characters/**/overrides.toml
 
 # Voice reference clips are the operator's to supply and are NOT committed,
 # with one exception: the rights-clean default voice that ships with the repo.

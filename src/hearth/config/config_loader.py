@@ -34,20 +34,38 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-# The repo root holds config/ and characters/. This module lives at
-# src/hearth/config/, so the asset tree is three levels up; HEARTH_ROOT overrides it
-# for a relocated asset tree. Every asset path resolves against this root so the
-# tree stays relocatable.
-_ROOT = Path(os.environ.get("HEARTH_ROOT") or Path(__file__).resolve().parents[3])
-CONFIG_DIR = _ROOT / "config"
-MODELS_DIR = CONFIG_DIR / "models"
-CHARACTERS_DIR = _ROOT / "characters"
+# ── the two anchors ──────────────────────────────────────────────────────────
+#
+# HEARTH_ROOT — the ENGINE tree: this package plus what ships with it (the calibrated
+#   baselines under config/tts/ and config/vad.toml, the example model config, the
+#   example character). Versioned, public, replaceable. Resolved three levels above
+#   this module (src/hearth/config/ → the checkout) unless HEARTH_ROOT says otherwise.
+# HEARTH_DATA — everything the operator OWNS: characters (persona, voices, and each
+#   companion's sessions / transcripts / captures), model configs, the selection
+#   (active.toml), the panel's overrides, serve.toml + its token. Never versioned.
+#   Defaults to HEARTH_ROOT, so an unconfigured checkout behaves exactly as before:
+#   set it to keep companions outside the checkout (a vault, ~/.hearth, anywhere).
+#
+# Lookup rule: identity and model scope resolve DATA first, then ROOT — so the shipped
+# `example` character/model stay reachable from an empty data root, and an operator's
+# own `characters/example/` shadows the shipped one. Runtime state always lands under
+# DATA (never inside the engine tree). Baselines are read from ROOT unless DATA carries
+# its own copy (a per-machine calibration), which then wins whole-file.
+_ROOT = Path(os.environ.get("HEARTH_ROOT") or Path(__file__).resolve().parents[3]).expanduser()
+_DATA = Path(os.environ.get("HEARTH_DATA") or _ROOT).expanduser()
+
+ROOT_CONFIG_DIR = _ROOT / "config"          # shipped baselines + the example model config
+DATA_DIR = _DATA
+CONFIG_DIR = _DATA / "config"               # place scope: selection, overrides, serve, openclaw
+MODELS_DIR = CONFIG_DIR / "models"          # model scope (operator's); ROOT holds the example
+CHARACTERS_DIR = _DATA / "characters"       # identity scope (operator's); ROOT holds the example
 ACTIVE_TOML = CONFIG_DIR / "active.toml"
 
 OPENCLAW_TOML = CONFIG_DIR / "openclaw.toml"
 SERVE_TOML = CONFIG_DIR / "serve.toml"
 
 _HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
+_NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")  # dir-name / variant-name safe; blocks traversal
 _PERSONA_SLOT = "{{persona}}"
 _DATETIME_SLOT = "{{datetime}}"
 _OPENCLAW_SLOT = "{{openclaw_tools}}"
@@ -59,6 +77,76 @@ class ConfigError(RuntimeError):
     The message always names the exact offending file so a startup failure is
     self-diagnosing (fail-fast; no silent fallback to literals).
     """
+
+
+if not (_ROOT / "config").is_dir():  # fail-fast at import: a wrong root is never silent
+    raise ConfigError(
+        f"Hearth engine tree not found: no config/ under {_ROOT}. Set HEARTH_ROOT to the "
+        "checkout (a non-editable install cannot locate it by itself)."
+    )
+
+
+# ── root lookups (DATA first, then ROOT) ─────────────────────────────────────
+
+def _lookup(rel: str) -> Path:
+    """DATA/rel if it exists, else ROOT/rel if it exists, else DATA/rel (so an error
+    names the path the operator is expected to create)."""
+    d = _DATA / rel
+    if d.exists():
+        return d
+    r = _ROOT / rel
+    if r.exists():
+        return r
+    return d
+
+
+def model_dir(model_name: str) -> Path:
+    """config/models/<model_name>/ — the operator's copy under DATA, else the shipped one."""
+    return _lookup(f"config/models/{model_name}")
+
+
+def character_dir(character: str) -> Path:
+    """characters/<character>/ (the DEFINITION: persona + voices) — DATA, else ROOT."""
+    return _lookup(f"characters/{character}")
+
+
+def baseline_path(rel: str) -> Path:
+    """A shipped calibration file (config/tts/<engine>/tts.toml, config/vad.toml): the
+    DATA copy wins whole-file when present; otherwise the ROOT baseline."""
+    return _lookup(f"config/{rel}")
+
+
+def resolve_data_path(ref: str) -> Path:
+    """A relative operator path (e.g. an overrides [voice].ref_wav) → absolute, DATA
+    first then ROOT (the shipped example clip). Absolute inputs pass through."""
+    p = Path(ref).expanduser()
+    if p.is_absolute():
+        return p
+    return _lookup(str(p))
+
+
+def companion_data_dir(character: str) -> Path:
+    """DATA/characters/<character>/ — the companion's OWN directory: where its runtime
+    state, saved profiles, and knob mirrors live. Always under DATA, never the engine
+    tree, even when the character DEFINITION is the shipped one under ROOT."""
+    if not _NAME_RE.match(character or "") or character.startswith("."):
+        raise ConfigError(f"invalid character name: {character!r}")
+    return _DATA / "characters" / character
+
+
+def companion_state_dir(character: str, kind: str) -> Path:
+    """DATA/characters/<character>/<kind>/ (kind = sessions | transcripts | captures)."""
+    return companion_data_dir(character) / kind
+
+
+def persona_path(character: str, persona: str | None = None) -> Path:
+    """persona.md, or the variant file persona.<variant>.md, beside it."""
+    cdir = character_dir(character)
+    if persona in (None, "", "default"):
+        return cdir / "persona.md"
+    if not _NAME_RE.match(persona) or persona.startswith("."):
+        raise ConfigError(f"invalid persona variant name: {persona!r}")
+    return cdir / f"persona.{persona}.md"
 
 
 # ── low-level readers (each names the file it failed on) ─────────────────────
@@ -130,23 +218,29 @@ class ActiveConfig:
     sample_rate: int | None = None
     streaming_interval: float | None = None
     reliable_context: int | None = None  # measured reliable-usable ctx line; panel gauges vs this
+    persona_name: str = "default"  # which persona file: "default" = persona.md, else persona.<name>.md
 
 
 # ── individual loaders (composable; used by load_active() below) ──────────────
 
 def load_active_selection() -> dict:
-    """Read config/active.toml → {'character', 'model', 'voice'}."""
+    """Read config/active.toml → {'character', 'model', 'voice', 'persona'}.
+
+    `persona` is optional: absent → "default" (the character's persona.md); a name
+    selects the sibling variant file persona.<name>.md."""
     data = _read_toml(ACTIVE_TOML)
+    persona = str(data.get("persona", "default") or "default")
     return {
         "character": _require(data, "character", ACTIVE_TOML),
         "model": _require(data, "model", ACTIVE_TOML),
         "voice": _require(data, "voice", ACTIVE_TOML),
+        "persona": persona,
     }
 
 
 def load_model(model_name: str) -> dict:
-    """Read config/models/<model_name>/model.toml. Requires 'id'."""
-    path = MODELS_DIR / model_name / "model.toml"
+    """Read config/models/<model_name>/model.toml (DATA, else the shipped one). Requires 'id'."""
+    path = model_dir(model_name) / "model.toml"
     data = _read_toml(path)
     _require(data, "id", path)
     return data
@@ -163,7 +257,7 @@ def load_voice(character: str, voice: str) -> dict:
     (prepare_conditionals reads it at TTS __init__), so a missing clip fails fast.
     The returned dict's 'ref_wav' is the resolved absolute path.
     """
-    vdir = CHARACTERS_DIR / character / "voices" / voice
+    vdir = character_dir(character) / "voices" / voice
     path = vdir / "voice.toml"
     data = _read_toml(path)
     _require(data, "tag", path)
@@ -178,15 +272,16 @@ def load_voice(character: str, voice: str) -> dict:
     return data
 
 
-def compose_persona(character: str) -> str:
-    """Extract the {{persona}} text from characters/<character>/persona.md.
+def compose_persona(character: str, persona: str | None = None) -> str:
+    """Extract the {{persona}} text from characters/<character>/persona.md — or, when
+    `persona` names a variant, from the sibling file persona.<variant>.md.
 
-    persona.md is authored as two labelled sections ('## IDENTITY', '## SOUL')
+    The file is authored as two labelled sections ('## IDENTITY', '## SOUL')
     with HTML-comment guidance. The composed persona is the IDENTITY body plus a
     blank line plus the SOUL body — reproducing the original prompt's paragraph
     shape (identity paragraph first) byte-for-byte (plan §6, wiring-doc §4).
     """
-    path = CHARACTERS_DIR / character / "persona.md"
+    path = persona_path(character, persona)
     text = _strip_comments(_read_text(path))
     # Split on the section headers, capturing the section name.
     parts = re.split(r"^##\s+([A-Za-z]+)\s*$", text, flags=re.MULTILINE)
@@ -248,7 +343,7 @@ def load_serve_config() -> dict | None:
     or the drift fingerprint (M8 §modular-gate: off = byte-identical appliance).
 
     token_source / lm_token_source are PATHS to secrets, never secrets;
-    relative paths resolve against the repo root. Env wins: SERVE_TOKEN for the
+    relative paths resolve against the data root (HEARTH_DATA). Env wins: SERVE_TOKEN for the
     facade bearer, LM_API_TOKEN for the LLM server key.
 
     Optional [serve.identity] table (character + voice, both required if the
@@ -313,7 +408,7 @@ def compose_with_persona(model_name: str, persona_text: str, *, datetime_str: st
     construction. (This is why the live [llm] override key is `persona`, not a raw
     `system_instruction` — config_reload §persona-slot.)
     """
-    tpl_path = MODELS_DIR / model_name / "system-prompt-template.md"
+    tpl_path = model_dir(model_name) / "system-prompt-template.md"
     template = _strip_comments(_read_text(tpl_path)).strip()
     if _PERSONA_SLOT not in template:
         raise ConfigError(f"system-prompt-template.md has no {_PERSONA_SLOT} slot: {tpl_path}")
@@ -344,7 +439,8 @@ def compose_with_persona(model_name: str, persona_text: str, *, datetime_str: st
     return composed
 
 
-def compose_system_instruction(model_name: str, character: str, *, datetime_str: str | None = None) -> str:
+def compose_system_instruction(model_name: str, character: str, *, persona: str | None = None,
+                               datetime_str: str | None = None) -> str:
     """Render the MODEL template with {{persona}} filled from the CHARACTER.
 
     The composed string is what OpenAILLMService.Settings.system_instruction
@@ -354,7 +450,7 @@ def compose_system_instruction(model_name: str, character: str, *, datetime_str:
     fingerprint (ActiveConfig.prompt_fingerprint = this with datetime_str=""),
     NOT system_instruction — see load_active + session_store.prompt_sha256.
     """
-    return compose_with_persona(model_name, compose_persona(character), datetime_str=datetime_str)
+    return compose_with_persona(model_name, compose_persona(character, persona), datetime_str=datetime_str)
 
 
 # ── top-level entry point ────────────────────────────────────────────────────
@@ -368,12 +464,14 @@ def load_active() -> ActiveConfig:
     sel = load_active_selection()
     model = load_model(sel["model"])
     voice = load_voice(sel["character"], sel["voice"])
-    system_instruction = compose_system_instruction(sel["model"], sel["character"])
+    persona = sel["persona"]
+    system_instruction = compose_system_instruction(sel["model"], sel["character"], persona=persona)
     # Drift-hash basis: same compose with the {{datetime}} slot emptied, so
     # prompt_sha256 stays stable across sessions (the live clock varies every run).
-    prompt_fingerprint = compose_system_instruction(sel["model"], sel["character"], datetime_str="")
+    prompt_fingerprint = compose_system_instruction(sel["model"], sel["character"], persona=persona,
+                                                    datetime_str="")
 
-    model_path = MODELS_DIR / sel["model"] / "model.toml"
+    model_path = model_dir(sel["model"]) / "model.toml"
     return ActiveConfig(
         character=sel["character"],
         model_name=sel["model"],
@@ -391,4 +489,5 @@ def load_active() -> ActiveConfig:
         sample_rate=voice.get("sample_rate"),
         streaming_interval=voice.get("streaming_interval"),
         reliable_context=model.get("reliable_context"),
+        persona_name=persona,
     )
