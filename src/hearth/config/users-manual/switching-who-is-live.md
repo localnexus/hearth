@@ -3,8 +3,8 @@
 *The ritual for changing **who** answers on the phone-voice and chat lanes: pick the companion in one file, make sure
 no one's mid-conversation, bounce one service, confirm the right one came back.*
 
-**Authoritative sources:** what each config key means → `../../docs/config-manual/llm.md` + `../../docs/config-manual/voice-tts.md`;
-the desk-loop restart drill → `../../docs/runbook/` §2–3. This page is the *sequence* that ties them together.
+**Authoritative sources:** what each config key means → `docs/config-manual/llm.md` + `docs/config-manual/voice-tts.md`;
+the desk-loop restart drill → `docs/runbook/` §2–3. This page is the *sequence* that ties them together.
 
 ---
 
@@ -97,7 +97,7 @@ Three lanes read `active.toml` at *different* moments, so a switch reaches them 
 |---|---|---|
 | **Phone voice + chat** (via the facade) | Snapshots `active.toml` when the **facade** starts | The bounce in step 3 — that's the whole point |
 | **Open WebUI** (:65002 chat) | Reads the facade's `/v1/models` fresh on page load | **No restart.** Refresh the page / start a new chat and the new character id shows. **[UNVERIFIED]** old chats appear to stay pinned to whatever id they opened with (standard per-conversation model pinning — confirm by eye) |
-| **Desk voice loop** (`bot.py`, :65000) | Snapshots `active.toml` at **its own** launch | Separate lane entirely — a facade bounce doesn't touch a running desk loop. To move *it*, stop and relaunch `bot.py` (`../../docs/runbook/` §3→§2) |
+| **Desk voice loop** (`bot.py`, :65000) | Snapshots `active.toml` at **its own** launch | Separate lane entirely — a facade bounce doesn't touch a running desk loop. To move *it*, stop and relaunch `bot.py` (`docs/runbook/` §3→§2) |
 
 > **The mental model:** an interactively-launched `bot.py` and the launchd facade are *two independent
 > readers* of the same selection file. Each takes its snapshot when it starts. Switching the facade never

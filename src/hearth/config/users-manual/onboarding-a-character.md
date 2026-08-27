@@ -6,7 +6,7 @@ the licensing discipline that rides every clip, and the ear test that decides wh
 **Authoritative source (the recipe):** the bring-your-own-voice guide is the step-by-step
 that governs — bundle layout, the `voice.toml` key table, the BlackHole capture recipe, and every clip
 requirement. The licensing frame: `COMPONENT-LICENSING.md`. The what-to-edit reference:
-`../../docs/config-manual/voice-tts.md`. This page walks the *shape* of the process; those hold the exact steps.
+`docs/config-manual/voice-tts.md`. This page walks the *shape* of the process; those hold the exact steps.
 
 ---
 

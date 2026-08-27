@@ -3,9 +3,9 @@
 *A router, not a manual. Match your symptom, go to the doc that actually fixes it. The only fixes written out
 here are the handful of **facade** cases new enough that they aren't in the older playbooks yet.*
 
-**Authoritative sources:** runtime symptom → one-action fix → `../../docs/runbook/05-fast-recovery.md`; deeper
-wedged/silent-pipeline debugging → `../../docs/debugging/`; the fast-recovery
-overview → `../../docs/runbook/README.md`. Those are the single sources of truth — this page just points.
+**Authoritative sources:** runtime symptom → one-action fix → `docs/runbook/05-fast-recovery.md`; deeper
+wedged/silent-pipeline debugging → `docs/debugging/`; the fast-recovery
+overview → `docs/runbook/README.md`. Those are the single sources of truth — this page just points.
 
 ---
 
@@ -13,13 +13,13 @@ overview → `../../docs/runbook/README.md`. Those are the single sources of tru
 
 | What you're seeing | Go to |
 |---|---|
-| Speaks nothing; log hangs after `Generating chat` | `../../docs/runbook/05-fast-recovery.md` (LLM emitting chain-of-thought — thinking must be off) |
-| No audio / `Errno -9996` / wrong input device | `../../docs/runbook/05-fast-recovery.md` (invalid default device; relaunch) |
-| STT never transcribes but the OS mic meter moves | `../../docs/runbook/05-fast-recovery.md` (iTerm mic permission / TCC) |
-| `model_not_found` / `401` to `:1234` | `../../docs/runbook/05-fast-recovery.md` (wrong id / bad LM Studio token) |
-| Set a voice in `active.toml` but a **different** voice plays | `../../docs/runbook/05-fast-recovery.md` (sticky `[voice]` in the panel's `overrides.toml`) → also [The config layers](the-config-layers.md) |
-| Cut off mid-word / garbled render / cue tag spoken aloud | `../../docs/debugging/tts-audio-cases.md` |
-| Resume "not found" / persona-model mismatch after resume | `../../docs/debugging/session-continuity-faults.md` |
+| Speaks nothing; log hangs after `Generating chat` | `docs/runbook/05-fast-recovery.md` (LLM emitting chain-of-thought — thinking must be off) |
+| No audio / `Errno -9996` / wrong input device | `docs/runbook/05-fast-recovery.md` (invalid default device; relaunch) |
+| STT never transcribes but the OS mic meter moves | `docs/runbook/05-fast-recovery.md` (iTerm mic permission / TCC) |
+| `model_not_found` / `401` to `:1234` | `docs/runbook/05-fast-recovery.md` (wrong id / bad LM Studio token) |
+| Set a voice in `active.toml` but a **different** voice plays | `docs/runbook/05-fast-recovery.md` (sticky `[voice]` in the panel's `overrides.toml`) → also [The config layers](the-config-layers.md) |
+| Cut off mid-word / garbled render / cue tag spoken aloud | `docs/debugging/tts-audio-cases.md` |
+| Resume "not found" / persona-model mismatch after resume | `docs/debugging/session-continuity-faults.md` |
 | Phone won't connect / mic dead on the walk | [The phone lane — away mode](the-phone-lane-away-mode.md) (TURN up? insecure-origin flag re-added? trio relaunched after reboot?) |
 | Facade won't answer / `unauthorized` | the two new cases below |
 
@@ -27,7 +27,7 @@ overview → `../../docs/runbook/README.md`. Those are the single sources of tru
 
 ## The new facade cases — not yet in the older docs
 
-These landed with the launchd facade and aren't in `../../docs/runbook/05-fast-recovery.md` or `../../docs/debugging/` yet, so they're
+These landed with the launchd facade and aren't in `docs/runbook/05-fast-recovery.md` or `docs/debugging/` yet, so they're
 written out here until those docs absorb them.
 
 ### Connection refused after a `kickstart`, and the log says nothing ran
@@ -64,6 +64,6 @@ point.
 
 ---
 
-**Net:** almost everything routes to `../../docs/runbook/05-fast-recovery.md` or `../../docs/debugging/`. The only cases
+**Net:** almost everything routes to `docs/runbook/05-fast-recovery.md` or `docs/debugging/`. The only cases
 that live here are the two facade signatures above — a refused port that's really the `serve.toml` gate, and
 a 401 that's really the bearer doing its job.

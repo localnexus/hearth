@@ -4,8 +4,8 @@
 shapes the whole setup, and the recovery moves when the phone stops connecting. This is the **server-side**
 operator view — not the phone-tapping how-to.*
 
-**Authoritative sources:** the privacy posture → `../../docs/explanation/TRUST-privacy-model.md`. This page
-walks the operator process; that holds the truth.
+**Scope:** the operator process only. The privacy posture it rests on is simple — the phone lane
+rides your own network to your own machine; nothing leaves the box.
 
 ---
 

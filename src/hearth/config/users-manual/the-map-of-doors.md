@@ -3,7 +3,7 @@
 *Every network door Hearth opens, what's behind it, and the one read-only command that tells you it's
 alive. This is the orientation map — when you're lost about "which thing is on which port," start here.*
 
-**Authoritative sources:** control panel → `../../docs/runbook/02.5-control-panel.md`; facade + Open WebUI as
+**Authoritative sources:** control panel → `docs/runbook/02.5-control-panel.md`; facade + Open WebUI as
 services → `config/launchd/*.plist`; the OpenClaw TTS lane → [The OpenClaw voice lane](the-openclaw-voice-lane.md).
 This page only *maps* them.
 

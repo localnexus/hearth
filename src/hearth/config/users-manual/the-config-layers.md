@@ -4,7 +4,7 @@
 live in a few different places on purpose — this page tells you who owns each so you don't fight the panel or
 leak a secret.*
 
-**Authoritative sources:** knob-by-knob meaning → `../../docs/config-manual/` (its `README.md` maps request → file →
+**Authoritative sources:** knob-by-knob meaning → `docs/config-manual/` (its `README.md` maps request → file →
 key, with a topic page per family); the facade gate → `config/serve.toml.example` (the committed template);
 the service definitions → `config/launchd/*.plist`. This page is the ownership map; those hold the details.
 
@@ -17,9 +17,9 @@ secret you only ever manage, never read.
 
 | Layer | Who writes it | You do… | Cross-reference |
 |---|---|---|---|
-| **`config/active.toml`** | **You** (operator) | Edit the `character` / `model` / `voice` selection, then restart | [Switching who's live](switching-who-is-live.md) · `../../docs/config-manual/llm.md` |
-| **`config/overrides.toml`** | **The :65000 panel** (live knobs) | **Don't hand-edit.** Read it to understand a sticky setting; let the panel manage it | `../../docs/config-manual/README.md` · `../../docs/runbook/02.5-control-panel.md` |
-| **`config/models/<model>/`** | **You** | Edit `model.toml` load facts + `system-prompt-template.md` | `../../docs/config-manual/llm.md` |
+| **`config/active.toml`** | **You** (operator) | Edit the `character` / `model` / `voice` selection, then restart | [Switching who's live](switching-who-is-live.md) · `docs/config-manual/llm.md` |
+| **`config/overrides.toml`** | **The :65000 panel** (live knobs) | **Don't hand-edit.** Read it to understand a sticky setting; let the panel manage it | `docs/config-manual/README.md` · `docs/runbook/02.5-control-panel.md` |
+| **`config/models/<model>/`** | **You** | Edit `model.toml` load facts + `system-prompt-template.md` | `docs/config-manual/llm.md` |
 | **`config/serve.toml`** | **You** — but it holds a **bearer** | Manage the gate; **never print its contents** | This page, below · `config/serve.toml.example` |
 | **`config/launchd/*.plist`** | **You** (via the install script) | Define the always-on services | [The map of doors](the-map-of-doors.md) |
 
@@ -39,7 +39,7 @@ and when you audition a voice, a `[voice] ref_wav`). The rule:
 > **Operators don't hand-edit `overrides.toml`.** The panel owns it. Its live values **override
 > `active.toml` every turn** while set — which is exactly why a voice pick can seem "stuck": a leftover
 > `[voice]` section from a live audition wins over your `active.toml` edit until you clear it and restart.
-> (That specific fix is `../../docs/runbook/05-fast-recovery.md`.) When in doubt, *read* it to see what the panel left
+> (That specific fix is `docs/runbook/05-fast-recovery.md`.) When in doubt, *read* it to see what the panel left
 > behind — don't edit it by hand.
 
 ## `config/models/<model>/` — the model's facts and prompt
@@ -54,7 +54,7 @@ Two files per model dir, both **yours** to edit:
   rules, and the `{{persona}}` slot the character fills. Keep the "short, spoken, no markdown" rules or
   replies read badly aloud.
 
-Every change here needs a **restart** to apply. Per-knob meaning lives in `../../docs/config-manual/llm.md`.
+Every change here needs a **restart** to apply. Per-knob meaning lives in `docs/config-manual/llm.md`.
 
 ## `config/serve.toml` — the facade gate (manage, never print)
 
