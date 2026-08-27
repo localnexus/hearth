@@ -101,8 +101,7 @@ def _safe(name: str, what: str) -> str:
 
 def _list_voices(character: str) -> list[str]:
     """Voice bundle names for a character (dirs holding a voice.toml). Empty if none."""
-    vdir = config_loader.character_dir(character) / "voices"
-    return sorted(p.parent.name for p in vdir.glob("*/voice.toml"))
+    return config_loader.list_voices(character)
 
 
 def _active() -> dict:
@@ -192,7 +191,7 @@ def _validate_target(scope: str, character: str, voice: str | None) -> None:
     if scope == "all":
         return
     _safe(character, "character")
-    if not config_loader.character_dir(character).is_dir():
+    if not (config_loader.character_dir(character) / "persona.md").is_file():
         raise ProfileError(f"no such character: {character!r}")
     if scope == "voice":
         if not voice:

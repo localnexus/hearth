@@ -90,24 +90,44 @@ if not (_ROOT / "config").is_dir():  # fail-fast at import: a wrong root is neve
 
 def _lookup(rel: str) -> Path:
     """DATA/rel if it exists, else ROOT/rel if it exists, else DATA/rel (so an error
-    names the path the operator is expected to create)."""
+    names the path the operator is expected to create).
+
+    Always keyed on a FILE, never a directory: a companion's directory under DATA comes
+    into existence the moment its runtime state is written (sessions/, a profile), and
+    an empty directory must not shadow the shipped definition next to it."""
     d = _DATA / rel
-    if d.exists():
+    if d.is_file():
         return d
     r = _ROOT / rel
-    if r.exists():
+    if r.is_file():
         return r
     return d
 
 
 def model_dir(model_name: str) -> Path:
-    """config/models/<model_name>/ — the operator's copy under DATA, else the shipped one."""
-    return _lookup(f"config/models/{model_name}")
+    """config/models/<model_name>/ — the operator's copy under DATA (keyed on its
+    model.toml), else the shipped one."""
+    return _lookup(f"config/models/{model_name}/model.toml").parent
 
 
 def character_dir(character: str) -> Path:
-    """characters/<character>/ (the DEFINITION: persona + voices) — DATA, else ROOT."""
-    return _lookup(f"characters/{character}")
+    """characters/<character>/ (the DEFINITION, keyed on its persona.md) — DATA, else ROOT."""
+    return _lookup(f"characters/{character}/persona.md").parent
+
+
+def voice_dir(character: str, voice: str) -> Path:
+    """characters/<character>/voices/<voice>/ (keyed on its voice.toml) — DATA, else ROOT.
+    Looked up per voice, so an operator can add a voice to the shipped example under
+    DATA without copying the persona."""
+    return _lookup(f"characters/{character}/voices/{voice}/voice.toml").parent
+
+
+def list_voices(character: str) -> list:
+    """Voice bundle names (dirs holding a voice.toml) across DATA and ROOT, merged."""
+    names = set()
+    for root in (_DATA, _ROOT):
+        names.update(p.parent.name for p in (root / "characters" / character / "voices").glob("*/voice.toml"))
+    return sorted(names)
 
 
 def baseline_path(rel: str) -> Path:
@@ -141,12 +161,11 @@ def companion_state_dir(character: str, kind: str) -> Path:
 
 def persona_path(character: str, persona: str | None = None) -> Path:
     """persona.md, or the variant file persona.<variant>.md, beside it."""
-    cdir = character_dir(character)
     if persona in (None, "", "default"):
-        return cdir / "persona.md"
+        return _lookup(f"characters/{character}/persona.md")
     if not _NAME_RE.match(persona) or persona.startswith("."):
         raise ConfigError(f"invalid persona variant name: {persona!r}")
-    return cdir / f"persona.{persona}.md"
+    return _lookup(f"characters/{character}/persona.{persona}.md")  # a variant may live in DATA alone
 
 
 # ── low-level readers (each names the file it failed on) ─────────────────────
@@ -257,7 +276,7 @@ def load_voice(character: str, voice: str) -> dict:
     (prepare_conditionals reads it at TTS __init__), so a missing clip fails fast.
     The returned dict's 'ref_wav' is the resolved absolute path.
     """
-    vdir = character_dir(character) / "voices" / voice
+    vdir = voice_dir(character, voice)
     path = vdir / "voice.toml"
     data = _read_toml(path)
     _require(data, "tag", path)
@@ -408,7 +427,7 @@ def compose_with_persona(model_name: str, persona_text: str, *, datetime_str: st
     construction. (This is why the live [llm] override key is `persona`, not a raw
     `system_instruction` — config_reload §persona-slot.)
     """
-    tpl_path = model_dir(model_name) / "system-prompt-template.md"
+    tpl_path = _lookup(f"config/models/{model_name}/system-prompt-template.md")
     template = _strip_comments(_read_text(tpl_path)).strip()
     if _PERSONA_SLOT not in template:
         raise ConfigError(f"system-prompt-template.md has no {_PERSONA_SLOT} slot: {tpl_path}")

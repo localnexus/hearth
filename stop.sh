@@ -13,7 +13,7 @@
 set -uo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VENV_PY="$DIR/.venv/bin/python"
+VENV_PY="${VENV_PY:-$DIR/.venv/bin/python}"   # same override as start.sh
 # Matches the worker whatever the interpreter is named. The bot runs as
 # ".../python3 bot.py" (uv's child); a bare "python bot.py" pattern only matches
 # the transient uv wrapper and MISSES the worker once uv exits → stop silently

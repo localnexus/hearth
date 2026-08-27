@@ -49,6 +49,7 @@ class DataRoot(unittest.TestCase):
 import hearth.config.config_loader as c, json
 out = {{}}
 out['model'] = str(c.model_dir('example'))
+out['tpl'] = str(c._lookup('config/models/example/system-prompt-template.md'))
 out['char'] = str(c.character_dir('example'))
 out['vad'] = str(c.baseline_path('vad.toml'))
 out['sessions'] = str(c.companion_state_dir('example', 'sessions'))
@@ -60,21 +61,37 @@ print(json.dumps(out))
             self.assertEqual(r.returncode, 0, r.stderr[-1200:])
             out = json.loads(r.stdout.strip().splitlines()[-1])
             root = str(_ROOT)
-            self.assertEqual(out["model"], f"{root}/config/models/example")      # ROOT fallback
+            # the shipped tree carries model.toml.EXAMPLE only, so the model dir is the operator's
+            # (DATA) — while the template beside it still falls back to the shipped file
+            self.assertEqual(out["model"], f"{d}/config/models/example")
+            self.assertEqual(out["tpl"], f"{root}/config/models/example/system-prompt-template.md")
             self.assertEqual(out["char"], f"{root}/characters/example")
             self.assertEqual(out["vad"], f"{root}/config/vad.toml")
             self.assertEqual(out["sessions"], f"{d}/characters/example/sessions")  # state → DATA
             self.assertTrue(out["clip"].startswith(root))
             self.assertEqual(out["voice_ok"], "default")
-            # an operator copy under DATA shadows the shipped one
-            (Path(d) / "characters" / "example").mkdir(parents=True)
+            # REGRESSION (caught live): writing the companion's runtime state creates
+            # DATA/characters/example/ — an EMPTY dir must NOT shadow the shipped definition.
+            (Path(d) / "characters" / "example" / "sessions").mkdir(parents=True)
+            r = _run("import hearth.config.config_loader as c; print(c.character_dir('example')); "
+                     "print(c.load_voice('example','default')['tag']); print(c.compose_persona('example')[:1] != '')",
+                     HEARTH_DATA=d)
+            self.assertEqual(r.returncode, 0, r.stderr[-800:])
+            lines = r.stdout.strip().splitlines()
+            self.assertEqual(lines[-3], f"{root}/characters/example")
+            self.assertEqual(lines[-2], "default")
+            # an operator copy under DATA shadows the shipped one — keyed on the defining FILE
+            (Path(d) / "characters" / "example" / "persona.md").write_text("## IDENTITY\nx\n\n## SOUL\ny\n")
             (Path(d) / "config" / "vad.toml").parent.mkdir(parents=True)
             (Path(d) / "config" / "vad.toml").write_text("[live]\nconfidence = 0.5\n")
-            r = _run("import hearth.config.config_loader as c; print(c.character_dir('example')); print(c.baseline_path('vad.toml'))",
+            r = _run("import hearth.config.config_loader as c; print(c.character_dir('example')); print(c.baseline_path('vad.toml')); "
+                     "print(c.voice_dir('example','default')); print(c.list_voices('example'))",
                      HEARTH_DATA=d)
             lines = r.stdout.strip().splitlines()
-            self.assertEqual(lines[-2], f"{d}/characters/example")
-            self.assertEqual(lines[-1], f"{d}/config/vad.toml")
+            self.assertEqual(lines[-4], f"{d}/characters/example")
+            self.assertEqual(lines[-3], f"{d}/config/vad.toml")
+            self.assertEqual(lines[-2], f"{root}/characters/example/voices/default")  # voice still shipped
+            self.assertEqual(lines[-1], "['default']")
 
     def test_wrong_root_fails_fast(self):
         with tempfile.TemporaryDirectory() as d:
