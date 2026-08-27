@@ -1,0 +1,18 @@
+# config/vad.toml — baseline listening/VAD calibration (the [vad] tier).
+#
+# PLUMBING-CALIBRATION, not character-texture (the knob taxonomy): these
+# values track the mic, the room, and the operator's speech habits — set at initial
+# calibration, refined occasionally, and NEVER carried by character/voice profiles.
+# overrides.toml [vad] applies OVER this at a turn boundary (the panel's LISTENING
+# group writes that layer); config_reload.load_vad_baseline() reads only [live].
+#
+# NO-OP GUARANTEE: every value below EQUALS the analyzer params bot.py shipped with
+# before this tier existed (its former inline VADParams literals), which are also the
+# in-code fallback when this file is absent — file-present and file-absent are
+# behaviorally identical until something here is deliberately changed.
+
+[live]
+confidence = 0.7    # how sure the VAD must be a sound is speech (0-1; higher = stricter)
+start_secs = 0.2    # sustained sound before "you started talking" (raise = clips less noise, more onset)
+stop_secs = 0.5     # silence after speech before "you finished" (raise = the companion waits longer)
+min_volume = 0.6    # loudness floor to count as speech (0-1; higher = must speak up)

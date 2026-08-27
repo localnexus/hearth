@@ -1,0 +1,47 @@
+# config/tts/chatterbox-turbo/tts.toml — baseline synth knobs for the Turbo engine.
+#
+# The persisted BETWEEN-SESSIONS baseline for TTS synthesis. overrides.toml [tts]
+# applies OVER this at a turn boundary. Only the [live] section is ever read/applied
+# (config_reload.load_tts_baseline); [inert] is documentation only and is NEVER passed
+# to generate() — the loader filters to the engine's honored key set.
+#
+# NO-OP GUARANTEE: every [live] value below EQUALS the corresponding default in
+# chatterbox_turbo.generate() (verified against source, line refs inline), so seeding
+# the service from this file produces generate() behavior identical to passing no synth
+# kwargs at all. (Machine-checked by tests/test_config_reload.py::test_baseline_equals_defaults.)
+
+[live]                          # knobs Turbo actually HONORS live
+temperature        = 0.8        # chatterbox_turbo.py:776 default
+top_p              = 0.95       # chatterbox_turbo.py:771 default
+top_k              = 1000       # chatterbox_turbo.py:777 default
+repetition_penalty = 1.2        # chatterbox_turbo.py:769 default
+
+# ── Per-tag knob profiles (the paralinguistic tag envelope) ──
+# Deltas overlaid on [live] for the ONE synthesis chunk whose text
+# carries the tag; baseline resumes next chunk. Deliberately OUTSIDE [live] so
+# the [live]==generate()-defaults no-op guarantee stays machine-checkable.
+# Values are EAR-CALIBRATED on the shipped engine; change only by listening, not by
+# reasoning about the numbers. Ceiling: temperature 1.4 (loader
+# clamps). Tags with NO entry ride [live] untouched — ear-verified for
+# [whispering] (strong as-is) and [dramatic] (baseline IS its peak; 1.0 and 1.2
+# both degraded it). [narration]/[advertisement]: unlocked, unadvertised, no entry.
+[tag_profiles.crying]
+temperature = 1.2               # 1.2–1.4 verified; seeded at the conservative end
+[tag_profiles.happy]
+temperature = 1.2               # verified favorable at 1.2
+[tag_profiles.surprised]
+temperature = 1.2               # verified favorable at 1.2
+[tag_profiles.fear]
+temperature = 1.2               # verified favorable at 1.2
+[tag_profiles.angry]
+temperature = 1.2               # subtle at baseline; 1.2 = the session's depth lever
+[tag_profiles.sarcastic]
+temperature = 1.2               # subtle at baseline; 1.2 = the session's depth lever
+
+[inert]                         # present ONLY to tell the truth about the engine; NEVER passed.
+# Turbo DROPS these with a warning (chatterbox_turbo.py:848-851). They are honored only
+# by PROPER Chatterbox (feeds emotion_adv) — a different engine, not a knob.
+# The loader refuses to pass any of these on Turbo (filtered by _ENGINE_LIVE_KEYS).
+exaggeration = "INERT on Turbo — proper Chatterbox honors it (emotion_adv)"
+cfg_weight   = "INERT on Turbo — proper Chatterbox honors it"
+min_p        = "INERT on Turbo"

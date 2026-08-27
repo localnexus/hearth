@@ -20,6 +20,7 @@ control panel's; one is a secret you only ever manage, never read.
 | **`config/overrides.toml`** | **The control panel** (live knobs) | **Don't hand-edit.** Read it to understand a sticky setting; let the panel manage it |
 | **`config/models/<model>/`** | **You** | Edit `model.toml` load facts + `system-prompt-template.md` |
 | **`config/serve.toml`** | **You** — but it holds a **bearer token path** | Manage the gate; **never print its contents** |
+| **`config/tts/<engine>/tts.toml`**, **`config/vad.toml`** | **Shipped baselines** (calibrated) | Leave alone unless you are re-calibrating by ear/mic; the panel's `overrides.toml` layers over them |
 
 ---
 
@@ -38,6 +39,17 @@ This is where the **control panel** writes the live knobs you turn while a sessi
 > "stuck": a leftover `[voice]` section from a live audition wins over your `active.toml` edit
 > until you clear it and restart. When in doubt, *read* it to see what the panel left behind —
 > don't edit it by hand.
+
+## `config/tts/<engine>/tts.toml` and `config/vad.toml` — the shipped baselines
+
+These two are **calibration, not selection**, and they ship pre-set. `tts.toml [live]` holds
+the synth knobs (temperature, top_p, top_k, repetition_penalty) — every value equals the
+engine's own default, so the file is a documented no-op until you change it — and
+`[tag_profiles.<tag>]` holds the per-tag deltas that deepen a style tag (`[crying]`,
+`[happy]`, …) for the one chunk that carries it. Those deltas are **ear-calibrated**: change
+them by listening, not by arithmetic. `vad.toml [live]` is the listening calibration —
+mic, room, your speech habits — and is the right file to touch if the companion cuts you
+off or waits too long. Both are overlaid by the panel's `overrides.toml` at a turn boundary.
 
 ## `config/models/<model>/` — the model's facts and prompt
 
