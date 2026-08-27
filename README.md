@@ -57,12 +57,17 @@ managed API in the loop would defeat the point.
 > These are the shape of the steps, not a turnkey script — see the guides under `docs/` for
 > the detail, and adjust for your machine.
 
-1. **Install Hearth with the extra for your hardware.**
+1. **Install Hearth from source, with the extra for your hardware.** Hearth is not on
+   PyPI (the `hearth` name there belongs to an unrelated project) — clone the repo and
+   install it editable so the engine finds its `config/` and `characters/` trees:
 
    ```bash
-   # Apple Silicon (gold tier)
-   pip install "hearth[mac]"
+   git clone https://github.com/localnexus/hearth
+   cd hearth
+   uv venv -p 3.12 && uv pip install -e ".[mac]"    # Apple Silicon (gold tier)
    ```
+
+   (`python3.12 -m venv .venv && .venv/bin/pip install -e ".[mac]"` works too, just slower.)
 
 2. **Bring an LLM.** Download GGUF weights for a chat model you like and serve them with
    [`llama-server`](https://github.com/ggml-org/llama.cpp) (from llama.cpp), which exposes an
