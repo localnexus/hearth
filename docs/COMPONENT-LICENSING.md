@@ -2,7 +2,9 @@
 
 Inventory of every integrated component and its license, plus what the licensing picture reveals about why this stack is rare. See the caveat footer (licenses change).
 
-Pipeline: `mic → Silero VAD → MLX-Whisper-turbo → an LLM (LM Studio) → Chatterbox-Turbo (mlx-audio) → speaker`
+Pipeline: `mic → Silero VAD → MLX-Whisper-turbo → an LLM (llama-server) → Chatterbox-Turbo (mlx-audio) → speaker`
+
+The **default** LLM server is `llama-server` from llama.cpp (**MIT**), so the default path is permissively licensed end to end. **LM Studio is a supported alternative**, and it is the one component with a proprietary EULA — Callout 1 covers what that does and doesn't allow.
 
 ---
 
@@ -22,6 +24,7 @@ Pipeline: `mic → Silero VAD → MLX-Whisper-turbo → an LLM (LM Studio) → C
 | **NLTK** | Sentence-boundary detection | [nltk/nltk](https://github.com/nltk/nltk/blob/develop/LICENSE.txt) | **Apache-2.0** | Yes |
 | **onnxruntime** | ONNX runtime for Silero (no PyTorch) | [microsoft/onnxruntime](https://github.com/microsoft/onnxruntime/blob/main/LICENSE) | **MIT** | Yes |
 | **aiohttp** (`>=3.14.1`) | Async HTTP (control server / LLM client) | [aio-libs/aiohttp](https://github.com/aio-libs/aiohttp/blob/master/LICENSE.txt) | **Apache-2.0** | Yes |
+| **llama.cpp `llama-server`** (not bundled — you install it) | **The default LLM server**: serves GGUF weights over an OpenAI-compatible API on `:8080` | [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp/blob/master/LICENSE) | **MIT** | Yes |
 
 ### STT · LLM · TTS · VAD (models & engines)
 
@@ -37,31 +40,35 @@ Pipeline: `mic → Silero VAD → MLX-Whisper-turbo → an LLM (LM Studio) → C
 | **Silero VAD** (via `pipecat-ai[silero]`) | Turn detection + barge-in trigger | [snakers4/silero-vad](https://github.com/snakers4/silero-vad/blob/master/LICENSE) | **MIT** | Yes |
 | **Smart Turn** (optional, semantic end-of-turn) | End-of-turn model (loaded w/ Silero) | [pipecat-ai/smart-turn](https://huggingface.co/pipecat-ai/smart-turn) | **BSD-2-Clause** | Yes |
 
-### The two components that aren't simple permissive licenses
+### The two things that aren't simple permissive licenses
+
+Neither is on the default path: one is an **optional alternative server**, the other is operator-supplied audio.
 
 | Component | Role | Governing framework |
 |---|---|---|
-| **LM Studio** (desktop app) | Serves the LLM over an OpenAI-compat API at `:1234` | **Proprietary EULA, closed-source** — Callout 1 |
+| **LM Studio** (desktop app) — *alternative to `llama-server`* | Serves the LLM over an OpenAI-compat API at `:1234` | **Proprietary EULA, closed-source** — Callout 1 |
 | **The reference WAV** (operator-supplied) | Voice identity for cloning | **Not a software license — likeness / publicity rights** — Callout 2 |
 
 **TTS watermark (a fixed, model-inherent limit):** every Chatterbox clip carries Resemble AI's **Perth (PerTh) neural watermark** — imperceptible, survives re-encoding, built for synthetic-content detection. It's baked into the model regardless of which voice you clone. MIT doesn't *require* preserving it, but stripping it defeats its responsible-use purpose. This is a limit that no configuration choice removes.
 
 ---
 
-## Callout 1 — Closed / EULA-bound: LM Studio (the one non-OSS link — and it's replaceable)
+## Callout 1 — Closed / EULA-bound: LM Studio (only if you choose it)
 
-**LM Studio is proprietary, closed-source**, governed by Element Labs' App Terms (effective July 1 2025). It is the **only** non-open component in the stack.
+**This callout applies only if you run LM Studio.** The default server, `llama-server`, is MIT — pick it and every component in the stack is open-source.
+
+**LM Studio is proprietary, closed-source**, governed by Element Labs' App Terms (effective July 1 2025). If you use it, it is the **only** non-open component in the stack.
 
 - **Commercial use — now free at work** (as of July 2025; prior work-use restriction lifted — [lmstudio.ai/blog/free-for-work](https://lmstudio.ai/blog/free-for-work)). Permitted: personal use, internal business use, local-inference API.
 - **Forbidden:** redistribution to third parties, service-bureau / SaaS reselling of its API, reverse-engineering the binary. (The `lmstudio-ai/lms` CLI is MIT, but the app + inference backend are not.)
 - **Served weights** keep their own upstream licenses (e.g. Qwen Apache-2.0); the EULA governs only the app.
 
-**It's replaceable.** Because it can't be bundled or hosted, it's a dependency to shed if the stack ever ships. Three candidate replacement paths exist (two MIT-licensed; MTPLX open-source, license to verify):
+**It's replaceable — and in fact already replaced.** Because it can't be bundled or hosted, it was the dependency to shed before this stack could ship; `llama-server` is now the documented default and LM Studio is optional. The candidate replacement paths, for the record (two MIT-licensed; MTPLX open-source, license to verify):
 - **`mlx_lm.server`** — MLX-native (keeps the stack MLX end-to-end).
-- **`llama.cpp` `llama-server`** — serves the same GGUF over the same OpenAI-compat API.
+- **`llama.cpp` `llama-server`** — serves the same GGUF over the same OpenAI-compat API. **This is the one that was taken.**
 - **MTPLX** — MLX-native server doing **native MTP speculative decoding**; a **~2.24× decode** speedup on the Qwen3.6 family, OpenAI-compatible, self-described open-source *(license to verify — see caveat footer)*. Distinct from the two above: a **performance upgrade**, not just a licensing shed — but runs **MLX, not GGUF** (weight conversion needed) + needs on-hardware verification.
 
-The migration is modest and localized: re-plumb the token-panel's capacity/identity probe from LM Studio's `/api/v0/models` to the replacement's endpoint (llama.cpp `/props`), and move the model's thinking-off from LM Studio's **GUI prompt-template edit** to a server flag / request param (`enable_thinking=false`) — an *upgrade* (reproducible, no manual GUI step). Trade-off: you lose the GUI model-manager's warm multi-model A/B convenience. **Replacing LM Studio makes the entire stack open-source and redistributable.**
+The migration was modest and localized, and is done: the token-panel's capacity/identity probe is provider-dispatched (LM Studio's `/api/v0/models` ↔ llama.cpp's `/props`), and the model's thinking-off moves from LM Studio's **GUI prompt-template edit** to a request param Hearth already sends (`reasoning_effort`) or a server start-up flag — an *upgrade* (reproducible, no manual GUI step). Trade-off for choosing `llama-server`: you lose the GUI model-manager's warm multi-model A/B convenience. **Running `llama-server` makes the entire stack open-source and redistributable.**
 
 ### Addendum — the runtime backends, opened up
 
@@ -98,15 +105,14 @@ never touches them.
    pin — but this lane is fragile (the vendor CDN could drop old builds any day) and inherits the
    packs-are-latest-only trap for the MLX lane. Acceptable as an interim stopgap only.
 3. **Ship an open-source replacement engine** (llama-server and/or mlx_lm.server / mlx-engine) — the clean,
-   durable path; makes the published stack 100 % redistributable OSS. This is the publishing
-   posture to build toward.
+   durable path; makes the published stack 100 % redistributable OSS. **This is the posture taken:**
+   `llama-server` is the documented default, and no inference server is bundled at all.
 4. **Ask Element Labs for permission** — only needed to ship their
    packs verbatim. Path 3 makes this unnecessary.
 
-Net for publishing: **publish the code freely (its license is yours to
-choose); document BYO-LM-Studio as the interim run path; treat an open-source engine replacement as the
-publishing-grade serving story.** A published build need not ship the exact
-pinned validated stack, so pin-fragility does not gate publishing.
+Net for publishing: **publish the code freely; document `llama-server` (MIT, BYO — nothing bundled) as the
+run path, with BYO-LM-Studio as a labelled alternative for operators who prefer its workbench.** A published
+build need not ship the exact pinned validated stack, so pin-fragility does not gate publishing.
 
 ---
 
@@ -131,7 +137,7 @@ Chatterbox clones a voice acoustically from whatever reference WAV **the operato
 
 **The friction is exactly where the theory predicts — but it's thinner than it once was:**
 
-1. **LM Studio** *was* a real commercial blocker until **July 2025**, when work-use was unlocked. What remains is only the redistribution/SaaS ban — so it deters *shipping a bundled/hosted product*, not building or internal use. And it's replaceable (Callout 1), so even that deterrent is optional.
+1. **LM Studio** *was* a real commercial blocker until **July 2025**, when work-use was unlocked. What remains is only the redistribution/SaaS ban — so it deters *shipping a bundled/hosted product*, not building or internal use. And it was replaceable (Callout 1): with `llama-server` as the default, that deterrent is off the default path entirely.
 2. **Voice-likeness rights** are the deeper barrier to shipping *any arbitrary-voice product* — which is why commercial offerings (Cartesia, ElevenLabs, Resemble's own service) use preset or consent-licensed voices rather than arbitrary reference clips. This is a market-wide constraint, independent of our stack.
 
 **Net:** licensing isn't what makes the stack *rare* — it's what makes it *possible*. With LM Studio's 2025 unlock (and its replaceability), the durable reasons few ship this are (a) **Apple-Silicon hardware exclusivity** (see [HARDWARE-REQUIREMENTS.md](HARDWARE-REQUIREMENTS.md)), (b) **voice-likeness rights** for arbitrary-voice products, and (c) the **four-axis assembly difficulty** (genuinely rare on the full four-axis combination). The permissive licensing is the reason it *can* be built, not the reason it isn't.
@@ -140,7 +146,7 @@ Chatterbox clones a voice acoustically from whatever reference WAV **the operato
 
 ## Caveat footer
 
-- **Licenses change.** Every entry is cited to its upstream source. Re-verify before any deployment — especially **LM Studio** (its EULA has changed at least once — Callout 1 addendum) and **Qwen** (Alibaba uses custom licenses for some tiers).
+- **Licenses change.** Every entry is cited to its upstream source. Re-verify before any deployment — especially **LM Studio**, if you use it (its EULA has changed at least once — Callout 1 addendum), and **Qwen** (Alibaba uses custom licenses for some tiers).
 - **Code license ≠ model-weight terms** for the TTS/LLM layers; both are listed where they differ.
 - **Descriptive, not legal advice.** This summarises what licenses say; it is not a legal opinion. The voice-likeness question in particular is the operator's, and needs qualified counsel — outside the scope of a licensing inventory.
 - **Unverified:** Silero VAD's HF card returned 401 — GitHub `LICENSE` (MIT) used instead, corroborated by PyPI. Smart Turn's active use is optional; its BSD-2-Clause license is verified regardless.

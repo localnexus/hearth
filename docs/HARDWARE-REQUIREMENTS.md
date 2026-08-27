@@ -20,13 +20,13 @@ This is where the stack was built and where every latency and memory number belo
 
 - **STT** — MLX-Whisper (`whisper-large-v3-turbo`), Metal-only.
 - **TTS** — Chatterbox-Turbo via `mlx-audio`, Metal-only; JIT-compiles its Metal kernels on first synth (~15.8 s, one-time per machine, cached on disk afterward).
-- **LLM** — served locally by **LM Studio** or **llama-server**; the MLX inference backend is Apple-Silicon-only.
+- **LLM** — served locally by **`llama-server`** (the default; llama.cpp, GGUF weights, Metal-accelerated on Apple Silicon). **LM Studio** works as an alternative front-end for the same job; its MLX inference backend is Apple-Silicon-only.
 
 Silero VAD runs on `onnxruntime`; pipecat and the Python glue are platform-agnostic. But because the three heavy layers are Metal/MLX-bound, an Intel Mac cannot run this path.
 
 **OS / runtime:**
 
-- **macOS** on Apple Silicon (M-series). Recent macOS; verify against current LM Studio and `mlx-audio` release notes before running on an older OS.
+- **macOS** on Apple Silicon (M-series). Recent macOS; verify against your LLM server's and `mlx-audio`'s release notes before running on an older OS.
 - **Python ≥ 3.11** (3.12 recommended, managed by `uv`). The macOS system Python is too old.
 
 ### Memory — the sizing that matters
@@ -41,7 +41,7 @@ Everything shares one unified-memory pool: resident model weights plus the LLM's
 | Silero VAD | < 0.1 GB |
 | **Weight floor** | **~42 GB** |
 
-Add the LLM's KV cache (1–5 GB in a typical session; the loaded context window is large — 262,144 tokens — but real sessions occupy a small fraction of it) plus macOS, the LM Studio process, and the Python runtime (~8–12 GB). That gives a **comfortable operating floor of roughly 55–60 GB in use**.
+Add the LLM's KV cache (1–5 GB in a typical session; the loaded context window is large — 262,144 tokens — but real sessions occupy a small fraction of it) plus macOS, the LLM server process, and the Python runtime (~8–12 GB). That gives a **comfortable operating floor of roughly 55–60 GB in use**.
 
 | Unified memory | Verdict |
 |---|---|

@@ -16,7 +16,7 @@ overview → `docs/runbook/README.md`. Those are the single sources of truth —
 | Speaks nothing; log hangs after `Generating chat` | `docs/runbook/05-fast-recovery.md` (LLM emitting chain-of-thought — thinking must be off) |
 | No audio / `Errno -9996` / wrong input device | `docs/runbook/05-fast-recovery.md` (invalid default device; relaunch) |
 | STT never transcribes but the OS mic meter moves | `docs/runbook/05-fast-recovery.md` (iTerm mic permission / TCC) |
-| `model_not_found` / `401` to `:1234` | `docs/runbook/05-fast-recovery.md` (wrong id / bad LM Studio token) |
+| `model_not_found` / `401` from the LLM server | `docs/runbook/05-fast-recovery.md` (wrong model id, or a missing/bad `LM_API_TOKEN` — `llama-server` only wants one if started with `--api-key`; LM Studio always does) |
 | Set a voice in `active.toml` but a **different** voice plays | `docs/runbook/05-fast-recovery.md` (sticky `[voice]` in the panel's `overrides.toml`) → also [The config layers](the-config-layers.md) |
 | Cut off mid-word / garbled render / cue tag spoken aloud | `docs/debugging/tts-audio-cases.md` |
 | Resume "not found" / persona-model mismatch after resume | `docs/debugging/session-continuity-faults.md` |

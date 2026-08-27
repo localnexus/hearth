@@ -20,7 +20,7 @@ Each entry is a one-liner: **term** — expansion (for acronyms) — what it mea
 - **A–M** — A2DP · active.toml · airgap · barge-in · Chatterbox-Turbo · character · cold vs warm ·
   conditionals · config_loader · config_reload · context-budget gauge / zones · CoT · ephemeral session ·
   fp16 · FREE tier · held session · held-in-ctx · HFP · HIDEABLE tier · hold-request marker ·
-  in-process · KV cache · live-config · LLM · LM Studio · logs/ · loopback-only ·
+  in-process · KV cache · live-config · llama-server · LLM · LM Studio · logs/ · loopback-only ·
   mlx-audio · mlx_lm.server · MLX-Whisper · MoE · MTP
 - **N–Z** — `--new` guard · NLTK · orphan(ed) session · overrides.toml · paralinguistic / voiced-breath
   cues · paralinguistic tag repair / normalization · paralinguistic strip log · persona · phantom-phrase ·

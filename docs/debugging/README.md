@@ -7,7 +7,7 @@
 ## The general Plays
 
 - **Play 1 `sample <pid>`** — is the event loop blocked in a sync MLX call? (The TTS engine is MLX too — see the stream case study below.)
-- **Play 2 `lsof`** — did it reach `:1234`? spot unexpected outbound (HF fetches on startup are expected).
+- **Play 2 `lsof`** — did it reach the LLM server (`:8080` for `llama-server`, `:1234` if you use LM Studio)? spot unexpected outbound (HF fetches on startup are expected).
 - **Play 3 raw mic probe** — real signal vs TCC silence.
 - **Play 4 curl-then-SDK** — LLM layer isolation (reasoning-model empty `content`, bad id).
 - **Play 5 read the base class** — `SegmentedSTTService`/`TTSService` behavior is ground truth.

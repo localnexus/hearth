@@ -46,10 +46,12 @@ and when you audition a voice, a `[voice] ref_wav`). The rule:
 
 Two files per model dir, both **yours** to edit:
 
-- **`model.toml`** — the model's **load facts**: `id` (the LM Studio id, verbatim), `temperature`,
-  `reasoning_effort`, and **`reliable_context`** — the measured usable-context line the panel's token gauge
-  counts against (`128000` today; if absent, the panel falls back to the advertised window). Note
-  `context_length` is deliberately *not* here — the live LM Studio value wins.
+- **`model.toml`** — the model's **load facts**: `id`, `temperature`, `reasoning_effort`, and
+  **`reliable_context`** — the measured usable-context line the panel's token gauge counts against
+  (`128000` today; if absent, the panel falls back to the window the server reports). What `id` has to be
+  depends on the server: `llama-server` (the default) serves its one loaded model whatever you put there,
+  while LM Studio needs its own id **verbatim**. Note `context_length` is deliberately *not* here — the
+  **live server value wins**.
 - **`system-prompt-template.md`** — the **model layer** of the prompt: the envelope, the output-shaping hard
   rules, and the `{{persona}}` slot the character fills. Keep the "short, spoken, no markdown" rules or
   replies read badly aloud.

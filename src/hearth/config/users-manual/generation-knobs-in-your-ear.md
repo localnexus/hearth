@@ -11,8 +11,9 @@ A common trap is reaching for a dial to fix something the prompt owns. Length an
 prompt's job; the dials can't buy them. Keep that split in mind and the rest is easy.
 
 > **What you can touch today:** `temperature` is owned by Hearth now (live via `config/overrides.toml`). The
-> word-net knobs (`top_p/top_k/min_p`, `repeat_penalty`) and `max_tokens` are currently governed by LM Studio's
-> defaults — settable in its GUI today, and **proposed** to become owned, per-character Hearth settings.
+> word-net knobs (`top_p/top_k/min_p`, `repeat_penalty`) and `max_tokens` are currently left to **your LLM
+> server's** defaults — set them where that server takes them (`llama-server` command-line flags; LM Studio's
+> GUI, if that's what you run) — and are **proposed** to become owned, per-character Hearth settings.
 > The length rule is prompt-side and live now.
 
 ---
@@ -32,7 +33,7 @@ words that don't quite fit.
 **Net:** the spontaneity-vs-reliability dial. 0.7 is a sane middle; nudging toward ~0.9 is the first thing to
 try when the companion feels lifeless.
 
-## top_p / top_k / min_p — the word-net  · *proposed to own; LM Studio default today*
+## top_p / top_k / min_p — the word-net  · *proposed to own; your server's default today*
 
 **What they are:** three ways of drawing the pool of words the companion is *allowed* to consider before temperature
 rolls the dice among them. Tighter net = only the common, likely words. Looser net = rare and colorful words
@@ -50,7 +51,7 @@ feels plain even after you've raised temperature.
 **Net:** the safety rails on spontaneity. If temperature is the dice, this is how many faces they have. Reach
 for **min_p** first.
 
-## repeat_penalty — the "circle back or loop?" dial  · *proposed to own; LM Studio default today*
+## repeat_penalty — the "circle back or loop?" dial  · *proposed to own; your server's default today*
 
 **What it is:** how strongly the companion avoids reusing words and phrases they just said.
 

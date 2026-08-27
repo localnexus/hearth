@@ -24,14 +24,15 @@ Numeric / ID schemes: [`0-9.md`](0-9.md).
 - **HIDEABLE tier** (live-config) — the one live-config param that costs a short re-prepare: voice `ref_wav`. `tts.set_ref_wav(path)` re-runs `prepare_conditionals` on the single-worker executor (~0.2 s); applied and **awaited before** the turn's first `run_tts`. (The EXPENSIVE tier — model / character swap — still needs a restart via `active.toml`.)
 - **hold-request marker** — the file `sessions/.hold-request` written by `./stop.sh --hold` before signaling the bot. The bot's `finally` block reads and consumes the marker to promote the session to held. A marker is used (instead of writing directly into the live JSON) because the bot rewrites the session file every turn; the marker is the race-free channel for stop-time intent.
 - **in-process** — TTS/STT run *inside* the `bot.py` process (no external app or port).
-- **KV (cache)** — Key-Value cache. The attention cache; "KV-cached tokens" aren't emitted by this backend (panel field dropped). Cross-turn prompt-prefix KV reuse works on full-attention models, not on some large hybrid-attention models (which keep no reusable per-token KV).
+- **KV (cache)** — Key-Value cache. The attention cache; "KV-cached tokens" aren't emitted by these backends (panel field dropped). Cross-turn prompt-prefix KV reuse works on full-attention models, not on some large hybrid-attention models (which keep no reusable per-token KV).
 - **live-config** — the **turn-boundary live-reload** mechanism: `config/overrides.toml` is re-read at each turn boundary and applied **without a restart**, in two tiers — **FREE** (cheap, next-turn) and **HIDEABLE** (voice `ref_wav` swap, ~0.2 s). The EXPENSIVE tier (model / character swap) still needs a restart via `active.toml`. Code: `config_reload.py`.
-- **LLM** — Large Language Model. The text brain (served by LM Studio).
-- **LM Studio** — desktop app serving local MLX LLMs over an OpenAI-compatible API (`:1234`).
+- **LLM** — Large Language Model. The text brain, served locally over an OpenAI-compatible API (`llama-server` by default).
+- **llama-server** — llama.cpp's OpenAI-compatible HTTP server (`:8080` by default); **Hearth's default LLM backend**. Serves one GGUF model per process — it answers with that model whatever the request's `model` field says. Keyless unless started with `--api-key`; the control panel reads its native `/props`.
+- **LM Studio** — desktop app serving local MLX/GGUF LLMs over an OpenAI-compatible API (`:1234`); the **supported alternative** to `llama-server`, selected with `LM_BASE_URL` + `LM_API_TOKEN` + `LM_PROVIDER=lmstudio`. Unlike `llama-server` it can serve several models at once, so the model id must match verbatim.
 - **`logs/`** — the tree's **runtime-data** dir, alongside `sessions/`. Root-relative, never absolute — that's the rule that keeps the tree portable. Holds the *paralinguistic strip log* today; **gitignored** and local-only, because runtime logs carry verbatim model output. Never un-ignore it.
 - **loopback-only** — bound to `127.0.0.1` (this machine only); opt into LAN with `WEB_HOST=0.0.0.0`.
 - **mlx-audio** — the Python library hosting Chatterbox-Turbo (in-process TTS).
-- **mlx_lm.server** — the headless `mlx-lm` OpenAI-compatible server; an alternative to LM Studio for serving on `:1234`.
+- **mlx_lm.server** — the headless `mlx-lm` OpenAI-compatible server; another alternative LLM backend (point `LM_BASE_URL` at it).
 - **MLX-Whisper** — the STT engine (Whisper on Apple's MLX).
 - **MoE** — Mixture of Experts. Only a subset of params active per pass (e.g. **3B active of 35B** on the default) → depth at low latency.
 - **MTP** — Multi-Token Prediction. A speculative-decode feature; preserved in some MLX model builds, dropped in others at conversion.

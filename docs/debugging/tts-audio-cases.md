@@ -46,13 +46,19 @@
 
 ## Case study 7 — bot goes silent after you speak: hybrid LLM is thinking
 
-> **Applicability:** a **hybrid-thinking** default LLM needs thinking forced off — via the persistent LM Studio Prompt-Template edit `{%- set enable_thinking = false %}` for uncensored re-quants that ignore `reasoning_effort`. This case is exactly what happens if that edit is lost. A natively non-thinking model is immune; this applies to any hybrid/reasoning-first model you load.
+> **Applicability:** a **hybrid-thinking** LLM needs thinking forced off. This case is exactly what happens when whatever forces it off stops applying — a chat template that ignores `reasoning_effort`, or (on LM Studio) a lost Prompt-Template edit. A natively non-thinking model is immune; this applies to any hybrid/reasoning-first model you load.
 
 **Symptom:** STT + LLM fire (logs show the turn), but the bot says nothing — `content` stays empty.
 
 **Cause:** the LLM is emitting **chain-of-thought** — it streams `reasoning_content` / a `<think>` block and leaves spoken `content` empty until it finishes. A **hybrid** model defaults to thinking **ON**; a reasoning-first model always does. Either starves the TTS.
 
-**Fix:** force thinking off. On this LM Studio build the **only** request-body field that reaches the jinja `enable_thinking` var is **`extra={"reasoning_effort":"none"}`** (in `bot.py`'s LLM `Settings`) — `chat_template_kwargs` / top-level `enable_thinking` / `reasoning:{enabled:false}` are all **silently ignored**. Verify with a streaming curl that `content` is non-empty and no `<think>` appears. **⚠️ Third-party uncensored re-quants ignore `reasoning_effort` too** — they need an LM Studio **Prompt-Template** edit (`{%- set enable_thinking = false %}` as the template's first line).
+**Fix:** force thinking off. Hearth already sends **`extra={"reasoning_effort": ...}`** (from the active `model.toml`, into `bot.py`'s LLM `Settings`) on every request, so start there: set `reasoning_effort = "none"`.
+
+On **`llama-server`** (the default) that request field is the documented lever — upstream states *"`reasoning_effort`: If `none`, reasoning/thinking is disabled."* If your model's template ignores it, restart the server with a thinking-off switch instead: `-rea, --reasoning off`, `--reasoning-budget 0`, or `--chat-template-kwargs '{"enable_thinking": false}'` (a stubborn template can be replaced with `--chat-template-file`). Confirm the switch names against your build's `llama-server --help` — see [config-manual/llm.md](../config-manual/llm.md).
+
+> **If you use LM Studio instead:** on the builds this was validated against, `reasoning_effort` in the request body is the **only** field that reaches the jinja `enable_thinking` var — `chat_template_kwargs` / top-level `enable_thinking` / `reasoning:{enabled:false}` are all **silently ignored**. **⚠️ Third-party uncensored re-quants ignore `reasoning_effort` too**; those need LM Studio's persistent **Prompt-Template** edit (`{%- set enable_thinking = false %}` as the template's first line) — the LM-Studio-specific requirement `model.toml`'s `needs_template_edit` records.
+
+Verify either way with a streaming curl that `content` is non-empty and no `<think>` appears.
 
 ## Case study 8 — bot starts, pipeline "ready", but audio dies (`Errno -9996`)
 
