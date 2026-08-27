@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local runtime state — never committed
+sessions/
+captures/
+transcripts/
+
+# Local config — copied from the .example templates, holds your selections/secrets
+config/active.toml
+config/overrides.toml
+config/serve.toml
+config/serve-token
+config/profiles/
+
+# Voice reference clips are the operator's to supply and are NOT committed,
+# with one exception: the rights-clean default voice that ships with the repo.
+characters/**/*.wav
+!characters/example/voices/default/sample.wav
+
+# OS / editor cruft
+.DS_Store
+*.swp
+
+# Compiled CoreAudio routing helper — built lazily on first use, machine-local
+src/hearth/recording/helpers/hearth-audio-route

@@ -1,0 +1,31 @@
+# config/models/example/model.toml — load facts for one model.
+#
+# Selected via config/active.toml (model = "example") and read at startup. Copy this to
+# config/models/<your-model>/model.toml and adjust for the model you serve. Each model
+# directory holds this file plus a system-prompt-template.md (the model layer of the
+# prompt).
+
+# The exact model id your inference server advertises, VERBATIM. This must match the id
+# returned by your server's /v1/models listing. With llama-server this is the id it
+# reports for the GGUF you loaded.
+id = "your-model-id-here"
+
+# Request-side sampling temperature.
+temperature = 0.7
+
+# Request-side reasoning control. REQUIRED key. For a model with no reasoning mode,
+# "none" is a harmless no-op that also states intent.
+reasoning_effort = "none"
+
+# Optional: set true only if your model needs a persistent chat-template edit to behave
+# (e.g. to disable a built-in thinking mode). Defaults to false.
+needs_template_edit = false
+
+# Optional: set true if prefix KV-cache reuse is unsafe for this model. Defaults to
+# false (reuse enabled).
+no_kv_reuse = false
+
+# Optional: the reliable usable-context ceiling the control panel's token gauge counts
+# against. If absent, the panel falls back to the model's advertised window. Note the
+# actual context length is NOT set here — the live value from your server wins.
+reliable_context = 8192

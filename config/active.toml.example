@@ -1,0 +1,22 @@
+# config/active.toml — the selection pointer (copy to config/active.toml and edit).
+#
+# This is your one deliberate lever for WHO is live: which character, which model, and
+# which of that character's voices. It is read ONCE at startup — nothing hot-swaps — so
+# after editing, restart the pipeline.
+#
+#   character → a directory under characters/
+#   model     → a directory under config/models/
+#   voice     → a directory under characters/<character>/voices/
+#
+# Copy this file to config/active.toml (which is gitignored — it holds YOUR selections)
+# and adjust the three values.
+
+# Which character is live (dir name under characters/).
+character = "example"
+
+# Which model config to use (dir name under config/models/). The model dir holds the
+# model's load facts and its prompt template — see config/models/example/.
+model = "example"
+
+# Which voice of the character is live (dir name under characters/<character>/voices/).
+voice = "default"

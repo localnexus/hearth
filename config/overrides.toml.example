@@ -1,0 +1,24 @@
+# config/overrides.toml — the live-knob layer (managed by the control panel).
+#
+# You normally do NOT hand-edit this file. The web control panel writes it when you turn
+# live knobs (like temperature, or a voice you're auditioning). Its values override
+# config/active.toml every turn while they are set.
+#
+# It's shown here as an example so you know the shape and can read it to understand a
+# "sticky" setting — e.g. a leftover [voice] section from a live audition will keep
+# winning over your active.toml until it's cleared. When in doubt, clear it via the panel
+# rather than editing by hand.
+#
+# Copy to config/overrides.toml (gitignored) only if you want to pre-seed overrides.
+# Empty sections mean "no override" — the active.toml selection stands.
+
+# Per-character reasoning/sampling overrides (how the character thinks).
+[llm]
+# temperature = 0.7
+
+# Per-voice synthesis overrides (how the character sounds).
+[voice]
+# ref_wav = ""
+
+[tts]
+# (prosody knobs live here when set by the panel)

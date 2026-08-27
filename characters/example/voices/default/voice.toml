@@ -1,0 +1,33 @@
+# characters/example/voices/default/voice.toml — voice descriptor.
+#
+# A voice is a self-contained bundle: this descriptor plus its reference clip
+# (sample.wav) live together in one directory, so the voice travels with the tree.
+# The config loader reads this at startup and REQUIRES two keys: `tag` and `ref_wav`.
+# Everything else is optional metadata.
+#
+# CLONING NOTE — the TTS engine conditions on only the first ~10–15 s of the clip;
+# audio past that is ignored, and loudness normalization runs over the whole clip, so
+# trim your reference to its best clean 10–15 s. See docs/bring-your-own-voice.md.
+
+# Human-readable voice tag. Recorded alongside a session so a resumed conversation can
+# warn you if the live voice changed. By convention it matches this directory's name.
+tag = "default"
+
+# The clone reference clip, RELATIVE to this directory (an absolute path is also
+# accepted). The resolved file must exist — it is read at startup, so a missing clip
+# fails fast with a clear error.
+ref_wav = "sample.wav"
+
+# ── Provenance / license ──
+# The shipped default is a public-domain clip cut from the LJ Speech dataset. See
+# VOICE-SOURCE.md in this directory. If you replace it, use only audio you have the
+# rights to (see docs/bring-your-own-voice.md).
+license = "public-domain"
+source  = "LJ Speech dataset (public domain) — see VOICE-SOURCE.md"
+
+# ── Engine facts (optional; shown for descriptor completeness) ──
+# These document the clip's format and the synth model it's prepared for. They match the
+# pipeline's defaults, so the runtime behaves identically whether or not they are set.
+model_repo         = "mlx-community/chatterbox-turbo-fp16"
+sample_rate        = 24000
+streaming_interval = 2.0

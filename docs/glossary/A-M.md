@@ -1,0 +1,37 @@
+# GLOSSARY A–M — terms, acronyms & shorthand
+
+Alphabetical, A through M. Index + how-it's-organized: [`README.md`](README.md). N–Z: [`N-Z.md`](N-Z.md).
+Numeric / ID schemes: [`0-9.md`](0-9.md).
+
+- **A2DP** — Adv. Audio Distribution Profile. Bluetooth stereo-**out**, no mic; output-only earbuds → "no default input device" (`Errno -9996`).
+- **active.toml** (`config/active.toml`) — the **pre-runtime selection pointer**: names the live `character`, `model`, and `voice`. Edit + **restart** to change any of the three; nothing is hot-swapped at this layer (contrast **live-config**). Read once at startup by `config_loader`.
+- **airgap / airgapped** — running with zero outbound network (`HF_HUB_OFFLINE=1` after weights are cached).
+- **barge-in** — talking over the bot cuts its reply off mid-stream (a VAD interrupt cancels the in-flight LLM + TTS).
+- **Chatterbox-Turbo** — the TTS engine (zero-shot voice clone); runs in-process via `mlx-audio`; streaming, 24 kHz.
+- **character** — one folder under `characters/<name>/` bundling a **model-agnostic persona** (`persona.md`) plus its **voice** bundles (`voices/<voice>/`). The active one is named by `active.toml`; swapping character = new persona, same model framing. See [authoring-a-character.md](../authoring-a-character.md).
+- **cold vs warm** — *cold* = first run after boot (one-time MLX Metal-kernel JIT, ~15.8 s); *warm* = steady-state (the number that counts). **Always measure warm.**
+- **conditionals** (voice) — the precomputed voice-conditioning tensors Chatterbox derives from the reference WAV at startup (`prepare_conditionals`); "voice conditionals" in the log — **not** if/else code.
+- **config_loader** (`config_loader.py`) — the startup loader that resolves `active.toml` → `model.toml` + `persona.md` + the voice descriptor, and composes the system prompt. **Fail-fast:** a missing/malformed file raises `ConfigError` naming the exact file. Externalizes the model, voice, and system-prompt selection from code into config files.
+- **config_reload** (`config_reload.py`) — the **turn-boundary reloader** implementing **live-config**: re-reads `config/overrides.toml` at each turn boundary and dispatches the FREE / HIDEABLE updates. Distinct from `config_loader` (which resolves the pre-runtime selection once at startup).
+- **context-budget gauge / zones (ok · warn · over)** — the control panel's `Tokens`-line gauge that measures held-tokens against the **reliable-usable line** (`reliable_context`), not the advertised window. Zones: **ok** `<75%` (blue) · **warn** `75–100%` (amber + banner) · **over** `≥100%` (red/bold + banner); the `⚠ approaching reliable context line` banner (`#ctxwarn`) shows in warn/over. Falls back to the advertised window when `reliable_context` is unset.
+- **CoT** — Chain-of-Thought. Model "thinking" tokens; must be **off** (empty spoken `content` stalls TTS).
+- **ephemeral session** — a session file that `./stop.sh` (default) truly deletes on graceful stop. Exists only while the bot is running or as an orphan after an unclean exit. Contrast *held session*.
+- **fp16** — 16-bit floating point. The TTS weight precision we run (best quality; RAM is a non-constraint).
+- **FREE tier** (live-config) — the cheap live-config params applied on the **next** turn at ~zero cost: LLM `temperature` / `reasoning_effort` / `system_instruction` (pushed as an `LLMUpdateSettingsFrame` before the context frame) and TTS synth knobs `temperature` / `top_p` / `top_k` / `repetition_penalty` (`tts.set_synth_params()` dict swap). No restart, no await.
+- **held session** — a session promoted to the held class via `./stop.sh --hold [name]`; sticky (survives resumes until explicitly removed with `./stop.sh --discard-held`), purge-exempt, optionally named for targeted resume. The deliberate keep.
+- **held-in-ctx** — the transcript the model holds *this turn* (current context-window occupancy); the panel labels it **`held`**.
+- **HFP** — Hands-Free Profile. Bluetooth low-fi (~16 kHz mono) two-way; the only BT mode with a **mic**.
+- **HIDEABLE tier** (live-config) — the one live-config param that costs a short re-prepare: voice `ref_wav`. `tts.set_ref_wav(path)` re-runs `prepare_conditionals` on the single-worker executor (~0.2 s); applied and **awaited before** the turn's first `run_tts`. (The EXPENSIVE tier — model / character swap — still needs a restart via `active.toml`.)
+- **hold-request marker** — the file `sessions/.hold-request` written by `./stop.sh --hold` before signaling the bot. The bot's `finally` block reads and consumes the marker to promote the session to held. A marker is used (instead of writing directly into the live JSON) because the bot rewrites the session file every turn; the marker is the race-free channel for stop-time intent.
+- **in-process** — TTS/STT run *inside* the `bot.py` process (no external app or port).
+- **KV (cache)** — Key-Value cache. The attention cache; "KV-cached tokens" aren't emitted by this backend (panel field dropped). Cross-turn prompt-prefix KV reuse works on full-attention models, not on some large hybrid-attention models (which keep no reusable per-token KV).
+- **live-config** — the **turn-boundary live-reload** mechanism: `config/overrides.toml` is re-read at each turn boundary and applied **without a restart**, in two tiers — **FREE** (cheap, next-turn) and **HIDEABLE** (voice `ref_wav` swap, ~0.2 s). The EXPENSIVE tier (model / character swap) still needs a restart via `active.toml`. Code: `config_reload.py`.
+- **LLM** — Large Language Model. The text brain (served by LM Studio).
+- **LM Studio** — desktop app serving local MLX LLMs over an OpenAI-compatible API (`:1234`).
+- **`logs/`** — the tree's **runtime-data** dir, alongside `sessions/`. Root-relative, never absolute — that's the rule that keeps the tree portable. Holds the *paralinguistic strip log* today; **gitignored** and local-only, because runtime logs carry verbatim model output. Never un-ignore it.
+- **loopback-only** — bound to `127.0.0.1` (this machine only); opt into LAN with `WEB_HOST=0.0.0.0`.
+- **mlx-audio** — the Python library hosting Chatterbox-Turbo (in-process TTS).
+- **mlx_lm.server** — the headless `mlx-lm` OpenAI-compatible server; an alternative to LM Studio for serving on `:1234`.
+- **MLX-Whisper** — the STT engine (Whisper on Apple's MLX).
+- **MoE** — Mixture of Experts. Only a subset of params active per pass (e.g. **3B active of 35B** on the default) → depth at low latency.
+- **MTP** — Multi-Token Prediction. A speculative-decode feature; preserved in some MLX model builds, dropped in others at conversion.

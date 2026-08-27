@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Hearth control</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#111111">
+<link rel="icon" type="image/png" href="data:image/png;base64,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">
+<style>
+  /* Hearth theme: surfaces stay the neutral charcoal the logo
+     itself sits on; the warmth rides the brand accents — ember sampled from the
+     ring/flame (#e0a040/#e08020), wordmark gold from the inner flame (#f0c050).
+     Amber #e8b04b keeps its pre-existing meaning (changed-from-default / near-a-line);
+     knob-extreme warnings moved to hot orange so the three signals stay distinct:
+     gold = changed · hot orange = extreme · red = error. */
+  :root{--ember:#e0913f;--ember-hi:#f0c05e;--glow:rgba(224,145,63,.30)}
+  body{font-family:monospace;max-width:960px;margin:40px auto;padding:0 16px;background:#111;color:#ddd}
+  #brand{display:flex;align-items:center;gap:14px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #2a2a2a}
+  #brand h2{margin:0;color:var(--ember-hi);letter-spacing:3px;text-shadow:0 0 16px var(--glow)}
+  #brandsub{font-size:0.72em;color:#8a7a62;letter-spacing:2px;margin-top:3px}
+  .brandmark{display:inline-block;flex:none;background:url(data:image/png;base64,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) no-repeat center/contain}
+  #brand .brandmark{width:26px;height:43px}
+  #rail .brandmark{width:17px;height:28px;margin:0 auto 10px}
+  input[type=text],textarea{width:100%;box-sizing:border-box;padding:8px;background:#222;color:#eee;border:1px solid #444;font-family:inherit;font-size:1em}
+  textarea{resize:vertical;min-height:4.5em;line-height:1.4}
+  button{padding:8px 16px;margin:6px 4px 0 0;font-family:inherit;font-size:1em;cursor:pointer;background:#333;color:#eee;border:1px solid #555}
+  button:hover{background:#444}
+  button.active{background:#600;border-color:#f44}
+  #rec.rec{background:#a00;border-color:#f55;color:#fff}
+  #recrow{margin-top:18px;padding-top:10px;border-top:1px solid #333}
+  #recrow label{margin-right:14px;color:#aaa;white-space:nowrap}
+  #recrow label.off{color:#555}
+  #recrow input[type=text]{width:15em;display:inline-block;margin:0 8px 0 0;padding:6px}
+  #recstate{margin-left:10px;font-weight:bold;color:#f66;letter-spacing:1px}
+  #recout{margin-top:4px;font-size:0.75em;color:#8a6}
+  #micstate{margin-top:16px;font-weight:bold;letter-spacing:1px}
+  #micstate.live{color:#4c8}
+  #micstate.muted{color:#f66}
+  #micstate.ptt{color:#4ae}
+  #hint{margin-top:4px;font-size:0.75em;color:#666}
+  #status{margin-top:8px;font-size:0.85em;color:#888;min-height:1.2em}
+  #statusblock{margin-top:12px;font-size:0.9em;color:var(--ember);line-height:1.5}
+  #statusblock div{white-space:pre-wrap}
+  #leak{margin-top:4px;font-weight:bold;color:#f66}
+  #s-tokens.zone-warn{color:#e8b04b}
+  #s-tokens.zone-over{color:#e5534b;font-weight:bold}
+  #ctxwarn{margin-top:4px;font-weight:bold;color:#e8b04b}
+  /* L2 hot knobs — segmented per-character / per-voice panels (features/config_profiles) */
+  #knobs{margin-top:18px;padding-top:10px;border-top:1px solid #333}
+  .kpanel{border:1px solid #444;padding:8px 12px 10px;margin:8px 0;background:#181818}
+  .khead{font-weight:bold;color:var(--ember);letter-spacing:1px;margin-bottom:6px}
+  .khead .dim{color:#666;font-weight:normal;letter-spacing:0}
+  .krow{display:flex;align-items:center;gap:10px;margin:5px 0}
+  .krow .kname{width:9em;color:#9a9;flex:none}
+  .krow input[type=range]{flex:1;min-width:6em}
+  .krow select{background:#222;color:#eee;border:1px solid #444;font-family:inherit;font-size:0.95em;padding:4px}
+  .kval{width:5em;text-align:right;color:#8a8;flex:none}
+  .kval.dirty{color:#e8b04b}
+  .kfield{margin:8px 0}
+  .kfield .krow{margin:0}
+  .khelp{font-size:0.72em;color:#667;line-height:1.4;margin:1px 0 0 9.7em}
+  .khelp .lean{color:#9a9}
+  .kwarn{font-size:0.72em;color:#f0663a;line-height:1.4;margin:1px 0 0 9.7em}
+  .kwarn.hidden{display:none}
+  .klegend{font-size:0.74em;color:#778;margin:2px 0 6px;line-height:1.4}
+  .klegend b{color:var(--ember)}
+  .kbtns{margin-top:4px}
+  .kbtns button{font-size:0.9em}
+  details.kpanel > summary{cursor:pointer;list-style:none}
+  details.kpanel > summary::before{content:'▸ ';color:#667}
+  details.kpanel[open] > summary::before{content:'▾ '}
+  /* Destinations rail + manual pane. The rail is the two-surface
+     end-goal's mounting point: CONTROLS/MANUAL today, Settings slots in later. */
+  #rail{position:fixed;left:0;top:0;bottom:0;width:72px;background:#151515;border-right:1px solid #333;display:flex;flex-direction:column;gap:2px;padding-top:18px;z-index:5}
+  #rail button{background:none;border:none;border-left:3px solid transparent;color:#888;padding:10px 0;margin:0;font-size:0.78em;letter-spacing:1px;cursor:pointer}
+  #rail button:hover{color:#ddd;background:#1c1c1c}
+  #rail button.active{color:var(--ember);border-left-color:var(--ember)}
+  body.railed{padding-left:88px}
+  #mlayout{display:flex;gap:14px;margin-top:12px;align-items:flex-start}
+  #mnav{flex:none;width:15em;border:1px solid #333;background:#151515;padding:6px}
+  #mnav button{display:block;width:100%;text-align:left;background:none;border:none;color:#9a9;padding:6px 8px;margin:0;font-size:0.85em;cursor:pointer}
+  #mnav button:hover{color:#ddd;background:#1c1c1c}
+  #mnav button.active{color:var(--ember);background:#181818}
+  #mcontent{flex:1;min-width:0;border:1px solid #333;background:#141414;padding:4px 18px 18px}
+  .manual h1{font-size:1.25em;color:var(--ember);margin:16px 0 8px}
+  .manual h2{font-size:1.1em;color:var(--ember);margin:16px 0 6px}
+  .manual h3,.manual h4{font-size:1em;color:#c89a5e;margin:12px 0 4px}
+  .manual p,.manual li{line-height:1.5;color:#ccc}
+  .manual code{background:#222;padding:1px 4px;color:#9c9}
+  .manual pre{background:#181818;border:1px solid #333;padding:8px 10px;overflow-x:auto}
+  .manual pre code{background:none;padding:0}
+  .manual blockquote{border-left:3px solid #445;margin:8px 0;padding:2px 12px;color:#aab}
+  .manual hr{border:none;border-top:1px solid #333;margin:14px 0}
+  .manual .tscroll{overflow-x:auto}
+  .manual table{border-collapse:collapse;font-size:0.85em;margin:8px 0}
+  .manual th,.manual td{border:1px solid #3a3a3a;padding:4px 8px;text-align:left;vertical-align:top}
+  .manual th{color:var(--ember);background:#181818}
+  .manual a{color:var(--ember)}
+  .manual .deadlink{color:#889;border-bottom:1px dotted #556;cursor:help}
+  .hidden{display:none}
+</style>
+</head>
+<body>
+<!-- Destinations rail: hidden until the /manual/index probe
+     answers. Switching destinations toggles visibility only — nothing navigates,
+     nothing unloads, so panel state survives by construction. -->
+<nav id="rail" class="hidden">
+  <span class="brandmark" aria-hidden="true"></span>
+  <button id="dest-b-controls" class="active" title="the runtime control surface">CTRL</button>
+  <button id="dest-b-manual" title="users manual — reading never resets the session">MANUAL</button>
+</nav>
+<header id="brand">
+  <span class="brandmark" aria-hidden="true"></span>
+  <div><h2>Hearth</h2><div id="brandsub">runtime control</div></div>
+</header>
+
+<div id="dest-controls">
+<textarea id="txt" rows="3" placeholder="type a message — Enter to send, Shift+Enter for a new line" autocomplete="off"></textarea>
+<br>
+<button id="send">Send</button>
+<button id="mute">Mute mic</button>
+<button id="ptt" title="hold to talk — overrides the baseline while held (also: hold M)">PTT (hold)</button>
+
+<div id="micstate">MIC: LIVE</div>
+<div id="hint">baseline = the Mute toggle. PTT momentarily opens the mic while held, then returns to the baseline.</div>
+
+<div id="recrow">
+  <button id="rec" title="always records the companion's voice (TTS); tickboxes add stems">Record</button>
+  <input id="recname" type="text" placeholder="capture name (optional)" autocomplete="off">
+  <label id="lmic"><input type="checkbox" id="recmic"> my mic</label>
+  <label id="lmusic"><input type="checkbox" id="recmusic"> background music</label>
+  <span id="recstate"></span>
+  <div id="recout"></div>
+</div>
+<div id="status">ready</div>
+<div id="statusblock">
+<div id="s-tokens">Tokens | … held-in-ctx</div>
+<div id="s-engine">Engine | …</div>
+<div id="s-agent">Agent  | …</div>
+<div id="s-misc">Misc   | …</div>
+</div>
+<div id="leak" class="hidden">⚠ reasoning tokens leaked</div>
+<div id="ctxwarn" class="hidden">⚠ approaching reliable context line — consider wrapping or consolidating this session</div>
+
+<!-- L2 hot knobs — hidden unless features/config_profiles is active (JS feature-detects /config). -->
+<div id="knobs" class="hidden">
+  <div class="klegend">Each control notes, in plain language, how it shapes how the companion <b>thinks</b> or <b>sounds</b> — with a live cue for which way the current setting leans. <span style="color:#e8b04b">Amber</span> value = changed from the shipped default.</div>
+  <div class="kpanel" id="kp-char">
+    <div class="khead">CHARACTER — <span id="k-char">…</span> <span class="dim" id="k-persona">· persona.md</span></div>
+    <div id="k-llm-rows"></div>
+    <div class="kbtns">
+      <button data-save="character" title="remember these LLM settings for this character">Save to character</button>
+      <button data-reset="character" title="revert LLM knobs to baseline (leaves saved preset intact)">Reset character</button>
+    </div>
+  </div>
+  <div class="kpanel" id="kp-voice">
+    <div class="khead">VOICE — <span id="k-voice">…</span></div>
+    <div class="krow"><span class="kname">Sample</span><select id="k-sample" title="switch clip — loads that sample's saved preset (★ = has one)"></select></div>
+    <div id="k-tts-rows"></div>
+    <div class="kbtns">
+      <button data-save="voice" title="remember these TTS settings for this sample">Save to voice</button>
+      <button data-load="voice" title="reload this sample's saved preset (discard live tweaks)">Load preset</button>
+      <button data-reset="voice" title="revert TTS knobs to baseline (leaves saved preset intact)">Reset voice</button>
+    </div>
+  </div>
+  <!-- CALIBRATION tier per-room/mic, NOT per-character — profiles never
+       carry these. Collapsed by default: under the two-surface end-goal this group
+       graduates to a settings surface; the runtime panel stays texture-first. -->
+  <details class="kpanel" id="kp-listen">
+    <summary class="khead">LISTENING — mic calibration <span class="dim">· per-room/mic, not per-character</span></summary>
+    <div class="klegend">How the companion detects that you're speaking. Calibration, not character: set it up once for this mic and room, refine occasionally — character/voice presets never touch these. Changes land at the next turn boundary.</div>
+    <div id="k-vad-rows"></div>
+    <div class="kbtns">
+      <button data-vadreset title="clear listening overrides → calibration baseline (config/vad.toml)">Reset listening</button>
+    </div>
+  </details>
+  <div class="kbtns"><button id="k-reset-all" title="clear ALL live overrides (incl. listening) → shipped baseline">Restore ALL to defaults</button></div>
+</div>
+</div><!-- /dest-controls -->
+
+<!-- Manual destination: rendered fragments fetched into the live
+     page. Scope-fenced server-side to users-manual/ only. -->
+<div id="dest-manual" class="hidden">
+  <div id="mlayout"><nav id="mnav"></nav><div id="mcontent" class="manual"></div></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const status = msg => $('status').textContent = msg;
+let muted = false;      // latched baseline (the Mute toggle)
+let pttActive = false;
+
+// Reflect the current mic state. During a PTT hold we show the momentary
+// override; otherwise we show the latched baseline.
+function renderMic() {
+  const el = $('micstate');
+  if (pttActive) { el.textContent = 'MIC: OPEN (PTT held)'; el.className = 'ptt'; }
+  else if (muted) { el.textContent = 'MIC: MUTED (baseline)'; el.className = 'muted'; }
+  else { el.textContent = 'MIC: LIVE (baseline)'; el.className = 'live'; }
+}
+
+async function post(path, body) {
+  try {
+    const r = await fetch(path, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+    const j = await r.json();
+    return j;
+  } catch(e) {
+    status('error: ' + e);
+  }
+}
+
+// Send text
+async function sendText() {
+  const txt = $('txt').value.trim();
+  if (!txt) return;
+  $('txt').value = '';
+  status('sending...');
+  const j = await post('/say', {text: txt});
+  if (j) status(j.ok ? 'sent' : 'error: ' + j.error);
+}
+$('send').addEventListener('click', sendText);
+// Enter sends; Shift+Enter inserts a newline (textarea is multi-line + resizable).
+$('txt').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendText(); }
+});
+
+// Mute toggle
+async function setMute(val) {
+  muted = val;
+  $('mute').textContent = muted ? 'Unmute mic' : 'Mute mic';
+  $('mute').classList.toggle('active', muted);
+  await post('/mute', {muted});
+  renderMic();
+  status(muted ? 'mic muted' : 'mic live');
+}
+$('mute').addEventListener('click', () => setMute(!muted));
+
+// PTT — momentary override; returns to the latched baseline on release.
+async function pttDown() {
+  if (pttActive) return;
+  pttActive = true;
+  $('ptt').classList.add('active');
+  renderMic();
+  await post('/ptt', {down: true});
+  status('PTT: mic open (hold)');
+}
+async function pttUp() {
+  if (!pttActive) return;
+  pttActive = false;
+  $('ptt').classList.remove('active');
+  renderMic();
+  await post('/ptt', {down: false});
+  status(muted ? 'PTT released → baseline: muted' : 'PTT released → baseline: live');
+}
+$('ptt').addEventListener('pointerdown', e => { e.preventDefault(); pttDown(); });
+$('ptt').addEventListener('pointerup',   e => { e.preventDefault(); pttUp(); });
+$('ptt').addEventListener('pointerleave',e => { if (pttActive) pttUp(); });
+
+// PTT via key (M) while page focused
+document.addEventListener('keydown', e => { if (e.key === 'm' && !e.repeat && document.activeElement !== $('txt')) pttDown(); });
+document.addEventListener('keyup',   e => { if (e.key === 'm') pttUp(); });
+
+// M7 session recording — Record toggles gray→red; TTS always, tickboxes add stems.
+let recArmed = false, recTimer = null, recT0 = 0;
+function renderRec() {
+  const b = $('rec');
+  b.classList.toggle('rec', recArmed);
+  b.textContent = recArmed ? '● REC' : 'Record';
+  $('recname').disabled = recArmed;
+  $('recmic').disabled = recArmed;
+  $('recmusic').disabled = recArmed || $('lmusic').classList.contains('off');
+  if (recArmed && !recTimer) {
+    recTimer = setInterval(() => {
+      const s = Math.floor((Date.now() - recT0) / 1000);
+      $('recstate').textContent = '● ' + String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+    }, 500);
+  } else if (!recArmed && recTimer) { clearInterval(recTimer); recTimer = null; $('recstate').textContent = ''; }
+}
+async function recToggle() {
+  if (!recArmed) {
+    const j = await post('/record/start', {
+      name: $('recname').value.trim(),
+      mic: $('recmic').checked, music: $('recmusic').checked});
+    if (j && j.ok) { recArmed = true; recT0 = Date.now(); $('recout').textContent = ''; status('recording → ' + j.path); }
+    else if (j) status('record error: ' + j.error);
+  } else {
+    status('finalizing recording…');
+    const j = await post('/record/stop', {});
+    recArmed = false;
+    if (j && j.ok) {
+      $('recout').textContent = j.mix ? ('saved: ' + j.mix) : ('nothing captured — stems dir: ' + j.stems);
+      status(j.error ? ('saved with warning: ' + j.error) : 'recording saved');
+    } else if (j) status('record error: ' + j.error);
+  }
+  renderRec();
+}
+$('rec').addEventListener('click', recToggle);
+async function loadRecStatus() {
+  try {
+    const r = await fetch('/record/status');
+    const s = await r.json();
+    recArmed = s.recording;
+    if (recArmed) recT0 = Date.now() - s.elapsed_s * 1000;
+    if (!s.music_available) {
+      $('lmusic').classList.add('off');
+      $('lmusic').title = 'needs a loopback device (BlackHole) + Multi-Output routing — M7 P3';
+    } else {
+      $('lmusic').title = 'auto-mirrors your current output into ' + s.music_device + ' while recording; restored on stop';
+    }
+  } catch(e) { /* panel degrades gracefully */ }
+  renderRec();
+}
+loadRecStatus();
+
+// Phase 1 status block.
+// Engine facts (allotted / model max / Model ID / provider) ride /engine — fetched
+// on load and re-fetched every 60 s. The server re-polls LM Studio on the same
+// cadence so a mid-run model swap/unload surfaces as fresh facts or
+// honest '—' dashes instead of a stale line. Dynamic per-turn counts (held-in-ctx /
+// growth / cumulative input) ride the polled /usage snapshot.
+const DASH = '—';
+const fmt = n => (n === null || n === undefined) ? DASH : Number(n).toLocaleString();
+let engine = {provider: null, model_id: null, allotted: null, model_max: null, reliable: null, session: null, character: null, voice: null};
+
+function renderEngine() {
+  $('s-engine').textContent =
+    `Engine | Inference Provider: ${engine.provider || DASH} · Model ID: ${engine.model_id || DASH}`;
+}
+
+// The active persona: character + voice. Baseline rides /engine (the SESSION's
+// startup-resolved voice — F9 scrubs [voice] overrides at startup, so with no
+// live override this IS the voice speaking). The baseline alone read naturally
+// as "the voice speaking now,"
+// which is false mid-audition — with a live [voice] override bound, show both.
+function renderAgent() {
+  let v = engine.voice || DASH;
+  if (knob && knob.overrides && knob.overrides.voice && selVoice
+      && selVoice !== (engine.voice || null)) {
+    v = `${engine.voice || DASH} (base) · now: ${selVoice}`;
+  }
+  $('s-agent').textContent =
+    `Agent  | Name: ${engine.character || DASH} · Voice: ${v}`;
+}
+
+async function loadEngine() {
+  try {
+    const r = await fetch('/engine');
+    engine = await r.json();
+  } catch(e) { /* keep the all-null default → dashes */ }
+  renderEngine();
+  renderAgent();
+}
+
+// Tier-2 → Phase 1: live per-turn token snapshot (polled).
+async function pollUsage() {
+  try {
+    const r = await fetch('/usage');
+    const u = await r.json();
+    const held = u.held_in_ctx;
+    const allot = engine.allotted;
+    // Gauge against the MEASURED reliable line; fall back to the advertised window
+    // when reliable is absent (older config) → today's behavior. Zones warn BEFORE
+    // the line: ok < 75% · warn 75–100% · over ≥ 100% of the reliable budget.
+    const budget = (engine.reliable !== null && engine.reliable !== undefined) ? engine.reliable : allot;
+    const ratio = budget ? (held / budget) : null;
+    const pct = (ratio === null) ? DASH : (ratio * 100).toFixed(1) + '%';
+    const remaining = (budget !== null && budget !== undefined) ? fmt(budget - held) : DASH;
+    const zone = (ratio === null) ? 'na' : (ratio >= 1 ? 'over' : (ratio >= 0.75 ? 'warn' : 'ok'));
+    const tok = $('s-tokens');
+    tok.className = 'zone-' + zone;
+    tok.textContent =
+      `Tokens | ${fmt(held)} held [${pct} of ${fmt(budget)} reliable] · ${remaining} to line · advertised ${fmt(allot)} · model max: ${fmt(engine.model_max)}`;
+    $('ctxwarn').classList.toggle('hidden', zone === 'ok' || zone === 'na');
+    $('s-misc').textContent =
+      `Misc   | Session: ${engine.session || DASH} · Turns: ${fmt(u.turns)} · net turn growth: ${fmt(u.net_turn_growth)} · total tok. xmitted: ${fmt(u.prompt)}`;
+    $('leak').classList.toggle('hidden', !u.leak);
+  } catch(e) { /* transient; next tick retries */ }
+}
+loadEngine();  // paint immediately on load
+setInterval(loadEngine, 60000);  // slow re-fetch — matches bot.py's engine re-poll cadence
+setInterval(pollUsage, 1500);
+pollUsage();  // paint immediately on load
+
+// ── L2 hot knobs ────────────────────────────────────────────────────────────────
+// Self-gating: the whole section stays hidden unless GET /config answers (i.e.
+// features/config_profiles is active). Sliders show EFFECTIVE values (override ??
+// baseline); an amber value = an override is set. TTS/voice knobs are per-voice;
+// LLM knobs are per-character. Persona is display-only here (file-swap workflow).
+let knob = null;        // {schema, overrides, active, defaults, voices, saved}
+let selVoice = null;    // the sample the Voice panel is bound to (profile key)
+
+function effVal(sec, key) {
+  const ov = knob.overrides[sec] || {};
+  if (key in ov) return ov[key];
+  const df = knob.defaults[sec] || {};
+  return (key in df) ? df[key] : null;
+}
+function isOverridden(sec, key) { return !!(knob.overrides[sec] && (key in knob.overrides[sec])); }
+
+// The translation layer: plain-language meaning per knob, in terms of how the persona
+// thinks (LLM) or sounds (TTS). `low`/`high` name what MORE-toward-that-end feels like,
+// so the panel can show which way the current setting leans vs. the shipped baseline.
+// `warn` = threshold rules (evaluated live): {lt|gt: bound, msg} — msg shows only while
+// the value is past that bound, flagging the adverse effect of that extreme. Bounds are
+// deliberately conservative so warnings fire only near genuine trouble (e.g. the top_p 0.1
+// pause trap), not for ordinary tuning.
+const KNOB_HELP = {
+  'llm.temperature': {desc: 'How freely the companion thinks — the spread of word and idea choices.',
+    low: 'more focused &amp; predictable', high: 'more inventive &amp; unpredictable',
+    warn: [{gt: 1.4, msg: 'very high — wording may drift incoherent or off-character'},
+           {lt: 0.15, msg: 'near-deterministic — replies may get repetitive and rigid'}]},
+  'llm.reasoning_effort': {desc: 'How much the companion deliberates before answering (none = instinctive, higher = more considered).'},
+  'tts.temperature': {desc: 'Emotional expressiveness of the voice — how much the delivery varies.',
+    low: 'flatter, more monotone', high: 'more dramatic &amp; animated',
+    warn: [{gt: 1.3, msg: 'very high — delivery may turn erratic or garbled'},
+           {lt: 0.2, msg: 'very low — may sound robotic or clipped'}]},
+  'tts.top_p': {desc: 'How adventurous the vocal choices are (the prosody &amp; pronunciation pool).',
+    low: 'tighter &amp; more consistent', high: 'more varied, can wander',
+    warn: [{lt: 0.5, msg: 'very low — risk of pauses, stalls, and dropped words'}]},
+  'tts.top_k': {desc: 'How many acoustic options the voice weighs at each step.',
+    low: 'steadier &amp; more stable', high: 'more variety, less stable',
+    warn: [{lt: 50, msg: 'very low — risk of stalls or repetition'}]},
+  'tts.repetition_penalty': {desc: 'Pushes the voice off repeating the same cadence.',
+    low: 'may fall into sing-song / loops', high: 'more varied rhythm (too high distorts)',
+    warn: [{gt: 2.0, msg: 'very high — risk of distortion or dropped sounds'},
+           {lt: 1.0, msg: 'below 1 — risk of sing-song looping'}]},
+  // CALIBRATION — the [vad] listening tier (per-room/mic; never profile-carried).
+  'vad.confidence': {desc: 'How sure the companion must be that a sound is your speech.',
+    low: 'hears more — marginal sounds can trigger a turn', high: 'stricter — ignores soft or unclear speech',
+    warn: [{gt: 0.9, msg: 'very high — the companion may ignore you'},
+           {lt: 0.3, msg: 'very low — background noise can start a turn'}]},
+  'vad.start_secs': {desc: 'How long sound must persist before it counts as you talking.',
+    low: 'reacts to the briefest sounds', high: 'needs sustained speech before reacting',
+    warn: [{gt: 0.6, msg: 'high — your first words may get clipped'}]},
+  'vad.stop_secs': {desc: 'The silence after your voice that means you finished.',
+    low: 'snappier replies — may cut you off', high: 'waits patiently — slower to reply',
+    warn: [{lt: 0.35, msg: 'low — the companion may cut in on mid-sentence breaths'},
+           {gt: 1.5, msg: 'high — replies will feel laggy'}]},
+  'vad.min_volume': {desc: 'How loud a sound must be to count as speech.',
+    low: 'even quiet speech counts', high: 'only clear, louder speech counts',
+    warn: [{gt: 0.8, msg: 'high — you would have to speak up'}]},
+};
+function knobHelp(sec, key) { return KNOB_HELP[sec + '.' + key] || {desc: ''}; }
+
+// First threshold rule the current value trips, if any (for the live ⚠ warning line).
+function warnText(sec, key, val) {
+  const rules = knobHelp(sec, key).warn;
+  if (!rules) return '';
+  for (const r of rules) {
+    if ((r.lt !== undefined && val < r.lt) || (r.gt !== undefined && val > r.gt)) return r.msg;
+  }
+  return '';
+}
+
+// Which way the live value leans vs. the persisted baseline, in the knob's own words.
+function leanText(sec, key, val) {
+  const h = knobHelp(sec, key);
+  if (!('low' in h)) return '';
+  const df = (knob.defaults[sec] || {})[key];
+  if (df === undefined || df === null) return '';
+  const eps = (typeof df === 'number' && df > 0) ? Math.abs(df) * 0.02 : 0.0001;
+  if (Math.abs(val - df) <= eps) return 'at the default';
+  return val < df ? h.low : h.high;
+}
+
+function sliderRow(sec, key, spec) {
+  const eff = effVal(sec, key);
+  const step = spec.type === 'int' ? 1 : ((spec.max - spec.min) > 3 ? 1 : 0.01);
+  const h = knobHelp(sec, key);
+  const row = document.createElement('div'); row.className = 'kfield';
+  row.innerHTML =
+    `<div class="krow"><span class="kname">${key}</span>` +
+    `<input type="range" min="${spec.min}" max="${spec.max}" step="${step}" value="${eff === null ? spec.min : eff}">` +
+    `<span class="kval"></span></div>` +
+    `<div class="khelp"></div>` +
+    `<div class="kwarn hidden"></div>`;
+  const inp = row.querySelector('input'), val = row.querySelector('.kval'),
+        help = row.querySelector('.khelp'), warn = row.querySelector('.kwarn');
+  // no baseline recorded AND no override → there is no truthful
+  // position to draw. Show '—' with the slider disabled rather than silently
+  // parking it at spec.min while the engine runs its internal defaults (the
+  // fresh-install display falsehood; installs with a persisted baseline never
+  // enter this branch).
+  if (eff === null) {
+    inp.disabled = true;
+    val.textContent = '—';
+    help.innerHTML = h.desc + ' <span class="lean">— no persisted baseline; knob disabled</span>';
+    return row;
+  }
+  const paintHelp = v => {
+    const lean = leanText(sec, key, v);
+    help.innerHTML = h.desc + (lean ? ` <span class="lean">— now: ${lean}</span>` : '');
+    const w = warnText(sec, key, v);
+    warn.innerHTML = w ? ('⚠ ' + w) : '';
+    warn.classList.toggle('hidden', !w);
+  };
+  const paint = () => {
+    val.textContent = inp.value; val.classList.toggle('dirty', isOverridden(sec, key));
+    paintHelp(parseFloat(inp.value));
+  };
+  paint();
+  inp.addEventListener('input', () => { val.textContent = inp.value; paintHelp(parseFloat(inp.value)); });
+  inp.addEventListener('change', async () => {
+    const v = spec.type === 'int' ? parseInt(inp.value, 10) : parseFloat(inp.value);
+    const j = await post('/config', {[sec]: {[key]: v}});
+    if (j && j.ok) { knob.overrides = j.overrides; paint(); status(`${sec}.${key} → ${v}`); }
+    else if (j) status('knob error: ' + j.error);
+  });
+  return row;
+}
+
+function enumRow(sec, key, spec) {
+  const eff = effVal(sec, key);
+  const row = document.createElement('div'); row.className = 'kfield';
+  // enum flavor: with no effective value, an unguarded <select>
+  // silently shows its first option as if chosen. A disabled '—' placeholder
+  // shows the truth; picking a real value stays a deliberate, working write.
+  const opts = (eff === null ? '<option selected disabled>—</option>' : '') +
+    spec.values.map(o => `<option ${o === eff ? 'selected' : ''}>${o}</option>`).join('');
+  row.innerHTML =
+    `<div class="krow"><span class="kname">${key}</span><select>${opts}</select><span class="kval"></span></div>` +
+    `<div class="khelp">${knobHelp(sec, key).desc}</div>`;
+  const sel = row.querySelector('select'), val = row.querySelector('.kval');
+  const paint = () => val.classList.toggle('dirty', isOverridden(sec, key));
+  paint();
+  sel.addEventListener('change', async () => {
+    const j = await post('/config', {[sec]: {[key]: sel.value}});
+    if (j && j.ok) { knob.overrides = j.overrides; paint(); status(`${sec}.${key} → ${sel.value}`); }
+    else if (j) status('knob error: ' + j.error);
+  });
+  return row;
+}
+
+function renderKnobs() {
+  $('k-char').textContent = knob.active.character;
+  $('k-voice').textContent = selVoice;
+  const llm = $('k-llm-rows'); llm.innerHTML = '';
+  if (knob.schema.llm.temperature) llm.appendChild(sliderRow('llm', 'temperature', knob.schema.llm.temperature));
+  if (knob.schema.llm.reasoning_effort) llm.appendChild(enumRow('llm', 'reasoning_effort', knob.schema.llm.reasoning_effort));
+  const sel = $('k-sample');
+  sel.innerHTML = knob.voices.map(v =>
+    `<option ${v === selVoice ? 'selected' : ''}>${v}${(knob.saved.voices || []).includes(v) ? ' ★' : ''}</option>`).join('');
+  const tts = $('k-tts-rows'); tts.innerHTML = '';
+  ['temperature', 'top_p', 'top_k', 'repetition_penalty'].forEach(k => {
+    if (knob.schema.tts[k]) tts.appendChild(sliderRow('tts', k, knob.schema.tts[k]));
+  });
+  // CALIBRATION tier — whole group hides if the server predates the [vad] schema.
+  $('kp-listen').classList.toggle('hidden', !knob.schema.vad);
+  const vad = $('k-vad-rows'); vad.innerHTML = '';
+  ['confidence', 'start_secs', 'stop_secs', 'min_volume'].forEach(k => {
+    if (knob.schema.vad && knob.schema.vad[k]) vad.appendChild(sliderRow('vad', k, knob.schema.vad[k]));
+  });
+}
+
+async function fetchKnobState() {
+  const [c, p] = await Promise.all([
+    fetch('/config').then(r => r.json()),
+    fetch('/config/profiles').then(r => r.json()),
+  ]);
+  if (!c.ok || !p.ok) throw new Error(c.error || p.error || 'knob state unavailable');
+  return {
+    schema: c.schema, overrides: c.overrides || {},
+    active: p.active,
+    // texture-tier baselines (llm/tts) ride /config/profiles; the calibration-tier
+    // baseline (vad) rides /config — merge the two sources.
+    defaults: Object.assign({}, p.defaults || {}, c.defaults || {}),
+    voices: p.voices || [], saved: p.saved || {voices: []},
+  };
+}
+function deriveSelVoice() {
+  // selVoice used to derive ONLY at
+  // page load, so a tab open across an active.toml edit/restart kept presenting
+  // (and profile-targeting) the previous voice. Re-derive from every server
+  // fetch instead: a live [voice] override names the bound cut (its ref_wav's
+  // bundle dir); no override → the dropdown IS the baseline. A dropdown pick is
+  // never clobbered — the pick writes the very override this reads back.
+  const ov = knob.overrides && knob.overrides.voice && knob.overrides.voice.ref_wav;
+  if (ov) {
+    const m = String(ov).replace(/\\/g, '/').match(/\/([^/]+)\/[^/]+$/);
+    if (m && knob.voices.includes(m[1])) selVoice = m[1];
+    return;  // unmappable override (out-of-tree ref_wav): keep current selection
+  }
+  selVoice = knob.active.voice;
+}
+async function refreshKnobs() {
+  try { knob = await fetchKnobState(); deriveSelVoice(); renderKnobs(); renderAgent(); }
+  catch (e) { status('knob refresh error: ' + e); }
+}
+
+function wireKnobButtons() {
+  // Sample switch: select the clip AND load its saved preset (baseline if none).
+  $('k-sample').addEventListener('change', async e => {
+    selVoice = e.target.value.replace(/ ★$/, '');
+    const j = await post('/config/profiles/load', {scope: 'voice', character: knob.active.character, voice: selVoice});
+    if (j && j.ok) { status('voice → ' + selVoice); await refreshKnobs(); }
+    else if (j) status('voice error: ' + j.error);
+  });
+  document.querySelectorAll('#knobs [data-save]').forEach(b => b.addEventListener('click', async () => {
+    const scope = b.dataset.save, body = {scope, character: knob.active.character};
+    if (scope === 'voice') body.voice = selVoice;
+    const j = await post('/config/profiles/save', body);
+    if (j && j.ok) { status(`saved ${scope} preset`); await refreshKnobs(); }
+    else if (j) status('save error: ' + j.error);
+  }));
+  document.querySelectorAll('#knobs [data-load]').forEach(b => b.addEventListener('click', async () => {
+    const j = await post('/config/profiles/load', {scope: b.dataset.load, character: knob.active.character, voice: selVoice});
+    if (j && j.ok) { status(`loaded ${b.dataset.load} preset`); await refreshKnobs(); }
+    else if (j) status('load error: ' + j.error);
+  }));
+  document.querySelectorAll('#knobs [data-reset]').forEach(b => b.addEventListener('click', async () => {
+    const j = await post('/config/profiles/reset', {scope: b.dataset.reset});
+    if (j && j.ok) { status(`reset ${b.dataset.reset}`); await refreshKnobs(); }
+    else if (j) status('reset error: ' + j.error);
+  }));
+  // CALIBRATION reset — clears the [vad] overrides only (back to config/vad.toml).
+  document.querySelectorAll('#knobs [data-vadreset]').forEach(b => b.addEventListener('click', async () => {
+    const j = await post('/config', {clear: ['vad.confidence', 'vad.start_secs', 'vad.stop_secs', 'vad.min_volume']});
+    if (j && j.ok) { knob.overrides = j.overrides; status('listening → calibration baseline'); await refreshKnobs(); }
+    else if (j) status('reset error: ' + j.error);
+  }));
+  $('k-reset-all').addEventListener('click', async () => {
+    const j = await post('/config/profiles/reset', {scope: 'all'});
+    if (j && j.ok) { status('restored ALL to defaults'); await refreshKnobs(); }
+    else if (j) status('reset error: ' + j.error);
+  });
+}
+
+async function initKnobs() {
+  let state;
+  try {
+    const probe = await fetch('/config');
+    if (!probe.ok) return;            // 404 → feature inert; leave the section hidden
+    state = await fetchKnobState();
+  } catch (e) { return; }             // unreachable → stay hidden, panel unchanged
+  knob = state;
+  deriveSelVoice();
+  wireKnobButtons();
+  renderKnobs();
+  renderAgent();
+  $('knobs').classList.remove('hidden');
+}
+initKnobs();
+
+// ── Destinations rail + manual pane ──────────────────────────
+// Self-gating like initKnobs: no /manual routes → the rail stays hidden and the page
+// is byte-identical in behavior. Switching destinations toggles visibility only —
+// nothing unloads, so the status poll, draft text, mute/PTT state, and an in-flight
+// recording all survive by construction (the requirement's reset class vanishes).
+let manualPages = [], manualCur = null;
+function showDest(d) {
+  $('dest-controls').classList.toggle('hidden', d !== 'controls');
+  $('dest-manual').classList.toggle('hidden', d !== 'manual');
+  $('dest-b-controls').classList.toggle('active', d === 'controls');
+  $('dest-b-manual').classList.toggle('active', d === 'manual');
+  if (d === 'manual' && !manualCur && manualPages.length) loadManualPage(manualPages[0].name);
+}
+function buildManualNav() {
+  $('mnav').innerHTML = '';
+  manualPages.forEach(p => {
+    const b = document.createElement('button');
+    b.textContent = p.title; b.dataset.page = p.name; b.title = p.name;
+    b.addEventListener('click', () => loadManualPage(p.name));
+    $('mnav').appendChild(b);
+  });
+}
+async function loadManualPage(name) {
+  try {
+    const r = await fetch('/manual/page/' + encodeURIComponent(name));
+    const j = await r.json();
+    if (!j.ok) { status('manual error: ' + j.error); return; }
+    manualCur = name;
+    $('mcontent').innerHTML = j.html;
+    window.scrollTo(0, 0);
+    document.querySelectorAll('#mnav button').forEach(b =>
+      b.classList.toggle('active', b.dataset.page === name));
+    if (j.degraded) status('manual: page served raw (renderer degraded)');
+  } catch (e) { status('manual error: ' + e); }
+}
+// In-pane link interception: rendered same-dir links carry data-page (no navigation).
+$('mcontent').addEventListener('click', e => {
+  const a = e.target.closest('a[data-page]');
+  if (a) { e.preventDefault(); loadManualPage(a.dataset.page); }
+});
+async function initManual() {
+  let j;
+  try {
+    const r = await fetch('/manual/index');
+    if (!r.ok) return;               // 404 → feature inert; rail stays hidden
+    j = await r.json();
+  } catch (e) { return; }             // unreachable → stay hidden, panel unchanged
+  if (!j.ok || !j.pages || !j.pages.length) return;
+  manualPages = j.pages;
+  buildManualNav();
+  $('rail').classList.remove('hidden');
+  document.body.classList.add('railed');
+  $('dest-b-controls').addEventListener('click', () => showDest('controls'));
+  $('dest-b-manual').addEventListener('click', () => showDest('manual'));
+}
+initManual();
+
+renderMic();  // show baseline on load
+</script>
+</body>
+</html>

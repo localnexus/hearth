@@ -1,0 +1,38 @@
+# config/serve.toml — the optional serve-facade gate.
+#
+# Hearth can expose one bearer-authed, OpenAI-compatible endpoint that other local
+# clients can share. It is OFF by default: with this file absent or enabled=false,
+# nothing loads and no socket opens — the appliance is byte-identical when off.
+#
+# Copy to config/serve.toml (gitignored — it references a secret) and set enabled=true
+# to open the facade.
+
+[serve]
+enabled = false
+
+# Loopback by default. If you ever expose this beyond the machine, front it with a
+# private overlay network — NEVER bind 0.0.0.0.
+host = "127.0.0.1"
+port = 65001
+
+# Bearer auth is ALWAYS on — there is no unauthenticated mode, so a later network bind
+# can never become an accidental open door. `token_source` is a PATH to a token file
+# (one line, chmod 600), never the token itself. Mint one, for example:
+#   openssl rand -hex 32 > config/serve-token && chmod 600 config/serve-token
+token_source = "config/serve-token"
+
+# Upstream LLM endpoint (your OpenAI-compatible server, e.g. llama-server).
+# lm_base_url = "http://127.0.0.1:8080/v1"
+
+# Voice output: proxy speech synthesis using the active voice bundle, pinned
+# server-side (client-supplied voice/model fields are ignored).
+speech_enabled = true
+
+# Voice input: transcribe client audio with the local speech-to-text model. Ships OFF;
+# flip to true to opt in.
+transcriptions_enabled = false
+
+# Conversation tap: append each turn to a plaintext transcript (the directory is
+# gitignored).
+transcript_tap = true
+transcript_dir = "transcripts"

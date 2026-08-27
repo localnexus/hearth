@@ -1,0 +1,477 @@
+"""serve/app.py — the /v1 facade application (a thin adapter).
+
+Routes (bearer-authed except /health):
+    GET  /health                  liveness — {"ok": true}, no identity leaked
+    GET  /v1/models               one entry: the active character (clients pick it)
+    POST /v1/chat/completions     persona-composed chat → LM Studio, SSE passthrough
+    POST /v1/audio/speech         the companion's voice — proxy to mlx_audio.server (:8555)
+    POST /v1/audio/transcriptions local Whisper proxy (opt-in; default OFF)
+
+Persona integrity: client system messages are DROPPED and Hearth's composed
+system_instruction injected — a client can pick words, never who the companion is. The
+speech route likewise pins model + ref_audio server-side and ignores client
+"voice"/"model" fields. Model params (id, temperature, reasoning_effort) come
+from the same ActiveConfig bot.py runs on, so chat-persona == voice-persona.
+
+Identity pin (serve.toml [serve.identity]): when the optional table names a
+character + voice, the facade's persona/voice resolve from THAT fixed selection
+at start() — active.toml then supplies only the LLM leg (model id/params, whose
+template still wraps the pinned persona). Closes both silent identity traps: a
+standalone facade re-snapshotting a stale active.toml (a stale-identity
+incident), and the in-process attach following the
+live session's character. Absent table ⇒ legacy snapshot behavior, byte-same.
+Exception: requests carrying X-Hearth-Internal: task are appliance-internal
+utility calls (e.g. the voice server's rolling summarizer) — their own system
+prompt is preserved, no persona is injected, and they are never taped.
+
+Secrets: the facade bearer and the LM Studio key live only on the
+deps object, resolved from env or *_source paths; never logged, echoed, or in a
+response body.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import hmac
+import json
+import os
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
+
+import aiohttp
+from aiohttp import web
+from loguru import logger
+
+from hearth.config import config_loader
+
+from . import stt_prep, tts_prep
+from .transcript import TranscriptTap
+
+_REPO_ROOT = config_loader.CONFIG_DIR.parent
+
+
+@dataclass
+class FacadeDeps:
+    """Everything the handlers need, resolved once at start()."""
+
+    system_instruction: str
+    model_id: str
+    temperature: float
+    reasoning_effort: str
+    character: str
+    ref_wav: str
+    tts_model: str
+    lm_base_url: str
+    lm_token: str
+    bearer: str
+    cfg: dict
+    tap: Optional[TranscriptTap]
+    pinned_tts: dict = field(default_factory=dict)
+    # Tag-envelope policy: may per-tag knob profiles overlay the pinned knobs?
+    # True when no pin exists; a pin must opt in via allow_tag_profiles = true.
+    allow_tag_profiles: bool = True
+    session: Optional[aiohttp.ClientSession] = field(default=None)
+
+
+# ── secret resolution (paths/env in, values never out) ────────────────────────
+
+def _resolve_bearer(cfg: dict) -> str:
+    tok = os.environ.get("SERVE_TOKEN", "").strip()
+    if tok:
+        return tok
+    src = Path(str(cfg.get("token_source", ""))).expanduser()
+    if not src.is_absolute():
+        src = _REPO_ROOT / src
+    try:
+        tok = src.read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise config_loader.ConfigError(
+            f"serve.toml token_source unusable ({type(exc).__name__}): {src}"
+        )
+    if not tok:
+        raise config_loader.ConfigError(f"empty serve bearer token in {src}")
+    return tok
+
+
+def _resolve_lm_token(passed: str, cfg: dict) -> str:
+    # "lm-studio" is bot.py's known-dead placeholder default, not a credential.
+    if passed and passed != "lm-studio":
+        return passed
+    env = os.environ.get("LM_API_TOKEN", "").strip()
+    if env and env != "lm-studio":
+        return env
+    src = Path(str(cfg.get("lm_token_source", ""))).expanduser()
+    with contextlib.suppress(OSError):
+        tok = src.read_text(encoding="utf-8").strip()
+        if tok:
+            return tok
+    return passed or "lm-studio"  # requests will 401 upstream → surfaced as 502-class errors
+
+
+# ── auth middleware ───────────────────────────────────────────────────────────
+
+@web.middleware
+async def _auth(request: web.Request, handler):
+    if request.path == "/health":
+        return await handler(request)
+    supplied = request.headers.get("Authorization", "")
+    expected = "Bearer " + request.app["deps"].bearer
+    if not hmac.compare_digest(supplied.encode(), expected.encode()):
+        return web.json_response({"error": "unauthorized"}, status=401)
+    return await handler(request)
+
+
+# ── helpers ───────────────────────────────────────────────────────────────────
+
+def _text_of(content) -> str:
+    """Flatten OpenAI message content (str, or list of typed parts) to text."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return " ".join(
+            str(p.get("text", "")) for p in content if isinstance(p, dict) and p.get("type") == "text"
+        ).strip()
+    return ""
+
+
+def _sse_text(raw: bytes) -> str:
+    """Concatenate the delta.content of an accumulated SSE stream (for the tap)."""
+    parts: list[str] = []
+    for line in raw.decode("utf-8", "replace").splitlines():
+        line = line.strip()
+        if not line.startswith("data:"):
+            continue
+        payload = line[len("data:"):].strip()
+        if payload == "[DONE]":
+            break
+        try:
+            delta = json.loads(payload)["choices"][0].get("delta", {})
+        except (ValueError, KeyError, IndexError, TypeError):
+            continue
+        if delta.get("content"):
+            parts.append(delta["content"])
+    return "".join(parts)
+
+
+# ── handlers ──────────────────────────────────────────────────────────────────
+
+async def _health(_req: web.Request) -> web.Response:
+    return web.json_response({"ok": True})
+
+
+async def _models(request: web.Request) -> web.Response:
+    deps: FacadeDeps = request.app["deps"]
+    return web.json_response(
+        {"object": "list",
+         "data": [{"id": deps.character, "object": "model", "created": 0, "owned_by": "hearth"}]}
+    )
+
+
+async def _chat(request: web.Request) -> web.StreamResponse:
+    deps: FacadeDeps = request.app["deps"]
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": {"message": "invalid JSON body"}}, status=400)
+
+    stream = bool(body.get("stream", False))
+    # Appliance-internal utility calls (rolling summary, etc.) mark themselves
+    # with X-Hearth-Internal: task. Their system prompt IS the task, so persona
+    # injection would corrupt them — a summarizer becomes the persona answering
+    # its own transcript. Pass them through verbatim, keep them out of the tap,
+    # and honor their temperature. Bearer auth still gates every caller; this
+    # header only changes composition, never who can reach the facade.
+    internal = request.headers.get("X-Hearth-Internal") == "task"
+    # Channel truth for the tap: a streaming client stamps "voice"; the tap
+    # whitelists the value, anything else files as the default "chat".
+    tap_channel = request.headers.get("X-Hearth-Channel")
+    last_user = ""
+    if internal:
+        messages = [m for m in body.get("messages") or [] if isinstance(m, dict)]
+    else:
+        messages = [{"role": "system", "content": deps.system_instruction}]
+        for m in body.get("messages") or []:
+            if not isinstance(m, dict) or m.get("role") == "system":
+                continue  # persona integrity: the facade owns the system layer
+            messages.append(m)
+            if m.get("role") == "user":
+                last_user = _text_of(m.get("content"))
+
+    out = {
+        "model": deps.model_id,
+        "messages": messages,
+        # Live-layer parity: panel-written overrides.toml wins, as on the desk.
+        "temperature": (body["temperature"] if internal and "temperature" in body
+                        else tts_prep.live_llm_temperature(deps.temperature)),
+        "stream": stream,
+    }
+    if deps.reasoning_effort:
+        # Body-level reasoning_effort is the ONE field this LM Studio build maps
+        # to the template's enable_thinking var (bot.py wiring note) — without it
+        # hybrid-thinking models starve the reply into reasoning_content.
+        out["reasoning_effort"] = deps.reasoning_effort
+    for k in ("max_tokens", "max_completion_tokens", "stop", "stream_options"):
+        if k in body:
+            out[k] = body[k]
+
+    url = deps.lm_base_url.rstrip("/") + "/chat/completions"
+    headers = {"Authorization": f"Bearer {deps.lm_token}"}
+    try:
+        upstream = await deps.session.post(
+            url, json=out, headers=headers,
+            timeout=aiohttp.ClientTimeout(total=600, sock_connect=5),
+        )
+    except aiohttp.ClientError as exc:
+        return web.json_response(
+            {"error": {"message": f"LLM upstream unreachable ({type(exc).__name__})"}}, status=502
+        )
+
+    if upstream.status != 200:
+        text = await upstream.text()
+        upstream.release()
+        return web.Response(text=text[:2000], status=upstream.status, content_type="application/json")
+
+    if not stream:
+        data = await upstream.json()
+        upstream.release()
+        reply = ""
+        with contextlib.suppress(KeyError, IndexError, TypeError):
+            reply = data["choices"][0]["message"]["content"] or ""
+        if deps.tap and last_user and reply:
+            deps.tap.record(last_user, reply, channel=tap_channel)
+        return web.json_response(data)
+
+    # SSE passthrough: bytes forwarded verbatim; a copy accumulates for the tap.
+    resp = web.StreamResponse(
+        status=200,
+        headers={"Content-Type": "text/event-stream", "Cache-Control": "no-cache"},
+    )
+    await resp.prepare(request)
+    raw = bytearray()
+    try:
+        async for chunk in upstream.content.iter_any():
+            raw.extend(chunk)
+            await resp.write(chunk)
+    finally:
+        upstream.release()
+    with contextlib.suppress(Exception):
+        await resp.write_eof()
+    reply = _sse_text(bytes(raw))
+    if deps.tap and last_user and reply:
+        deps.tap.record(last_user, reply, channel=tap_channel)
+    return resp
+
+
+async def _speech(request: web.Request) -> web.StreamResponse:
+    deps: FacadeDeps = request.app["deps"]
+    if not deps.cfg.get("speech_enabled", True):
+        return web.json_response({"error": "speech disabled (serve.toml speech_enabled)"}, status=403)
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid JSON body"}, status=400)
+    # Parity prep: paralinguistic repair/strip + live knob forwarding; voice
+    # identity pinned server-side (client "model"/"voice" ignored). See tts_prep.
+    payload, err = tts_prep.build_speech_payload(deps, body)
+    if payload is None:
+        if err:
+            return web.json_response({"error": err}, status=400)
+        # Word-less fragment: silence is the faithful rendering, not an error.
+        return web.Response(body=tts_prep.SILENT_WAV, content_type="audio/wav")
+
+    url = str(deps.cfg["audio_base_url"]).rstrip("/") + "/audio/speech"
+
+    if payload.get("stream"):
+        # M6 live path: relay the chunked-envelope stream untouched. One upstream
+        # call ⇒ the tag envelope (if any) covers this whole call.
+        try:
+            upstream = await deps.session.post(
+                url, json=tts_prep.with_tag_profile(payload, deps),
+                timeout=aiohttp.ClientTimeout(total=300, sock_connect=5)
+            )
+        except aiohttp.ClientError as exc:
+            return web.json_response({"error": f"TTS upstream unreachable ({type(exc).__name__})"}, status=502)
+        if upstream.status != 200:
+            err = await upstream.text()
+            upstream.release()
+            return web.Response(text=err[:2000], status=upstream.status)
+
+        resp = web.StreamResponse(
+            status=200,
+            headers={"Content-Type": upstream.headers.get("Content-Type", "audio/wav")},
+        )
+        await resp.prepare(request)
+        try:
+            async for chunk in upstream.content.iter_any():
+                await resp.write(chunk)
+        finally:
+            upstream.release()
+        with contextlib.suppress(Exception):
+            await resp.write_eof()
+        return resp
+
+    # Voice-note path (M8): sentence-sized chunk requests, stitched to one
+    # complete WAV — the stable regime; see tts_prep.sentence_chunks rationale.
+    blobs: list[bytes] = []
+    for chunk_text in tts_prep.sentence_chunks(payload["input"]):
+        try:
+            # Tag envelope per CHUNK: a style tag elevates only the sentence-chunk
+            # that carries it; the next chunk falls back to the base payload.
+            upstream = await deps.session.post(
+                url, json=tts_prep.with_tag_profile(dict(payload, input=chunk_text), deps),
+                timeout=aiohttp.ClientTimeout(total=300, sock_connect=5),
+            )
+        except aiohttp.ClientError as exc:
+            return web.json_response({"error": f"TTS upstream unreachable ({type(exc).__name__})"}, status=502)
+        if upstream.status != 200:
+            err = await upstream.text()
+            upstream.release()
+            return web.Response(text=err[:2000], status=upstream.status)
+        blobs.append(await upstream.read())
+    try:
+        stitched = tts_prep.concat_wavs(blobs)
+    except ValueError as exc:
+        return web.json_response({"error": f"TTS upstream returned non-WAV audio ({exc})"}, status=502)
+    return web.Response(body=stitched, content_type="audio/wav")
+
+
+async def _transcriptions(request: web.Request) -> web.Response:
+    deps: FacadeDeps = request.app["deps"]
+    if not deps.cfg.get("transcriptions_enabled", False):
+        # Input-side voice notes are opt-in — OFF until the operator enables them.
+        return web.json_response(
+            {"error": "voice-note input disabled (serve.toml transcriptions_enabled)"}, status=403
+        )
+    form = await request.post()
+    up = form.get("file")
+    if up is None or not getattr(up, "file", None):
+        return web.json_response({"error": "multipart 'file' field required"}, status=400)
+
+    try:
+        wav = await stt_prep.to_clean_wav(up.file.read())
+    except stt_prep.AudioDecodeError as exc:
+        return web.json_response({"error": f"could not decode audio ({exc})"}, status=400)
+
+    if stt_prep.is_silence(wav):
+        # Whisper invents speech on room tone ("Thank you." / "Gracias") —
+        # answer empty ourselves rather than relay its imagination.
+        return web.json_response({"text": ""})
+
+    data = aiohttp.FormData()
+    data.add_field("file", wav, filename="audio.wav", content_type="audio/wav")
+    data.add_field("model", str(deps.cfg["stt_model"]))
+    data.add_field("response_format", "json")  # mlx-audio defaults to ndjson otherwise
+    if form.get("language"):
+        data.add_field("language", str(form["language"]))
+
+    url = str(deps.cfg["audio_base_url"]).rstrip("/") + "/audio/transcriptions"
+    try:
+        async with deps.session.post(
+            url, data=data, timeout=aiohttp.ClientTimeout(total=300, sock_connect=5)
+        ) as upstream:
+            payload = await upstream.text()
+            return web.Response(text=payload[:100_000], status=upstream.status,
+                                content_type="application/json")
+    except aiohttp.ClientError as exc:
+        return web.json_response({"error": f"STT upstream unreachable ({type(exc).__name__})"}, status=502)
+
+
+# ── app factory + lifecycle ───────────────────────────────────────────────────
+
+def build_app(deps: FacadeDeps) -> web.Application:
+    app = web.Application(middlewares=[_auth])
+    app["deps"] = deps
+    app.router.add_get("/health", _health)
+    app.router.add_get("/v1/models", _models)
+    app.router.add_post("/v1/chat/completions", _chat)
+    app.router.add_post("/v1/audio/speech", _speech)
+    app.router.add_post("/v1/audio/transcriptions", _transcriptions)
+
+    async def _open(app_: web.Application) -> None:
+        app_["deps"].session = aiohttp.ClientSession()
+
+    async def _close(app_: web.Application) -> None:
+        if app_["deps"].session is not None:
+            await app_["deps"].session.close()
+
+    app.on_startup.append(_open)
+    app.on_cleanup.append(_close)
+    return app
+
+
+async def start(active, cfg: dict, lm_base_url: str, lm_token: str) -> Optional[web.AppRunner]:
+    """Bind the facade per serve.toml. Config problems raise (fail-fast, naming
+    the file/path); a busy port warns and returns None — the caller (the voice
+    appliance) must survive a standalone facade already holding the socket."""
+    # Identity resolution: [serve.identity] pin wins; else snapshot the active
+    # selection (legacy). The pinned persona is composed through the ACTIVE
+    # model's template — hard rules stay pinned by construction, only the
+    # {{persona}} body changes (compose_with_persona contract).
+    ident = cfg.get("identity")
+    if ident:
+        character = str(ident["character"])
+        pinned_voice = config_loader.load_voice(character, str(ident["voice"]))
+        system_instruction = config_loader.compose_system_instruction(
+            active.model_name, character)
+        ref_wav = pinned_voice["ref_wav"]
+        tts_model = str(pinned_voice.get("model_repo") or cfg["tts_model"])
+        # Optional TTS knob pin: pinned keys win over the shared live layer
+        # (overrides.toml [tts]) for facade speech only. Validated against the
+        # same allowlist the live layer uses — a typo'd knob fails the start
+        # loudly instead of silently not pinning.
+        pinned_tts = dict(ident.get("tts") or {})
+        # `allow_tag_profiles` is a pin POLICY flag, not a knob — pop before the
+        # allowlist check and never forward it upstream. True ⇒ the tag envelope
+        # (tts_prep.with_tag_profile) may overlay the pinned knobs; default False
+        # keeps the pin absolute (it exists to stop knob drift).
+        allow_tag_profiles = bool(pinned_tts.pop("allow_tag_profiles", False))
+        unknown = set(pinned_tts) - tts_prep._SPEECH_KNOBS
+        if unknown:
+            raise config_loader.ConfigError(
+                f"[serve.identity.tts] unknown knob(s) {sorted(unknown)} — "
+                f"valid: {sorted(tts_prep._SPEECH_KNOBS)}")
+        knob_note = f" tts-pin={pinned_tts}" if pinned_tts else ""
+        pin_note = f", voice={ident['voice']} [pinned]{knob_note}"
+    else:
+        character = active.character
+        system_instruction = active.system_instruction
+        ref_wav = active.ref_wav
+        tts_model = str(active.model_repo or cfg["tts_model"])
+        pinned_tts = {}
+        allow_tag_profiles = True  # no pin ⇒ nothing to protect; envelope applies freely
+        pin_note = ""
+    tap = None
+    if cfg.get("transcript_tap", True):
+        tap = TranscriptTap(_REPO_ROOT / str(cfg["transcript_dir"]), character,
+                            channel="chat", model=active.model_id)
+    deps = FacadeDeps(
+        system_instruction=system_instruction,
+        model_id=active.model_id,
+        temperature=active.temperature,
+        reasoning_effort=active.reasoning_effort,
+        character=character,
+        ref_wav=ref_wav,
+        tts_model=tts_model,
+        lm_base_url=(lm_base_url or str(cfg["lm_base_url"])),
+        lm_token=_resolve_lm_token(lm_token, cfg),
+        bearer=_resolve_bearer(cfg),
+        cfg=cfg,
+        tap=tap,
+        pinned_tts=pinned_tts,
+        allow_tag_profiles=allow_tag_profiles,
+    )
+    runner = web.AppRunner(build_app(deps))
+    await runner.setup()
+    host, port = str(cfg["host"]), int(cfg["port"])
+    try:
+        site = web.TCPSite(runner, host, port)
+        await site.start()
+    except OSError as exc:
+        logger.warning("[serve] bind {}:{} failed ({}) — facade NOT attached "
+                       "(standalone `python -m hearth.serve` already running?)", host, port, exc)
+        await runner.cleanup()
+        return None
+    print(f"[serve] /v1 facade → http://{host}:{port}/v1 (character={character}{pin_note})",
+          flush=True)
+    return runner
