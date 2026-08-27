@@ -4,9 +4,9 @@
 
 ```bash
 cd <the Hearth tree>          # no absolute path is assumed
-LM_API_TOKEN=$(cat ~/.lmstudio/lm-probe-token) $UV run python bot.py
+./start.sh                    # preflight + launch; manual equivalent: .venv/bin/python -m hearth.pipeline.bot
 ```
-(`$UV` = whatever `command -v uv` resolves — `./start.sh` does this for you and is the preferred entry point. Run it in an **iTerm** window — the app that holds the mic grant. Prepend `T4_METRICS=1` to print per-turn STT latency to stderr.)
+(The bot talks to `llama-server` at `http://127.0.0.1:8080/v1` by default — `LM_BASE_URL` / `LM_API_TOKEN` / `LM_PROVIDER` override it, see `start.sh`. Run it in an **iTerm** window — the app that holds the mic grant. Prepend `T4_METRICS=1` to print per-turn STT latency to stderr.)
 
 **Healthy startup** prints, in order: `Pipecat 1.4.0` → `Loaded Silero VAD` → `Loaded Local Smart Turn v3.x` → in-process model loads (Whisper warm-up + Chatterbox load + voice conditionals, **~10–20 s warm**) → the `Linking … VADProcessor → MLXWhisperSTTService → … → MLXAudioTTSService → …` chain → **`StartFrame#0 reached the end of the pipeline, pipeline is now ready.`**
 
@@ -22,4 +22,4 @@ Bot started speaking … Bot stopped speaking
 ```
 Speaking over the reply cuts it off — that's **barge-in** working.
 
-> **First-ever synth on a fresh machine** adds a one-time **~15.8 s** MLX Metal-kernel JIT compile (cache persists on disk afterward). On this machine it's already paid — expect fast first turns unless LM Studio has to JIT-load the model (turn 1 only).
+> **First-ever synth on a fresh machine** adds a one-time **~15.8 s** MLX Metal-kernel JIT compile (cache persists on disk afterward). On this machine it's already paid — expect fast first turns unless your LLM server has to load the model (turn 1 only).

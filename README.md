@@ -87,7 +87,17 @@ managed API in the loop would defeat the point.
    own, drop one clean 10–15 s reference clip into a voice bundle and point a `voice.toml` at
    it — see [Bring your own voice](docs/bring-your-own-voice.md).
 
-5. **Talk.** Start the pipeline and speak.
+5. **Talk.** With your server up, run the preflight, then launch — in a terminal window (macOS
+   grants the microphone to the terminal app, not to Python):
+
+   ```bash
+   ./start.sh --check   # server reachable, model id, no stale bot, mic + speaker
+   ./start.sh           # go online — speak first (no auto-greeting); Ctrl-C or ./stop.sh to stop
+   ```
+
+   `start.sh` expects `llama-server` at `http://127.0.0.1:8080/v1`. Point it elsewhere with
+   `LM_BASE_URL` (LM Studio: `http://127.0.0.1:1234/v1`, plus `LM_API_TOKEN` and
+   `LM_PROVIDER=lmstudio`). Manual launch: `.venv/bin/python -m hearth.pipeline.bot`.
 
 ## Bring-your-own philosophy
 

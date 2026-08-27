@@ -2,17 +2,18 @@
 Hearth — fully-local voice-conversation pipeline (in-process TTS).
 
 Architecture:
-    mic ─▶ Silero VAD ─▶ MLX-Whisper-turbo ─▶ LM Studio LLM ─▶ Chatterbox-Turbo(in-process) ─▶ speaker
-           (in LLMUserAggregatorParams)       :1234/v1             mlx-audio / MLXAudioTTSService
+    mic ─▶ Silero VAD ─▶ MLX-Whisper-turbo ─▶ OpenAI-compatible LLM ─▶ Chatterbox-Turbo(in-process) ─▶ speaker
+           (in LLMUserAggregatorParams)       :8080/v1 (llama-server)    mlx-audio / MLXAudioTTSService
     barge-in: SileroVADAnalyzer inside LLMUserAggregatorParams triggers InterruptionFrame automatically.
 
 Endpoints:
-    LM Studio : http://127.0.0.1:1234/v1   (OpenAI-compatible; pass your lm-probe-token as api_key)
+    LLM       : http://127.0.0.1:8080/v1   (llama-server default; any OpenAI-compatible server —
+                override with LM_BASE_URL, and LM_API_TOKEN if the server wants a key)
     TTS       : in-process via MLXAudioTTSService (Chatterbox-Turbo fp16, 24 kHz, default voice)
 
 Usage:
     cd <repo root>          # wherever this tree lives — no absolute path is assumed
-    LM_API_TOKEN=$(cat ~/.lmstudio/lm-probe-token) uv run python -m hearth.pipeline.bot
+    .venv/bin/python -m hearth.pipeline.bot
 
     Prefer ./start.sh: it runs preflight first and resolves its own root, so it works
     from any account/location.
@@ -117,18 +118,19 @@ import hearth.control.features.config_knobs  # noqa: F401
 # literals. To change who/which-engine is live: edit config/active.toml + restart.
 _CFG = config_loader.load_active()
 
-LMSTUDIO_BASE_URL = "http://127.0.0.1:1234/v1"
-# NOTE: LM Studio now requires a real API token (not "lm-studio").
-# Pass it via env var LM_API_TOKEN. Get it from ~/.lmstudio/lm-probe-token.
-# The default below will fail auth; set the env var before running.
-LM_API_TOKEN = os.environ.get("LM_API_TOKEN", "lm-studio")
+# LLM endpoint — any OpenAI-compatible server. Default = llama-server on its default
+# port, no API key. Override via env:
+#   LM_BASE_URL   e.g. http://127.0.0.1:1234/v1 for LM Studio
+#   LM_API_TOKEN  bearer key, only if the server requires one (llama-server --api-key,
+#                 LM Studio's token). Unset ⇒ "none" is sent; keyless servers ignore it.
+LM_BASE_URL = os.environ.get("LM_BASE_URL", "http://127.0.0.1:8080/v1")
+LM_API_TOKEN = os.environ.get("LM_API_TOKEN") or "none"
 
-# Engine-probe backend selector. Default "lmstudio" keeps the LM Studio
-# /api/v0/models probe; set LM_PROVIDER=llama-server to route the panel probe through
-# the llama-server /props adapter (hearth/control/engine_probe_llamaserver.py). Rides
-# the same env-config idiom as LM_API_TOKEN and the LMSTUDIO_BASE_URL constant — the
-# LM endpoint's home in this spine — so config_loader/ActiveConfig stay untouched.
-LM_PROVIDER = os.environ.get("LM_PROVIDER", "lmstudio")
+# Engine-probe backend selector for the control panel: "llama-server" (default — the
+# /props adapter in hearth/control/engine_probe_llamaserver.py) or "lmstudio" (the
+# /api/v0/models probe). Rides the same env-config idiom as LM_BASE_URL / LM_API_TOKEN —
+# the LM endpoint's home in this spine — so config_loader/ActiveConfig stay untouched.
+LM_PROVIDER = os.environ.get("LM_PROVIDER", "llama-server")
 
 # LLM: the model id comes from config/models/<active-model>/model.toml (.id),
 # selected via config/active.toml.
@@ -199,7 +201,7 @@ async def build_pipeline(
         → vad          (VADProcessor: Silero VAD → VADUser{Started,Stopped}SpeakingFrame)
         → stt          (MLX-Whisper VAD-segmented chunks → TranscriptionFrame)
         → user_agg     (aggregates transcriptions; turn-taking + barge-in)
-        → llm          (OpenAILLMService pointing at LM Studio)
+        → llm          (OpenAILLMService pointing at your OpenAI-compatible server)
         → tts          (MLXAudioTTSService, sentence-at-a-time, streaming chunks)
         → transport.output()
         → speaking_tap (SpeakingTap: tracks BotStarted/StoppedSpeakingFrame for /say)
@@ -237,9 +239,9 @@ async def build_pipeline(
         settings=STTSettings(model=None, language=None),
     )
 
-    # LLM (LM Studio OpenAI-compatible endpoint)
+    # LLM (OpenAI-compatible endpoint — llama-server by default)
     llm = OpenAILLMService(
-        base_url=LMSTUDIO_BASE_URL,
+        base_url=LM_BASE_URL,
         api_key=LM_API_TOKEN,
         settings=OpenAILLMService.Settings(
             model=LM_MODEL,
@@ -456,7 +458,7 @@ async def main(
     # the slow re-poll task below. bot.py owns the base_url + token; control.py
     # exposes the pure fetch helper (no circular import). Fully graceful — any
     # failure yields all-None → panel shows '—'.
-    engine_info = await fetch_engine_info_for(LM_PROVIDER, LMSTUDIO_BASE_URL, LM_API_TOKEN, LM_MODEL)
+    engine_info = await fetch_engine_info_for(LM_PROVIDER, LM_BASE_URL, LM_API_TOKEN, LM_MODEL)
     # Piggyback the session descriptor onto the same static-facts dict: it's
     # resolved once at startup (New / Restored / <held-name>) and rides the
     # existing /engine route + one-shot fetch. "New" is the safe default.
@@ -480,7 +482,7 @@ async def main(
     async def _engine_repoll(interval_s: float = 60.0) -> None:
         while True:
             await asyncio.sleep(interval_s)
-            engine_info.update(await fetch_engine_info_for(LM_PROVIDER, LMSTUDIO_BASE_URL, LM_API_TOKEN, LM_MODEL))
+            engine_info.update(await fetch_engine_info_for(LM_PROVIDER, LM_BASE_URL, LM_API_TOKEN, LM_MODEL))
 
     engine_repoll_task = asyncio.create_task(_engine_repoll())
 
@@ -502,7 +504,7 @@ async def main(
     # config/serve.toml gates it: absent/enabled=false ⇒ None and nothing loads
     # (byte-identical appliance, no prompt-slot participation). Own app + port —
     # deliberately NOT the panel's app (auth + tailnet isolation; see serve/).
-    serve_runner = await serve.maybe_attach(_CFG, LMSTUDIO_BASE_URL, LM_API_TOKEN)
+    serve_runner = await serve.maybe_attach(_CFG, LM_BASE_URL, LM_API_TOKEN)
 
     runner = WorkerRunner()
     await runner.add_workers(worker)

@@ -5,7 +5,7 @@
 ```
                         ┌─────────────────────────────────────────────┐
    bot.py (python) ─────┤ REQUIRED to talk:                            │
-   under iTerm.app      │   • LM Studio  :1234   (loaded model + token)
+   under the terminal   │   • an OpenAI-compatible LLM server (llama-server :8080)
         │               │   • mic permission → iTerm.app (macOS TCC)   │
         │               │   • the uv venv (.venv, transformers==5.5.0) │
         ▼               │   TTS + STT run IN-PROCESS (no external app) │
@@ -14,18 +14,18 @@
 
 | Dependency | Needed? | Note |
 |---|---|---|
-| **LM Studio** `:1234` | **Yes** | must have the model the bot targets loaded — resolved from config (`config/active.toml` → `config/models/<model>/model.toml` → `.id`); a hybrid-thinking default needs thinking forced OFF via `reasoning_effort:"none"` (`model.toml`) **and**, for some uncensored re-quants, the persistent LM Studio Prompt-Template edit (`model.toml.needs_template_edit`) + a valid API token |
+| **LLM server** (`llama-server` `:8080` default; LM Studio `:1234` + token as the alternative) | **Yes** | must serve the model the bot targets — resolved from config (`config/active.toml` → `config/models/<model>/model.toml` → `.id`); a hybrid-thinking default needs thinking forced OFF via `reasoning_effort:"none"` (`model.toml`) **and**, for some uncensored re-quants, the persistent LM Studio Prompt-Template edit (`model.toml.needs_template_edit`) + a valid API token |
 | **A default mic + speaker** | **Yes** | transport grabs the macOS **default** in/out at startup (no device pinned). Esp. after a Bluetooth switch — see §1 check 3 |
 | **In-process TTS** (Chatterbox-Turbo) | auto | loads inside `bot.py` at startup from the `.venv`; **no app, no port**. Weights cached under `~/.cache/huggingface` |
 | **In-process STT** (MLX-Whisper) | auto | same — loads inside `bot.py` at startup |
 | **mic permission** | **Yes** | granted to **iTerm.app** (or whichever terminal launches python), not python itself (macOS TCC) |
-| **`.venv`** | **Yes** | already built; `uv sync` if rebuilding. **`transformers` must be pinned `==5.5.0`** |
+| **`.venv`** | **Yes** | `uv venv -p 3.12 && uv pip install -e ".[mac]"` (README). **`transformers` must be pinned `==5.5.0`** |
 | A separate TTS service/port | **No** | not used — TTS is in-process. |
-| Ollama `:11434` | **No** | not used (LLM comes from LM Studio). Ignore. |
+| Ollama `:11434` | **No** | not used (the LLM comes from the server above). Ignore. |
 
-> LM Studio is a shared, always-on desktop app — "online/offline" below means *the conversation loop* (`bot.py`). You normally leave LM Studio running for other work. §4 covers reclaiming its memory.
+> The LLM server is a separate, long-running process — "online/offline" below means *the conversation loop* (`bot.py`). You normally leave the server running. §4 covers reclaiming its memory.
 
-## Version pins — the LM Studio stack
+## Version pins — if you use LM Studio instead of `llama-server`
 
 The serving stack is version-sensitive; these pins are deliberate, not neglect. Run a
 pre/post-update test before advancing any of them — the live voice loop rides this server.

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # stop.sh — bring the Hearth voice loop offline. Mirrors the runbook stop steps.
 # Stops bot.py → releases the mic + frees the in-process STT + TTS weights.
-# LM Studio KEEPS RUNNING (that's intentional). Full teardown / reclaim its memory = eject
-# the model in LM Studio (see the runbook); this script never touches LM Studio.
+# Your LLM server KEEPS RUNNING (that's intentional). Full teardown / reclaim its memory =
+# stop llama-server (or eject the model in whatever server you run); this script never touches it.
 #
 # Session continuity (Tier 1):
 #   ./stop.sh                     stop; the session is EPHEMERAL → its transcript is truly deleted
@@ -38,14 +38,14 @@ if [ "$MODE" = "discard" ]; then
     printf '      ./stop.sh && ./stop.sh --discard-held %s\n' "$DISCARD_ARG" >&2
     exit 1
   fi
-  "$VENV_PY" "$DIR/session_store.py" discard-held ${DISCARD_ARG:+"$DISCARD_ARG"}
+  "$VENV_PY" -m hearth.session.session_store discard-held ${DISCARD_ARG:+"$DISCARD_ARG"}
   exit $?
 fi
 
 if ! pgrep -f "$PATTERN" >/dev/null 2>&1; then
   if [ "$MODE" = "hold" ]; then
     # No bot running: promote the newest ephemeral ORPHAN to held directly.
-    "$VENV_PY" "$DIR/session_store.py" hold ${HOLD_NAME:+"$HOLD_NAME"}
+    "$VENV_PY" -m hearth.session.session_store hold ${HOLD_NAME:+"$HOLD_NAME"}
     exit $?
   fi
   printf 'No bot running — nothing to stop.\n'
@@ -56,10 +56,10 @@ fi
 # shutdown `finally` sees the marker and keeps (promotes) its session instead of
 # deleting it. Then fall through to the normal graceful stop below.
 if [ "$MODE" = "hold" ]; then
-  "$VENV_PY" "$DIR/session_store.py" request-hold ${HOLD_NAME:+"$HOLD_NAME"}
+  "$VENV_PY" -m hearth.session.session_store request-hold ${HOLD_NAME:+"$HOLD_NAME"}
 fi
 
-printf 'Stopping bot.py (SIGINT → graceful shutdown) …\n'
+printf 'Stopping the bot (SIGINT → graceful shutdown) …\n'
 # SIGINT, not SIGTERM: the WorkerRunner handles SIGINT (handle_sigint=True) but NOT
 # SIGTERM (handle_sigterm=False), so only SIGINT runs bot.py's finally — which prints
 # the TokenMeter shutdown summary (it appears in the WINDOW RUNNING THE BOT, not here).
@@ -88,4 +88,4 @@ if pgrep -f "$PATTERN" >/dev/null 2>&1; then
   exit 1
 fi
 
-printf '  \033[32m✓\033[0m stopped — mic released, in-process STT+TTS freed. LM Studio still running.\n'
+printf '  \033[32m✓\033[0m stopped — mic released, in-process STT+TTS freed. Your LLM server is still running.\n'

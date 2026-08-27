@@ -249,7 +249,7 @@ def load_serve_config() -> dict | None:
 
     token_source / lm_token_source are PATHS to secrets, never secrets;
     relative paths resolve against the repo root. Env wins: SERVE_TOKEN for the
-    facade bearer, LM_API_TOKEN for the LM Studio key.
+    facade bearer, LM_API_TOKEN for the LLM server key.
 
     Optional [serve.identity] table (character + voice, both required if the
     table exists): pins the facade's persona/voice to a FIXED selection instead
@@ -275,8 +275,8 @@ def load_serve_config() -> dict | None:
         "host": "127.0.0.1",
         "port": 65001,
         "token_source": "config/serve-token",
-        "lm_base_url": "http://127.0.0.1:1234/v1",
-        "lm_token_source": "~/.lmstudio/lm-probe-token",
+        "lm_base_url": "http://127.0.0.1:8080/v1",   # llama-server default
+        "lm_token_source": "",                        # keyless by default; a PATH if the server wants one
         "audio_base_url": "http://127.0.0.1:8555/v1",
         "tts_model": "mlx-community/chatterbox-turbo-fp16",
         "stt_model": "mlx-community/whisper-large-v3-turbo",
