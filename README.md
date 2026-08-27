@@ -68,6 +68,8 @@ managed API in the loop would defeat the point.
    ```
 
    (`python3.12 -m venv .venv && .venv/bin/pip install -e ".[mac]"` works too, just slower.)
+   Full walkthrough — system prerequisites (PortAudio!), fetching the speech models, the first
+   launch — in [Installing Hearth](docs/installing.md).
 
 2. **Bring an LLM.** Download GGUF weights for a chat model you like and serve them with
    [`llama-server`](https://github.com/ggml-org/llama.cpp) (from llama.cpp), which exposes an
@@ -113,6 +115,8 @@ Three things Hearth deliberately does **not** bundle:
 
 ## Guides
 
+- [Installing Hearth](docs/installing.md) — every prerequisite, the speech-model fetch, the
+  voice-engine smoke test, first launch, updating.
 - [Authoring a character](docs/authoring-a-character.md) — write a persona, lay out a
   character directory.
 - [Bring your own voice](docs/bring-your-own-voice.md) — add a reference clip and a voice
