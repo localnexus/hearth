@@ -24,11 +24,12 @@ characters/
     sessions/            ← written at runtime: this companion's conversations (0700, gitignored)
     transcripts/         ← written at runtime: the serve facade's taps, if enabled
     captures/            ← written at runtime: recordings from the panel's Record button
+    memory/              ← written at runtime: canonical memory records, if memory is enabled
     profile.toml         ← written by the panel: the companion's saved knob preset
 ```
 
-The first block is what you author; the `sessions/`, `transcripts/`, `captures/`, and
-`profile.toml` entries appear as the companion is used — they are **its** memory and
+The first block is what you author; the `sessions/`, `transcripts/`, `captures/`, `memory/`,
+and `profile.toml` entries appear as the companion is used — they are **its** memory and
 recordings, kept in its own directory so the whole companion moves (or is erased) as one.
 If you set `HEARTH_DATA`, the same layout lives there instead of in the checkout.
 

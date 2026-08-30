@@ -124,6 +124,8 @@ Three things Hearth deliberately does **not** bundle:
   descriptor, with the rights/consent expectations.
 - [The config layers](docs/the-config-layers.md) — which file you edit, which files edit
   themselves, and which one you never print.
+- [Memory](docs/memory.md) — cross-session continuity: the memory seam, the zero-dependency
+  floor, adopted backends, and what enabling it means for what's kept on disk.
 
 ## License
 

@@ -94,6 +94,7 @@ from hearth.config import config_loader
 from hearth.config import config_reload
 from hearth.bridges import openclaw_bridge
 from hearth import serve
+from hearth import memory as hearth_memory
 
 # ── L2 panel features (activation = import; registers routes on control_routes) ──
 # Each import runs the module's @register side effect, adding its routes to the web
@@ -239,13 +240,24 @@ async def build_pipeline(
         settings=STTSettings(model=None, language=None),
     )
 
+    # Memory seam (cross-session continuity): activation = config presence
+    # (config/memory.toml enabled=true); absent/disabled ⇒ None and the composed
+    # prompt is byte-identical. Enabled, recall runs ONCE here at session start
+    # (never on the per-turn path) and appends a dated, provenance-framed block
+    # AFTER the persona render — PROMPT_FINGERPRINT is computed memory-free in
+    # config_loader, so drift detection and resume warnings stay stable.
+    memory_seam = hearth_memory.maybe_attach(_CFG.character, persona=_CFG.persona_name)
+    system_instruction = (
+        memory_seam.augment(SYSTEM_INSTRUCTION) if memory_seam else SYSTEM_INSTRUCTION
+    )
+
     # LLM (OpenAI-compatible endpoint — llama-server by default)
     llm = OpenAILLMService(
         base_url=LM_BASE_URL,
         api_key=LM_API_TOKEN,
         settings=OpenAILLMService.Settings(
             model=LM_MODEL,
-            system_instruction=SYSTEM_INSTRUCTION,
+            system_instruction=system_instruction,
             # temperature + reasoning_effort sourced from the active model.toml
             # (was 0.7 / "none" hardcoded). model.toml pins today's values, so the
             # request body is byte-identical.
@@ -403,7 +415,8 @@ async def build_pipeline(
         assistant_agg,
     ])
 
-    return pipeline, transport, context, mute_gate, speaking_tap, measure_observer, recorder
+    return (pipeline, transport, context, mute_gate, speaking_tap, measure_observer,
+            recorder, memory_seam)
 
 
 async def main(
@@ -420,7 +433,8 @@ async def main(
     # Must be the FIRST audio-touching act.
     await recording_repair_routing()
 
-    pipeline, transport, context, mute_gate, speaking_tap, measure_observer, recorder = await build_pipeline(
+    (pipeline, transport, context, mute_gate, speaking_tap, measure_observer,
+     recorder, memory_seam) = await build_pipeline(
         dump_dir, resume_messages=resume_messages, store=store
     )
 
@@ -527,6 +541,16 @@ async def main(
         await web_runner.cleanup()
         if serve_runner is not None:
             await serve_runner.cleanup()
+        # Memory seam: store + consolidate on graceful end — MUST run BEFORE
+        # session_store.finalize below, which true-deletes an ephemeral session
+        # file. The seam writes the canonical memory record first, then lets the
+        # backend index it; every step is contained inside on_session_end (a
+        # memory failure degrades, never breaks shutdown — decider 6).
+        if memory_seam is not None:
+            mem_status = memory_seam.on_session_end(context.messages, store)
+            if mem_status:
+                print(f"[memory] {mem_status}", flush=True)
+            memory_seam.close()
         # Session lifecycle (Tier 1): ephemeral-default. On this graceful SIGINT/finally
         # path (what ./stop.sh triggers) the bot truly deletes its own session file
         # UNLESS held (or a --hold request marker is present). Snapshot+os.replace means

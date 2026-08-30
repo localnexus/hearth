@@ -1,0 +1,55 @@
+# config/memory.toml — the memory seam: cross-session continuity, per companion.
+#
+# Copy to config/memory.toml and set enabled = true. Absent or disabled, the
+# engine runs byte-identically (no recall block, no records, nothing loaded).
+#
+# What enabling this MEANS: on every graceful stop the seam writes a canonical
+# memory record (characters/<companion>/memory/records/<session>.json — the
+# conversation's messages + metadata, 0600, gitignored, local only) even though
+# the session file itself stays ephemeral-by-default. Memory is the choice to
+# keep a trace; delete a record file to forget that session, then rerun
+#   python -m hearth.memory rebuild
+# to make the active backend forget it too (backends are derived indexes —
+# records are the truth).
+
+[memory]
+enabled = false
+
+# Default backend for every companion:
+#   "floor"     — zero-dependency compaction floor: recalls a dated digest of
+#                 the last few conversations. Works on a base install.
+#   "hindsight" — run-verified richer backend (typed temporal facts, semantic
+#                 recall). Needs:  pip install 'hearth[memory-hindsight]'
+#                 and the [memory.hindsight] section below.
+#   "none"      — memory off (same as enabled = false, but per companion).
+backend = "floor"
+
+# How many recalled items are injected at session start (each is one dated line).
+recall_limit = 6
+
+# What recall asks the backend for (semantic backends only; the floor ignores it).
+recall_query = "the user's life, preferences, and recent conversations"
+
+# Per-companion overrides — the continuity dial. Unlisted companions use
+# `backend` above.
+[memory.companions]
+# ani = "hindsight"
+# guest = "none"
+
+# Hindsight backend settings (only read when some companion selects it).
+# llm_model is REQUIRED: the local model Hindsight uses to extract facts at
+# session end (never on the per-turn path). Provider + model must exist on this
+# machine — memory stays local-only.
+[memory.hindsight]
+# llm_provider = "ollama"          # ollama | lmstudio | llamacpp | ...
+# llm_model = "qwen3-coder:30b"    # extraction model, must be pulled locally
+# llm_api_key = ""
+# db_url = "pg0"                   # bundled embedded PostgreSQL (port 5432, ~/.pg0)
+# retain_max_chars = 6000          # transcript tail handed to extraction at stop
+# log_level = "warning"
+
+# Extra environment for the embedded server (applied with setdefault before
+# start — the operator's shell still wins). See docs/memory.md for the knob
+# surface (HINDSIGHT_API_*).
+[memory.hindsight.env]
+# HINDSIGHT_API_LLM_BASE_URL = "http://127.0.0.1:11434"

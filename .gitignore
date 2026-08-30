@@ -15,6 +15,7 @@ env/
 sessions/
 captures/
 transcripts/
+characters/**/memory/
 
 # Local config — copied from the .example templates, holds your selections/secrets
 config/active.toml
@@ -22,6 +23,7 @@ config/overrides.toml
 config/serve.toml
 config/serve-token
 config/openclaw.toml
+config/memory.toml
 config/profiles/
 
 # YOUR companions and model configs never enter the engine repo (when HEARTH_DATA is

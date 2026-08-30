@@ -63,6 +63,7 @@ ACTIVE_TOML = CONFIG_DIR / "active.toml"
 
 OPENCLAW_TOML = CONFIG_DIR / "openclaw.toml"
 SERVE_TOML = CONFIG_DIR / "serve.toml"
+MEMORY_TOML = CONFIG_DIR / "memory.toml"
 
 _HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")  # dir-name / variant-name safe; blocks traversal
@@ -349,6 +350,32 @@ def _openclaw_prompt_block() -> str:
     """
     cfg = load_openclaw_config()
     return str(cfg.get("prompt_block", "")).strip() if cfg else ""
+
+
+def load_memory_config() -> dict | None:
+    """Read config/memory.toml — the memory-seam activation gate.
+
+    Returns the [memory] table with defaults applied, or None when the file is
+    absent or enabled=false — the load_openclaw_config shape and contract: an
+    absent optional file is NOT an error (memory off, engine byte-identical);
+    malformed ⇒ ConfigError naming it. Backend selection is per companion:
+    ``backend`` is the default for every companion, the [memory.companions]
+    sub-table overrides it by name, and the value "none" opts a companion out.
+    The seam (hearth.memory.maybe_attach) is the only consumer.
+    """
+    if not MEMORY_TOML.exists():
+        return None
+    mem = _read_toml(MEMORY_TOML).get("memory")
+    if not isinstance(mem, dict) or not mem.get("enabled"):
+        return None
+    cfg: dict = {
+        "backend": "floor",
+        "recall_limit": 6,
+        "recall_query": "the user's life, preferences, and recent conversations",
+        "companions": {},
+    }
+    cfg.update(mem)
+    return cfg
 
 
 def load_serve_config() -> dict | None:

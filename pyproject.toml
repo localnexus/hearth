@@ -24,6 +24,12 @@ mac = [
 # cuda — silver-tier / NVIDIA backend. Declared empty for now; its contents are a
 # separate later decision (silver-tier is not scoped yet).
 cuda = []
+# memory-<backend> — adopted memory backends for the memory seam (hearth/memory/).
+# Base install ships the seam + the zero-dependency compaction floor; a heavy
+# candidate's closure arrives ONLY via its extra (run-verified pick: survey §5b).
+memory-hindsight = [
+    "hindsight-all>=0.9.2",
+]
 
 [build-system]
 requires = ["hatchling"]
