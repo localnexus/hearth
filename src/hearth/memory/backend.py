@@ -91,6 +91,18 @@ def _clip(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
+# Tooling meta-messages that can sit in a session transcript but are not
+# conversation — e.g. the compaction tool's "[session compact applied — full
+# transcript backed up under …]" marker. The digest must never surface these as
+# a "representative line" (run-observed 2026-08-30: the marker — internal backup
+# path included — became a companion's remembered opening line).
+_META_PREFIXES = ("[session compact",)
+
+
+def _is_meta(content: object) -> bool:
+    return str(content).lstrip().lower().startswith(_META_PREFIXES)
+
+
 def digest_record(record: SessionRecord) -> str:
     """A one-paragraph, deterministic, LLM-free digest of a session record.
 
@@ -99,7 +111,8 @@ def digest_record(record: SessionRecord) -> str:
     dependencies (decider 5). Deliberately extractive — first user line,
     last exchange, turn count — never generated, so it can't hallucinate.
     """
-    user_msgs = [m for m in record.messages if m.get("role") == "user"]
+    user_msgs = [m for m in record.messages
+                 if m.get("role") == "user" and not _is_meta(m.get("content", ""))]
     assistant_msgs = [m for m in record.messages if m.get("role") == "assistant"]
     parts: list[str] = []
     if record.name:

@@ -64,6 +64,27 @@ class TestDigest(unittest.TestCase):
         )
         self.assertNotIn("SECRET ENVELOPE", digest_record(r))
 
+    def test_skips_compaction_meta_as_representative_line(self):
+        # Run-observed 2026-08-30: a compacted session's first user message is the
+        # tool's meta-marker; the digest surfaced it (backup path included) as the
+        # companion's remembered opening line. It must be skipped, not remembered.
+        r = SessionRecord(
+            companion="c", session_id="s", started="", ended="2026-08-30T03:00:00",
+            messages=[
+                {"role": "user", "content": "[session compact applied — full transcript "
+                                            "backed up under pre-compaction-bak/2026.08.30/s.json; "
+                                            "continue as established partners]"},
+                {"role": "assistant", "content": "compact body summary"},
+                {"role": "user", "content": "real opening line"},
+                {"role": "assistant", "content": "real reply"},
+            ],
+        )
+        d = digest_record(r)
+        self.assertNotIn("session compact", d)
+        self.assertNotIn("pre-compaction-bak", d)
+        self.assertIn("real opening line", d)
+        self.assertIn("1 exchange", d)  # meta line no longer counts as a user turn
+
 
 class TestRecords(unittest.TestCase):
     def test_roundtrip_perms_order_and_malformed_skip(self):
