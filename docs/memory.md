@@ -63,7 +63,33 @@ class as held sessions. Per-companion opt-out: map that companion to `"none"`.
 | backend | needs | recall |
 |---|---|---|
 | `floor` | nothing (ships with base) | dated digest of the last N conversations (recency, not semantic — deterministic, no LLM) |
-| `hindsight` | `pip install 'hearth[memory-hindsight]'` + a local extraction model | semantic recall over typed, dated facts extracted at session end |
+| `hindsight` | client extra + a sidecar venv + a local extraction model (setup below) | semantic recall over typed, dated facts extracted at session end |
+
+### Hindsight setup — sidecar topology
+
+Hindsight's server closure needs `protobuf>=7`; pipecat pins `protobuf<7`. They can
+**never share a venv**, so the split is: the engine gets only the featherweight client
+SDK, and the server runs as a **sidecar process from its own venv**, spawned and
+terminated by the adapter (same UX as embedded — session start boots it, close stops it).
+
+```bash
+# 1. engine venv — the client SDK only (aiohttp/pydantic, no protobuf):
+uv pip install -e ".[mac,memory-hindsight]"
+
+# 2. sidecar venv — the server (~1.4 GB closure), anywhere outside the engine venv:
+uv venv -p 3.11 /path/to/hindsight-sidecar/.venv
+uv pip install --python /path/to/hindsight-sidecar/.venv/bin/python 'hindsight-all==0.9.2'
+
+# 3. memory.toml:
+#    [memory.companions]  <name> = "hindsight"
+#    [memory.hindsight]   python = "/path/to/hindsight-sidecar/.venv/bin/python"
+#                         llm_model = "<local extraction model>"
+
+# 4. inherit the archive:
+python -m hearth.memory rebuild --character <name>
+```
+
+`mode = "embedded"` (in-process import) remains for non-pipecat hosts.
 
 ### Hindsight notes
 

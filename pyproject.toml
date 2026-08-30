@@ -25,10 +25,13 @@ mac = [
 # separate later decision (silver-tier is not scoped yet).
 cuda = []
 # memory-<backend> — adopted memory backends for the memory seam (hearth/memory/).
-# Base install ships the seam + the zero-dependency compaction floor; a heavy
-# candidate's closure arrives ONLY via its extra (run-verified pick: survey §5b).
+# Base install ships the seam + the zero-dependency compaction floor.
+# hindsight: the extra installs ONLY the featherweight client SDK — the server
+# (hindsight-all, ~1.4 GB closure) CANNOT share this venv (it needs protobuf>=7,
+# pipecat pins protobuf<7) and runs as a sidecar from its own venv instead
+# (mode="sidecar" in memory.toml; setup in docs/memory.md).
 memory-hindsight = [
-    "hindsight-all>=0.9.2",
+    "hindsight-client>=0.9.2",
 ]
 
 [build-system]

@@ -199,6 +199,40 @@ class TestSeam(unittest.TestCase):
             self.assertEqual(list(records_mod.iter_records("testchar", d)), [])
 
 
+class TestHindsightSidecar(unittest.TestCase):
+    """Sidecar plumbing only — no hindsight install needed: a stub runner stands
+    in for the real server (spawn → parse HINDSIGHT_URL → terminate)."""
+
+    def test_spawn_parse_terminate(self):
+        from hearth.memory.backend_hindsight import HindsightBackend
+        with tempfile.TemporaryDirectory() as tmp:
+            stub = Path(tmp) / "stub_runner.py"
+            stub.write_text(
+                "import time\n"
+                "print('startup noise', flush=True)\n"
+                "print('HINDSIGHT_URL=http://127.0.0.1:59999', flush=True)\n"
+                "time.sleep(60)\n",
+                encoding="utf-8",
+            )
+            b = HindsightBackend({"mode": "sidecar", "python": sys.executable,
+                                  "runner": str(stub), "llm_model": "m"})
+            b._start_sidecar()
+            proc = b._proc
+            try:
+                self.assertEqual(b._url, "http://127.0.0.1:59999")
+                self.assertIsNone(proc.poll())  # still running until close
+            finally:
+                b.close()
+            self.assertIsNotNone(proc.poll())   # terminated by close
+            self.assertIsNone(b._proc)
+
+    def test_sidecar_requires_python_path(self):
+        from hearth.memory.backend_hindsight import HindsightBackend
+        b = HindsightBackend({"mode": "sidecar", "llm_model": "m"})
+        with self.assertRaises(ValueError):
+            b._start_sidecar()
+
+
 # ── the config gate: anchors resolve at import ⇒ subprocess (test_data_root shape) ──
 
 _GATE_PROBE = """
