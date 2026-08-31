@@ -75,6 +75,10 @@ recall_query = "the user's life, preferences, and recent conversations"
 # db_url = "pg0"                   # bundled embedded PostgreSQL (port 5432, ~/.pg0)
 # retain_max_chars = 6000          # transcript tail handed to extraction at stop
 # log_level = "warning"
+# log_file = "/path/to/hindsight-sidecar.log"   # the sidecar CHILD's own stdout+stderr.
+#                                  # Unset: <data root>/logs/hindsight-sidecar.log (0600 in a
+#                                  # 0700 dir). Rotated to <name>.1 at spawn past ~5 MB.
+#                                  # This is where a silent sidecar death is diagnosed.
 
 # Extra environment for the embedded server (applied with setdefault before
 # start — the operator's shell still wins). See docs/memory.md for the knob

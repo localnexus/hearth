@@ -12,6 +12,11 @@
  7. intent-primed boot recall: capture writes a 0600 slot, boot steers the
     query + injects a dated line + consumes the slot; "none"/off/stale/broken
     all leave the boot byte-identical (the LLM is always mocked — no network)
+ 8. the hindsight sidecar survives its own child (incident 2026-08-30): the
+    child's stdout+stderr land in a 0600 logfile in a 0700 dir and the pipe is
+    drained for life, an oversized log rotates to .1 at spawn, a dead child is
+    respawned exactly ONCE (a second death raises), and close() after a death
+    is quiet — all against a stub runner, no hindsight install, no network
 
 Run:  .venv/bin/python -m unittest tests/test_memory.py
 """
@@ -26,6 +31,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -367,6 +373,18 @@ class TestIntentSlot(unittest.TestCase):
                          "the tea ceremony")
 
 
+class _FakeClient:
+    """Stands in for hindsight_client.Hindsight — the SDK is not installed here
+    (and must never be needed to test the adapter's process plumbing)."""
+
+    def __init__(self, url: str | None) -> None:
+        self.url = url
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
+
+
 class TestHindsightSidecar(unittest.TestCase):
     """Sidecar plumbing only — no hindsight install needed: a stub runner stands
     in for the real server (spawn → parse HINDSIGHT_URL → terminate)."""
@@ -383,7 +401,8 @@ class TestHindsightSidecar(unittest.TestCase):
                 encoding="utf-8",
             )
             b = HindsightBackend({"mode": "sidecar", "python": sys.executable,
-                                  "runner": str(stub), "llm_model": "m"})
+                                  "runner": str(stub), "llm_model": "m",
+                                  "log_file": str(Path(tmp) / "logs" / "sidecar.log")})
             b._start_sidecar()
             proc = b._proc
             try:
@@ -420,6 +439,132 @@ class TestHindsightSidecar(unittest.TestCase):
         b.close()  # shuts the pool with no client/proc — must not raise
         # sync context (CLI rebuild) goes straight through on the caller's thread
         self.assertEqual(b._call(threading.get_ident), threading.get_ident())
+
+    # ── the 2026-08-30 incident: a child that died blind and undrained ───────
+
+    _NOISY = (
+        "import sys, time\n"
+        "print('startup noise', flush=True)\n"
+        "print('HINDSIGHT_URL=http://127.0.0.1:59999', flush=True)\n"
+        "print('post-handshake stdout line', flush=True)\n"
+        "sys.stderr.write('stderr complaint\\n')\n"
+        "sys.stderr.flush()\n"
+        "time.sleep(60)\n"
+    )
+    _DIES = "import sys\nsys.exit(3)\n"
+
+    def _stub(self, tmp: Path, name: str, src: str) -> Path:
+        path = tmp / f"{name}.py"
+        path.write_text(src, encoding="utf-8")
+        return path
+
+    def _backend(self, tmp: Path, runner: Path, log: Path):
+        from hearth.memory.backend_hindsight import HindsightBackend
+        return HindsightBackend({"mode": "sidecar", "python": sys.executable,
+                                 "runner": str(runner), "llm_model": "m",
+                                 "log_file": str(log)})
+
+    def _wait_for(self, log: Path, needle: str, timeout: float = 15.0) -> str:
+        deadline = time.monotonic() + timeout
+        text = ""
+        while time.monotonic() < deadline:
+            text = log.read_text(encoding="utf-8") if log.exists() else ""
+            if needle in text:
+                return text
+            time.sleep(0.05)
+        return text
+
+    def test_child_stdout_and_stderr_land_in_the_logfile_at_0600(self):
+        """Both holes from the incident, in one run: stderr no longer goes to
+        DEVNULL, and stdout keeps being drained after the handshake line."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            log = tmp / "logs" / "hindsight-sidecar.log"
+            b = self._backend(tmp, self._stub(tmp, "noisy", self._NOISY), log)
+            b._start_sidecar()
+            try:
+                text = self._wait_for(log, "stderr complaint")
+            finally:
+                b.close()
+            self.assertIn("startup noise", text)              # pre-handshake stdout
+            self.assertIn("post-handshake stdout line", text)  # the drain thread
+            self.assertIn("stderr complaint", text)            # stderr, not DEVNULL
+            self.assertEqual(stat.S_IMODE(log.stat().st_mode), 0o600)
+            self.assertEqual(stat.S_IMODE(log.parent.stat().st_mode), 0o700)
+            self.assertIsNone(b._log)                          # handle released by close()
+
+    def test_oversized_log_rotates_to_dot_one_at_spawn(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            log = tmp / "logs" / "hindsight-sidecar.log"
+            log.parent.mkdir(parents=True)
+            log.write_text("x" * (5 * 1024 * 1024 + 1), encoding="utf-8")
+            b = self._backend(tmp, self._stub(tmp, "noisy", self._NOISY), log)
+            b._start_sidecar()
+            b.close()
+            rotated = log.with_name(log.name + ".1")
+            self.assertTrue(rotated.is_file())
+            self.assertGreater(rotated.stat().st_size, 5 * 1024 * 1024)
+            self.assertLess(log.stat().st_size, 4096)          # a fresh generation
+
+    def test_dead_sidecar_respawns_once_and_a_second_death_raises(self):
+        """The store at session close used to die on ClientConnectorError when
+        the child was gone (run-observed). _ensure now notices and respawns —
+        once. The SDK is absent here, so _new_client is the seam."""
+        from hearth.memory import backend_hindsight as hs
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            log = tmp / "logs" / "hindsight-sidecar.log"
+            b = self._backend(tmp, self._stub(tmp, "noisy", self._NOISY), log)
+            clients: list[_FakeClient] = []
+            b._new_client = lambda: clients.append(_FakeClient(b._url)) or clients[-1]
+
+            b._ensure()
+            first = b._proc
+            self.assertEqual(len(clients), 1)
+            b._ensure()                       # alive: no respawn, no new client
+            self.assertIs(b._proc, first)
+            self.assertEqual(len(clients), 1)
+
+            first.kill()
+            first.wait()
+            with mock.patch.object(hs.logger, "warning") as warn:
+                b._ensure()
+            observed = [c.args[1] for c in warn.call_args_list
+                        if "died (rc=" in str(c.args[0])]
+            self.assertEqual(observed, [first.returncode])     # the old rc was named
+            self.assertIsNot(b._proc, first)                   # exactly one respawn
+            self.assertIsNone(b._proc.poll())
+            self.assertEqual(len(clients), 2)
+            self.assertTrue(clients[0].closed)                 # stale client retired
+
+            # a sidecar that cannot come back propagates instead of looping
+            b._cfg["runner"] = str(self._stub(tmp, "dies", self._DIES))
+            b._proc.kill()
+            b._proc.wait()
+            with self.assertRaises(RuntimeError):
+                b._ensure()
+            b.close()
+
+    def test_close_after_child_death_skips_terminate_and_resets(self):
+        from hearth.memory import backend_hindsight as hs
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            log = tmp / "logs" / "hindsight-sidecar.log"
+            b = self._backend(tmp, self._stub(tmp, "noisy", self._NOISY), log)
+            b._start_sidecar()
+            proc = b._proc
+            proc.kill()
+            proc.wait()
+            with mock.patch.object(hs.logger, "warning") as warn:
+                b.close()                                      # must not raise
+            self.assertTrue(any("already exited" in str(c.args[0])
+                                for c in warn.call_args_list))
+            self.assertIsNone(b._proc)
+            self.assertIsNone(b._client)
+            self.assertIsNone(b._url)
+            self.assertIsNone(b._log)
+            self.assertFalse(b._drain.is_alive() if b._drain else False)
 
 
 # ── the config gate: anchors resolve at import ⇒ subprocess (test_data_root shape) ──

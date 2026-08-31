@@ -157,6 +157,46 @@ Run-verified (survey §5b, 2026-08-29/30) against fully local models. Be aware:
 * `consolidate` is a no-op this pass — Hindsight's `reflect` wants a real idle
   trigger, which the engine doesn't have yet.
 
+#### The sidecar logfile
+
+The sidecar is a **child process**, and its own output is the only place its
+failures are readable. Everything it writes to stdout (after the
+`HINDSIGHT_URL=` handshake line, drained for the process's whole life so the
+pipe can never fill and stall the server) and stderr is appended to:
+
+```toml
+[memory.hindsight]
+# log_file = "/path/to/hindsight-sidecar.log"
+```
+
+Unset, it defaults to **`<data root>/logs/hindsight-sidecar.log`** — `HEARTH_DATA`
+if you set it, otherwise the engine tree, the same root the canonical records
+live under. The file is `0600` in a `0700` directory (records' discipline: it
+carries extraction chatter about your conversations), and at each sidecar start
+a file past ~5 MB is renamed to `<name>.1`, replacing any previous `.1`. The
+resolved path is logged once at start: `[memory] hindsight sidecar log → …`.
+
+#### If the sidecar dies mid-session
+
+It can. On the next recall/store the adapter notices the dead child
+(`[memory] hindsight sidecar died (rc=N) — respawning`), retires the stale
+client, and starts a fresh sidecar — **once per call**. A second immediate
+death is handed up to the seam, which degrades to the floor rather than
+stalling the session; the reason will be in the logfile above. A session that
+ends after a death logs `sidecar had already exited (rc=N)` instead of
+terminating a process that isn't there.
+
+#### pg0 outlives the sidecar (accepted)
+
+Hindsight's bundled PostgreSQL (`pg0`) is started by the sidecar but is **not**
+its child in the lifecycle sense: after an unclean sidecar exit, pg0 keeps
+running, and the next sidecar simply **reuses the warm instance** (a nice side
+effect: no cold-init pause). Bank data lives in `~/.pg0` and is unaffected —
+nothing is lost when the python process dies. This is accepted behaviour, not a
+leak to fix: `pg0` shutdown is owned by hindsight's own stop path, which runs
+when the sidecar exits cleanly (SIGTERM at session close). If you ever need it
+gone by hand, stop it yourself; Hearth deliberately does not reach into it.
+
 ## Not built yet (deliberate)
 
 An idle-time consolidate trigger; a "what she remembers" panel page with
