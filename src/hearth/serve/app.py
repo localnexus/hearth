@@ -85,6 +85,11 @@ class FacadeDeps:
     # or None (a name that is not a character), and character → (ref_wav, model).
     identity_cache: dict = field(default_factory=dict)
     voice_cache: dict = field(default_factory=dict)
+    # Per-identity transcript taps (misfiling fix 2026-08-31): the startup tap
+    # serves the default character; a client-declared companion gets a tap homed
+    # under her OWN directory, built by tap_factory and cached per character.
+    tap_factory: Optional[object] = None
+    tap_cache: dict = field(default_factory=dict)
     session: Optional[aiohttp.ClientSession] = field(default=None)
 
 
@@ -328,8 +333,9 @@ async def _chat(request: web.Request) -> web.StreamResponse:
         reply = ""
         with contextlib.suppress(KeyError, IndexError, TypeError):
             reply = data["choices"][0]["message"]["content"] or ""
-        if deps.tap and last_user and reply:
-            deps.tap.record(last_user, reply, channel=tap_channel)
+        tap = _tap_for(deps, character)
+        if tap and last_user and reply:
+            tap.record(last_user, reply, channel=tap_channel)
         if deps.memory is not None and not internal and last_user and reply:
             deps.memory.note_exchange(character, tap_channel, hint, last_user, reply)
         return web.json_response(data)
@@ -350,11 +356,25 @@ async def _chat(request: web.Request) -> web.StreamResponse:
     with contextlib.suppress(Exception):
         await resp.write_eof()
     reply = _sse_text(bytes(raw))
-    if deps.tap and last_user and reply:
-        deps.tap.record(last_user, reply, channel=tap_channel)
+    tap = _tap_for(deps, character)
+    if tap and last_user and reply:
+        tap.record(last_user, reply, channel=tap_channel)
     if deps.memory is not None and not internal and last_user and reply:
         deps.memory.note_exchange(character, tap_channel, hint, last_user, reply)
     return resp
+
+
+def _tap_for(deps: "FacadeDeps", character: str) -> Optional[TranscriptTap]:
+    """The transcript tap for the RESOLVED companion (misfiling fix 2026-08-31):
+    the startup tap serves the default identity; a client-declared character
+    files under her own transcripts directory, one cached tap per character."""
+    if character == deps.character or deps.tap_factory is None:
+        return deps.tap
+    tap = deps.tap_cache.get(character)
+    if tap is None:
+        tap = deps.tap_factory(character)
+        deps.tap_cache[character] = tap
+    return tap
 
 
 async def _speech(request: web.Request) -> web.StreamResponse:
@@ -557,12 +577,16 @@ async def start(active, cfg: dict, lm_base_url: str, lm_token: str) -> Optional[
         allow_tag_profiles = True  # no pin ⇒ nothing to protect; envelope applies freely
         pin_note = ""
     tap = None
+    tap_factory = None
     if cfg.get("transcript_tap", True):
-        tdir = Path(str(cfg["transcript_dir"])).expanduser()
-        if not tdir.is_absolute():  # relative ⇒ inside the companion's own directory
-            tdir = config_loader.companion_state_dir(character, str(tdir))
-        tap = TranscriptTap(tdir, character,
-                            channel="chat", model=active.model_id)
+        tdir_raw = Path(str(cfg["transcript_dir"])).expanduser()
+
+        def tap_factory(c: str, _raw=tdir_raw, _model=active.model_id) -> TranscriptTap:
+            # relative ⇒ inside EACH companion's own directory (per-identity taps)
+            home = _raw if _raw.is_absolute() else config_loader.companion_state_dir(c, str(_raw))
+            return TranscriptTap(home, c, channel="chat", model=_model)
+
+        tap = tap_factory(character)
     # The facade-lane memory glue: OFF unless [memory.serve] enabled = true.
     # Absent or disabled, nothing is imported and every path above behaves
     # exactly as it did before the seam existed (the house gate idiom).
@@ -585,6 +609,7 @@ async def start(active, cfg: dict, lm_base_url: str, lm_token: str) -> Optional[
         bearer=_resolve_bearer(cfg),
         cfg=cfg,
         tap=tap,
+        tap_factory=tap_factory,
         pinned_tts=pinned_tts,
         allow_tag_profiles=allow_tag_profiles,
         model_name=active.model_name,
