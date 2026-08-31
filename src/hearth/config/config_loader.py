@@ -369,6 +369,14 @@ def load_memory_config() -> dict | None:
     [memory.hindsight]'s, which is where the local extraction model is already
     named; the intent lane calls that model directly (backend-independent), so
     floor companions get the feature too.
+
+    [memory.serve] (the facade-lane seam: sessions for the /v1 door) is
+    normalized the same way and likewise always present, default disabled. The
+    facade is stateless by construction, so the glue that gives it a session
+    start and a graceful close needs its own gate and its own boundaries —
+    idle_close_voice/idle_close_chat in MINUTES, and whether an open session
+    checkpoints after each exchange so a crash leaves a recoverable orphan
+    rather than a lost conversation.
     """
     if not MEMORY_TOML.exists():
         return None
@@ -393,6 +401,17 @@ def load_memory_config() -> dict | None:
         "llm_url": str(intent.get("llm_url") or ""),
         "companions": dict(intent.get("companions") or {}),
     }
+    serve = dict(cfg.get("serve") or {})
+    cfg["serve"] = {
+        "enabled": bool(serve.get("enabled", False)),
+        # Minutes. Voice: a transport fact — once the voice server's own reaper
+        # fires, that conversation cannot continue, so this is grace + margin.
+        # Chat: the FALLBACK behind deliberate-closure close, set above the
+        # longest plausible waking gap so an errand never splits a day in two.
+        "idle_close_voice": int(serve.get("idle_close_voice", 5)),
+        "idle_close_chat": int(serve.get("idle_close_chat", 480)),
+        "checkpoint": bool(serve.get("checkpoint", True)),
+    }
     return cfg
 
 
@@ -415,6 +434,12 @@ def load_serve_config() -> dict | None:
     of snapshotting active.toml — the facade then keeps its own identity no
     matter what the live session runs or when the facade was (re)started.
     Resolution happens in serve/app.py start(); here we only validate shape.
+
+    Optional [serve.characters] table (character name → voice bundle name): the
+    roster a client may pick from. It widens /v1/models beyond the resolved
+    identity and gives the speech route a voice for each listed character;
+    every name is validated here, because both halves land in filesystem
+    lookups. Absent ⇒ an empty map and the single-identity behavior.
     """
     if not SERVE_TOML.exists():
         return None
@@ -430,6 +455,16 @@ def load_serve_config() -> dict | None:
                 raise ConfigError(f"[serve.identity] requires non-empty '{key}': {SERVE_TOML}")
         if "tts" in ident and not isinstance(ident["tts"], dict):
             raise ConfigError(f"[serve.identity.tts] must be a table: {SERVE_TOML}")
+    chars = sv.get("characters")
+    if chars is not None:
+        if not isinstance(chars, dict):
+            raise ConfigError(f"[serve.characters] must be a table: {SERVE_TOML}")
+        for name, bundle in chars.items():
+            for label, value in (("character", name), ("voice bundle", bundle)):
+                text = str(value or "")
+                if not _NAME_RE.match(text) or text.startswith("."):
+                    raise ConfigError(
+                        f"[serve.characters] invalid {label} name {value!r}: {SERVE_TOML}")
     cfg: dict = {
         "host": "127.0.0.1",
         "port": 65001,
@@ -443,6 +478,7 @@ def load_serve_config() -> dict | None:
         "transcriptions_enabled": False,
         "transcript_tap": True,
         "transcript_dir": "transcripts",
+        "characters": {},
     }
     cfg.update(sv)
     return cfg

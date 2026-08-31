@@ -12,7 +12,17 @@
  7. intent-primed boot recall: capture writes a 0600 slot, boot steers the
     query + injects a dated line + consumes the slot; "none"/off/stale/broken
     all leave the boot byte-identical (the LLM is always mocked — no network)
- 8. the hindsight sidecar survives its own child (incident 2026-08-30): the
+ 8. closure-gated capture: ONE extraction call answers {closure, topic}; the
+    JSON parser is hostile (think-tags, prose, bad types, over-long topics) and
+    capture writes a slot ONLY when a topic was stated — a bare close writes
+    nothing, and no closure writes nothing
+ 9. the facade-lane glue (serve/memory_glue.py): session keys + hint
+    sanitization, open → append → checkpoint → close (record named
+    "facade <channel>", checkpoint removed), the idle sweep at 5 min voice /
+    480 min chat, orphan finalization, the closure-close staleness guard,
+    client-declared identity, the internal-request bypass, and containment —
+    all offline, no sockets, no sleeps, an injected clock instead of waiting
+10. the hindsight sidecar survives its own child (incident 2026-08-30): the
     child's stdout+stderr land in a 0600 logfile in a 0700 dir and the pipe is
     drained for life, an oversized log rotates to .1 at spawn, a dead child is
     respawned exactly ONCE (a second death raises), and close() after a death
@@ -24,6 +34,7 @@ Run:  .venv/bin/python -m unittest tests/test_memory.py
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import stat
@@ -44,6 +55,8 @@ from hearth.memory.backend import MemoryItem, SessionRecord, digest_record  # no
 from hearth.memory import intent as intent_mod  # noqa: E402
 from hearth.memory import records as records_mod  # noqa: E402
 from hearth.memory.floor import FloorBackend  # noqa: E402
+from hearth.serve import app as serve_app  # noqa: E402
+from hearth.serve import memory_glue as glue_mod  # noqa: E402
 
 
 def _record(sid: str, ended: str, n_turns: int = 2, name: str = "") -> SessionRecord:
@@ -261,8 +274,9 @@ class TestIntentSlot(unittest.TestCase):
             records_mod.write_record(_record("s1", "2026-08-29T09:00:00"), d)
             with mock.patch.object(intent_mod, "intent_path", return_value=slot), \
                  mock.patch.object(records_mod, "records_dir", return_value=d), \
-                 mock.patch.object(intent_mod, "_ollama_chat",
-                                   return_value="the tea ceremony") as llm:
+                 mock.patch.object(
+                     intent_mod, "_ollama_chat",
+                     return_value='{"closure": true, "topic": "the tea ceremony"}') as llm:
                 status = self._seam(d, self._cfg()).on_session_end(self.MSGS, store=None)
                 self.assertIn("record kept", status)
                 self.assertEqual(llm.call_count, 1)
@@ -286,12 +300,15 @@ class TestIntentSlot(unittest.TestCase):
             self.assertFalse(slot.exists())  # consume-once
 
     def test_answer_none_writes_no_slot_and_boot_unchanged(self):
+        """A deliberate close that named no topic: the model says so, and the
+        slot stays absent — she was told goodbye, not what to pick up."""
         with tempfile.TemporaryDirectory() as tmp:
             d, slot = Path(tmp), Path(tmp) / "intent.json"
             records_mod.write_record(_record("s1", "2026-08-29T09:00:00"), d)
             with mock.patch.object(intent_mod, "intent_path", return_value=slot), \
                  mock.patch.object(records_mod, "records_dir", return_value=d), \
-                 mock.patch.object(intent_mod, "_ollama_chat", return_value="none"):
+                 mock.patch.object(intent_mod, "_ollama_chat",
+                                   return_value='{"closure": true, "topic": "none"}'):
                 self._seam(d, self._cfg()).on_session_end(self.MSGS, store=None)
                 self.assertFalse(slot.exists())
                 out = self._seam(d, self._cfg()).augment("SYSTEM PROMPT")
@@ -571,6 +588,583 @@ class TestHindsightSidecar(unittest.TestCase):
             self.assertFalse(b._drain.is_alive() if b._drain else False)
 
 
+class TestClosureDetection(unittest.TestCase):
+    """The ONE extraction call, parsed hostilely. The transport is mocked in
+    every test — these make zero network calls."""
+
+    CFG = {"llm_provider": "ollama", "llm_model": "testmodel", "llm_url": ""}
+    MSGS = [{"role": "user", "content": "goodnight"},
+            {"role": "assistant", "content": "sleep well"}]
+
+    def _detect(self, answer):
+        with mock.patch.object(intent_mod, "_ollama_chat", return_value=answer) as llm:
+            got = intent_mod.detect_closure_and_topic(self.MSGS, self.CFG)
+        self.assertEqual(llm.call_count, 1)  # one call answers both questions
+        return got
+
+    def test_good_json(self):
+        self.assertEqual(self._detect('{"closure": true, "topic": "the tea ceremony"}'),
+                         (True, "the tea ceremony"))
+        self.assertEqual(self._detect('{"closure": false, "topic": null}'), (False, None))
+        self.assertEqual(self._detect('{"closure": true, "topic": null}'), (True, None))
+        self.assertEqual(self._detect('{"closure": false, "topic": "the tea ceremony"}'),
+                         (False, "the tea ceremony"))
+
+    def test_think_tags_fences_and_commentary_are_scanned_past(self):
+        noisy = ("<think>they said goodnight</think>\n"
+                 "```json\n"
+                 '{"closure": true, "topic": "the tea ceremony"}\n'
+                 "```\n"
+                 "Hope that helps.")
+        self.assertEqual(self._detect(noisy), (True, "the tea ceremony"))
+
+    def test_a_brace_inside_the_topic_does_not_end_the_scan(self):
+        self.assertEqual(self._detect('{"closure": true, "topic": "the {tea} ceremony"}'),
+                         (True, "the {tea} ceremony"))
+
+    def test_malformed_answers_conclude_nothing(self):
+        for answer in ("", "none", "yes, they said goodbye", "{not json}",
+                       '{"closure": "yes", "topic": "x"}', '["closure"]',
+                       '{"topic": "the tea ceremony"}'):
+            self.assertEqual(self._detect(answer), (False, None), answer[:28])
+
+    def test_an_unusable_topic_is_dropped_but_the_closure_verdict_survives(self):
+        # A rambling or mistyped topic says nothing about whether the user
+        # actually said goodbye — the two answers fail independently.
+        self.assertEqual(self._detect(json.dumps({"closure": True, "topic": "x" * 500})),
+                         (True, None))
+        self.assertEqual(self._detect('{"closure": true, "topic": 42}'), (True, None))
+        self.assertEqual(self._detect('{"closure": true, "topic": "none"}'), (True, None))
+
+    def test_no_seat_never_reaches_the_transport(self):
+        with mock.patch.object(intent_mod, "_ollama_chat") as llm:
+            self.assertEqual(
+                intent_mod.detect_closure_and_topic(self.MSGS, {"llm_provider": "openai"}),
+                (False, None))
+            self.assertEqual(
+                intent_mod.detect_closure_and_topic(self.MSGS, {"llm_provider": "ollama"}),
+                (False, None))
+        llm.assert_not_called()
+
+    def test_transport_failure_concludes_nothing(self):
+        with mock.patch.object(intent_mod, "_ollama_chat", side_effect=OSError("refused")):
+            self.assertEqual(intent_mod.detect_closure_and_topic(self.MSGS, self.CFG),
+                             (False, None))
+
+
+class TestCaptureGating(unittest.TestCase):
+    """capture()'s three outcomes: only a STATED topic keeps anything."""
+
+    CFG = {"llm_provider": "ollama", "llm_model": "testmodel", "llm_url": ""}
+    MSGS = [{"role": "user", "content": "goodnight — next time the tea ceremony"},
+            {"role": "assistant", "content": "I'd like that."}]
+
+    def _capture(self, answer):
+        with tempfile.TemporaryDirectory() as tmp:
+            slot = Path(tmp) / "intent.json"
+            with mock.patch.object(intent_mod, "intent_path", return_value=slot), \
+                 mock.patch.object(intent_mod, "_ollama_chat", return_value=answer):
+                topic = intent_mod.capture("testchar", self.MSGS, "s1", self.CFG)
+            return topic, slot.exists()
+
+    def test_stated_topic_writes_the_slot(self):
+        self.assertEqual(self._capture('{"closure": true, "topic": "the tea ceremony"}'),
+                         ("the tea ceremony", True))
+
+    def test_topic_without_closure_still_writes(self):
+        # A plan named mid-conversation is still the plan.
+        self.assertEqual(self._capture('{"closure": false, "topic": "the tea ceremony"}'),
+                         ("the tea ceremony", True))
+
+    def test_closure_without_a_topic_writes_nothing(self):
+        self.assertEqual(self._capture('{"closure": true, "topic": null}'), (None, False))
+
+    def test_no_closure_writes_nothing(self):
+        # The gate the facade lane needs: an idle timeout is not a goodbye.
+        self.assertEqual(self._capture('{"closure": false, "topic": null}'), (None, False))
+
+
+class _StubBackend:
+    """A backend that records what it was handed and nothing else."""
+
+    name = "stub"
+
+    def __init__(self) -> None:
+        self.stored: list = []
+        self.consolidated = 0
+        self.closed = 0
+
+    def recall(self, companion, query, limit):  # noqa: ANN001
+        return []
+
+    def store(self, companion, record):  # noqa: ANN001
+        self.stored.append(record)
+
+    def consolidate(self, companion):  # noqa: ANN001
+        self.consolidated += 1
+
+    def close(self):
+        self.closed += 1
+
+
+class TestServeGlue(unittest.TestCase):
+    """The facade-lane session manager (serve/memory_glue.py).
+
+    Fully offline: a stub backend, a scratch data tree, and an INJECTED clock so
+    the idle sweep is tested without waiting on one.
+    """
+
+    KEY = ("testchar", "chat", "")
+
+    def _cfg(self, **serve_over) -> dict:
+        serve = {"enabled": True, "idle_close_voice": 5,
+                 "idle_close_chat": 480, "checkpoint": True}
+        serve.update(serve_over)
+        return {"recall_limit": 3, "backend": "stub", "companions": {}, "serve": serve,
+                "intent": {"enabled": False, "expiry_days": 14, "llm_provider": "ollama",
+                           "llm_model": "testmodel", "llm_url": "", "companions": {}}}
+
+    def _env(self, tmp: Path, backend=None):
+        """Point the glue at a scratch tree; returns (checkpoint root, records, backend)."""
+        root, recs = tmp / "characters", tmp / "records"
+        backend = backend if backend is not None else _StubBackend()
+        for patcher in (
+            mock.patch.object(glue_mod, "_checkpoint_root", return_value=root),
+            mock.patch.object(glue_mod, "_build_backend", return_value=backend),
+            mock.patch.object(records_mod, "records_dir", return_value=recs),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        return root, recs, backend
+
+    def test_open_append_checkpoint_close(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root, recs, backend = self._env(Path(tmp))
+            glue = glue_mod.ServeMemory(self._cfg(), clock=lambda: 0.0)
+            checkpoint = root / "testchar" / "memory" / "checkpoints" / "serve-chat.json"
+
+            async def scenario():
+                base = "SYSTEM PROMPT"
+                # nothing recalled ⇒ the instruction is byte-identical
+                self.assertEqual(
+                    await glue.instruction("testchar", "default", None, None, base), base)
+                self.assertIn(self.KEY, glue._sessions)
+                # a later turn of the same conversation reuses the entry
+                self.assertEqual(
+                    await glue.instruction("testchar", "default", "chat", "", base), base)
+                self.assertEqual(len(glue._sessions), 1)
+
+                glue.note_exchange("testchar", "chat", "", "hello", "hi there")
+                await glue.drain()
+                self.assertTrue(checkpoint.is_file())
+                self.assertEqual(stat.S_IMODE(checkpoint.stat().st_mode), 0o600)
+                self.assertEqual(stat.S_IMODE(checkpoint.parent.stat().st_mode), 0o700)
+                self.assertEqual(list(checkpoint.parent.glob("*.tmp")), [])  # atomic
+                data = json.loads(checkpoint.read_text(encoding="utf-8"))
+                self.assertEqual(data["companion"], "testchar")
+                self.assertEqual(data["channel"], "chat")
+                self.assertEqual(data["persona"], "default")
+                self.assertTrue(data["started"])
+                self.assertTrue(data["session_id"].startswith("serve-chat-"))
+                self.assertEqual(data["turns"],
+                                 [{"role": "user", "content": "hello"},
+                                  {"role": "assistant", "content": "hi there"}])
+
+                self.assertEqual(backend.closed, 0)  # the seam is dropped, never closed
+                await glue.close_session(self.KEY)
+                self.assertFalse(checkpoint.exists())  # the transient is gone
+                self.assertEqual(glue._sessions, {})
+                await glue.stop()
+
+            asyncio.run(scenario())
+            got = list(records_mod.iter_records("testchar", recs))
+            self.assertEqual(len(got), 1)
+            self.assertEqual(got[0].name, "facade chat")
+            self.assertEqual(got[0].persona, "default")
+            self.assertTrue(got[0].session_id.startswith("serve-chat-"))
+            self.assertEqual(got[0].messages,
+                             [{"role": "user", "content": "hello"},
+                              {"role": "assistant", "content": "hi there"}])
+            self.assertEqual(len(backend.stored), 1)
+            self.assertEqual(backend.closed, 1)  # exactly once, at facade shutdown
+
+    def test_session_hint_subdivides_the_channel_and_dirty_hints_are_hashed(self):
+        dirty = "../../etc/passwd"
+        digest = hashlib.sha256(dirty.encode("utf-8")).hexdigest()[:12]
+        self.assertEqual(glue_mod.session_key("c", "voice", "walk-1"), ("c", "voice", "walk-1"))
+        self.assertEqual(glue_mod.session_key("c", "smoke-signal", None), ("c", "chat", ""))
+        self.assertEqual(glue_mod.session_key("c", "chat", dirty)[2], digest)
+        self.assertEqual(glue_mod.sanitize_hint("x" * 65),
+                         hashlib.sha256(("x" * 65).encode("utf-8")).hexdigest()[:12])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root, recs, backend = self._env(Path(tmp))
+            glue = glue_mod.ServeMemory(self._cfg(), clock=lambda: 0.0)
+
+            async def scenario():
+                await glue.instruction("testchar", "default", "chat", "thread-7", "P")
+                await glue.instruction("testchar", "default", "chat", dirty, "P")
+                self.assertEqual(sorted(glue._sessions),
+                                 sorted([("testchar", "chat", "thread-7"),
+                                         ("testchar", "chat", digest)]))
+                glue.note_exchange("testchar", "chat", "thread-7", "a", "b")
+                glue.note_exchange("testchar", "chat", dirty, "c", "d")
+                await glue.drain()
+                names = sorted(p.name for p in
+                               (root / "testchar" / "memory" / "checkpoints").glob("*.json"))
+                self.assertEqual(names, sorted([f"serve-chat-{digest}.json",
+                                                "serve-chat-thread-7.json"]))
+                await glue.stop()
+
+            asyncio.run(scenario())
+            ids = [r.session_id for r in records_mod.iter_records("testchar", recs)]
+            self.assertEqual(len(ids), 2)
+            self.assertTrue(any(i.startswith(f"serve-chat-{digest}-") for i in ids))
+            self.assertTrue(any(i.startswith("serve-chat-thread-7-") for i in ids))
+
+    def test_idle_sweep_closes_voice_at_five_minutes_and_chat_at_eight_hours(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root, recs, backend = self._env(Path(tmp))
+            now = [0.0]
+            glue = glue_mod.ServeMemory(self._cfg(), clock=lambda: now[0])
+            voice, chat = ("testchar", "voice", ""), ("testchar", "chat", "")
+
+            async def scenario():
+                await glue.instruction("testchar", "default", "voice", "", "P")
+                await glue.instruction("testchar", "default", "chat", "", "P")
+                glue.note_exchange("testchar", "voice", "", "walking", "with you")
+                glue.note_exchange("testchar", "chat", "", "desk line", "desk reply")
+                await glue.drain()
+
+                now[0] = 4 * 60.0
+                await glue.sweep()
+                self.assertEqual(sorted(glue._sessions), sorted([voice, chat]))
+
+                now[0] = 5 * 60.0                     # idle_close_voice
+                await glue.sweep()
+                self.assertEqual(list(glue._sessions), [chat])
+
+                now[0] = 479 * 60.0
+                await glue.sweep()
+                self.assertEqual(list(glue._sessions), [chat])
+
+                now[0] = 480 * 60.0                   # idle_close_chat (the fallback)
+                await glue.sweep()
+                self.assertEqual(glue._sessions, {})
+                await glue.stop()
+
+            asyncio.run(scenario())
+            self.assertEqual(sorted(r.name for r in records_mod.iter_records("testchar", recs)),
+                             ["facade chat", "facade voice"])
+
+    def test_orphan_checkpoint_becomes_a_record_stamped_at_the_crash(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root, recs, backend = self._env(Path(tmp))
+            checkpoints = root / "testchar" / "memory" / "checkpoints"
+            checkpoints.mkdir(parents=True)
+            path = checkpoints / "serve-voice.json"
+            path.write_text(json.dumps({
+                "schema": 1, "kind": "memory-checkpoint", "companion": "testchar",
+                "persona": "default", "channel": "voice",
+                "started": "2026-08-30T09:00:00",
+                "session_id": "serve-voice-20260830T090000",
+                "turns": [{"role": "user", "content": "still walking"},
+                          {"role": "assistant", "content": "I am here"}],
+            }), encoding="utf-8")
+            crashed = time.mktime((2026, 8, 30, 9, 42, 0, 0, 0, -1))
+            os.utime(path, (crashed, crashed))
+            glue = glue_mod.ServeMemory(self._cfg(), clock=lambda: 0.0)
+
+            async def scenario():
+                await glue.start()   # the orphan pass is scheduled, not awaited
+                await glue.drain()
+                await glue.stop()
+
+            asyncio.run(scenario())
+            self.assertFalse(path.exists())
+            got = list(records_mod.iter_records("testchar", recs))
+            self.assertEqual(len(got), 1)
+            self.assertEqual(got[0].session_id, "serve-voice-20260830T090000")
+            self.assertEqual(got[0].name, "facade voice")
+            self.assertEqual(got[0].started, "2026-08-30T09:00:00")
+            # ended is when the facade DIED, not when it came back
+            self.assertEqual(got[0].ended[:19], "2026-08-30T09:42:00")
+            self.assertEqual(len(got[0].messages), 2)
+
+    def test_deliberate_closure_closes_the_conversation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root, recs, backend = self._env(Path(tmp))
+            glue = glue_mod.ServeMemory(self._cfg(), clock=lambda: 0.0)
+
+            async def scenario():
+                await glue.instruction("testchar", "default", "chat", "", "P")
+                with mock.patch.object(glue_mod.intent_mod, "detect_closure_and_topic",
+                                       return_value=(True, None)) as detect:
+                    glue.note_exchange("testchar", "chat", "", "hello", "hi")
+                    await glue.drain()
+                    detect.assert_not_called()  # an opening exchange is never a goodbye
+                    self.assertIn(self.KEY, glue._sessions)
+
+                    glue.note_exchange("testchar", "chat", "", "goodnight", "sleep well")
+                    await glue.drain()
+                    self.assertEqual(detect.call_count, 1)
+                self.assertEqual(glue._sessions, {})
+                await glue.stop()
+
+            asyncio.run(scenario())
+            got = list(records_mod.iter_records("testchar", recs))
+            self.assertEqual(len(got), 1)
+            self.assertEqual(len(got[0].messages), 4)  # the whole conversation, verbatim
+
+    def test_closure_prefilter_and_the_newer_exchange_guard(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root, recs, backend = self._env(Path(tmp))
+            glue = glue_mod.ServeMemory(self._cfg(), clock=lambda: 0.0)
+
+            async def scenario():
+                await glue.instruction("testchar", "default", "chat", "", "P")
+                await glue.instruction("testchar", "default", "voice", "", "P")
+                glue.note_exchange("testchar", "chat", "", "hello", "hi")
+                glue.note_exchange("testchar", "voice", "", "hello", "hi")
+                with mock.patch.object(glue_mod.intent_mod, "detect_closure_and_topic",
+                                       return_value=(True, None)) as detect:
+                    glue.note_exchange("testchar", "chat", "", "what about tomorrow?", "sure")
+                    glue.note_exchange("testchar", "chat", "", "x" * 400, "long one")
+                    glue.note_exchange("testchar", "voice", "", "bye", "bye")
+                    await glue.drain()
+                    # a question, an essay, and the voice channel: none reach the seat
+                    detect.assert_not_called()
+                    self.assertIn(self.KEY, glue._sessions)
+
+                    # the guard: the conversation moved on while the seat was asked
+                    session = glue._sessions[self.KEY]
+                    stale = session.seq
+                    session.seq += 1
+                    await glue._closure_check(self.KEY, session, stale)
+                    self.assertIn(self.KEY, glue._sessions)  # skipped — it continued
+                    await glue._closure_check(self.KEY, session, session.seq)
+                    self.assertNotIn(self.KEY, glue._sessions)  # current ⇒ closed
+                await glue.stop()
+
+            asyncio.run(scenario())
+
+    def test_companion_mapped_to_none_gets_no_session(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root, recs, backend = self._env(Path(tmp))
+            cfg = self._cfg()
+            cfg["companions"] = {"testchar": "none"}
+            glue = glue_mod.ServeMemory(cfg, clock=lambda: 0.0)
+
+            async def scenario():
+                self.assertEqual(
+                    await glue.instruction("testchar", "default", "chat", "", "SYSTEM PROMPT"),
+                    "SYSTEM PROMPT")
+                self.assertEqual(glue._sessions, {})
+                glue.note_exchange("testchar", "chat", "", "hello", "hi")  # a no-op
+                await glue.drain()
+                await glue.stop()
+
+            asyncio.run(scenario())
+            self.assertFalse(recs.exists())
+            self.assertEqual(backend.stored, [])
+
+    def test_checkpoint_false_keeps_the_lane_off_disk_until_close(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root, recs, backend = self._env(Path(tmp))
+            glue = glue_mod.ServeMemory(self._cfg(checkpoint=False), clock=lambda: 0.0)
+
+            async def scenario():
+                await glue.instruction("testchar", "default", "chat", "", "P")
+                glue.note_exchange("testchar", "chat", "", "hello", "hi")
+                await glue.drain()
+                self.assertFalse((root / "testchar").exists())
+                await glue.stop()
+
+            asyncio.run(scenario())
+            self.assertEqual(len(list(records_mod.iter_records("testchar", recs))), 1)
+
+    def test_a_failing_backend_never_breaks_a_turn_or_a_close(self):
+        """Containment (decider 6): recall, store, consolidate and close all
+        raise — the turn is still answered and the canonical record still
+        lands."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root, recs, backend = self._env(Path(tmp), backend=_BoomBackend())
+            glue = glue_mod.ServeMemory(self._cfg(), clock=lambda: 0.0)
+            checkpoint = root / "testchar" / "memory" / "checkpoints" / "serve-chat.json"
+
+            async def scenario():
+                base = "SYSTEM PROMPT"
+                self.assertEqual(
+                    await glue.instruction("testchar", "default", "chat", "", base), base)
+                glue.note_exchange("testchar", "chat", "", "hello", "hi")
+                await glue.drain()
+                await glue.close_session(self.KEY)  # store + consolidate raise
+                self.assertFalse(checkpoint.exists())
+                await glue.stop()                   # backend.close raises
+
+            asyncio.run(scenario())
+            self.assertEqual(len(list(records_mod.iter_records("testchar", recs))), 1)
+
+
+# ── the facade seam: app.py driven directly, no sockets ──────────────────────
+
+class _FakeUpstream:
+    """One non-streaming LLM reply, without a server."""
+
+    def __init__(self, reply: str) -> None:
+        self.status = 200
+        self._reply = reply
+
+    async def json(self):
+        return {"choices": [{"message": {"content": self._reply}}]}
+
+    def release(self):
+        pass
+
+
+class _FakeSession:
+    def __init__(self, reply: str = "hi there") -> None:
+        self.posts: list = []
+        self._reply = reply
+
+    async def post(self, url, json=None, headers=None, timeout=None):  # noqa: A002
+        self.posts.append(json)
+        return _FakeUpstream(self._reply)
+
+
+class _RecordingMemory:
+    """Stands in for ServeMemory at the app seam (the glue itself is covered
+    above): records what the facade asked, and returns a MARKED instruction so
+    the swap is visible in the upstream payload."""
+
+    def __init__(self) -> None:
+        self.opened: list = []
+        self.exchanges: list = []
+
+    async def instruction(self, companion, persona, channel, hint, base):  # noqa: ANN001
+        self.opened.append((companion, persona, channel, hint, base))
+        return base + "\n\n[MEMORY]"
+
+    def note_exchange(self, companion, channel, hint, user_text, reply_text):  # noqa: ANN001
+        self.exchanges.append((companion, channel, hint, user_text, reply_text))
+
+
+class _FakeRequest:
+    def __init__(self, body: dict, headers=None, deps=None) -> None:
+        self._body = body
+        self.headers = dict(headers or {})
+        self.app = {"deps": deps}
+
+    async def json(self):
+        return self._body
+
+
+class TestFacadeIdentityAndMemory(unittest.TestCase):
+    """serve/app.py's chat + models + speech seams, driven directly."""
+
+    def _deps(self, memory=None, characters=None):
+        return serve_app.FacadeDeps(
+            system_instruction="BASE PROMPT", model_id="m", temperature=0.7,
+            reasoning_effort="", character="base", ref_wav="/dev/null", tts_model="t",
+            lm_base_url="http://127.0.0.1:1/v1", lm_token="x", bearer="b",
+            cfg={"tts_model": "t"}, tap=None, model_name="mdl", persona="default",
+            characters=dict(characters or {}), memory=memory, session=_FakeSession(),
+        )
+
+    def _chat(self, deps, body, headers=None):
+        request = _FakeRequest(body, headers, deps)
+        with mock.patch.object(serve_app.tts_prep, "live_llm_temperature", return_value=0.7):
+            asyncio.run(serve_app._chat(request))
+        return deps.session.posts[-1]
+
+    def test_no_memory_sends_the_plain_instruction(self):
+        deps = self._deps()
+        out = self._chat(deps, {"messages": [{"role": "user", "content": "hello"}]})
+        self.assertEqual(out["messages"][0]["content"], "BASE PROMPT")
+
+    def test_client_declared_character_is_honored_and_junk_falls_back(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            persona = Path(tmp) / "persona.md"
+            persona.write_text("x", encoding="utf-8")
+
+            def fake_persona_path(name, variant=None):  # noqa: ANN001
+                return persona if name == "guest" else Path(tmp) / "missing.md"
+
+            deps = self._deps(characters={"guest": "guest-a"})
+            with mock.patch.object(serve_app.config_loader, "persona_path",
+                                   side_effect=fake_persona_path), \
+                 mock.patch.object(serve_app.config_loader, "compose_system_instruction",
+                                   return_value="GUEST PROMPT") as compose:
+                out = self._chat(deps, {"model": "guest",
+                                        "messages": [{"role": "user", "content": "hello"}]})
+                self.assertEqual(out["messages"][0]["content"], "GUEST PROMPT")
+                self._chat(deps, {"model": "guest",
+                                  "messages": [{"role": "user", "content": "again"}]})
+                compose.assert_called_once_with("mdl", "guest")  # cached per companion
+
+                for junk in ("not-a-character", "../etc/passwd", "qwen3-coder:30b", ""):
+                    out = self._chat(deps, {"model": junk,
+                                            "messages": [{"role": "user", "content": "hi"}]})
+                    self.assertEqual(out["messages"][0]["content"], "BASE PROMPT", junk)
+
+    def test_memory_swaps_the_instruction_and_is_fed_the_exchange(self):
+        memory = _RecordingMemory()
+        deps = self._deps(memory=memory)
+        out = self._chat(deps, {"messages": [{"role": "user", "content": "hello"}]},
+                         {"X-Hearth-Channel": "voice", "X-Hearth-Session": "walk-1"})
+        self.assertEqual(out["messages"][0]["content"], "BASE PROMPT\n\n[MEMORY]")
+        self.assertEqual(memory.opened,
+                         [("base", "default", "voice", "walk-1", "BASE PROMPT")])
+        self.assertEqual(memory.exchanges,
+                         [("base", "voice", "walk-1", "hello", "hi there")])
+
+    def test_memory_follows_the_declared_companion(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            persona = Path(tmp) / "persona.md"
+            persona.write_text("x", encoding="utf-8")
+            memory = _RecordingMemory()
+            deps = self._deps(memory=memory, characters={"guest": "guest-a"})
+            with mock.patch.object(serve_app.config_loader, "persona_path",
+                                   return_value=persona), \
+                 mock.patch.object(serve_app.config_loader, "compose_system_instruction",
+                                   return_value="GUEST PROMPT"):
+                self._chat(deps, {"model": "guest",
+                                  "messages": [{"role": "user", "content": "hello"}]})
+            self.assertEqual(memory.opened[0][0], "guest")
+            self.assertEqual(memory.opened[0][4], "GUEST PROMPT")
+            self.assertEqual(memory.exchanges[0][0], "guest")
+
+    def test_internal_requests_bypass_persona_and_memory(self):
+        memory = _RecordingMemory()
+        deps = self._deps(memory=memory)
+        out = self._chat(deps, {"messages": [{"role": "system", "content": "SUMMARIZE"},
+                                             {"role": "user", "content": "transcript"}]},
+                         {"X-Hearth-Internal": "task"})
+        self.assertEqual(out["messages"][0]["content"], "SUMMARIZE")  # its own prompt kept
+        self.assertEqual(memory.opened, [])
+        self.assertEqual(memory.exchanges, [])
+
+    def test_models_lists_the_resolved_identity_plus_the_roster(self):
+        deps = self._deps(characters={"guest": "guest-a", "base": "base-a"})
+        resp = asyncio.run(serve_app._models(_FakeRequest({}, {}, deps)))
+        ids = [row["id"] for row in json.loads(resp.body)["data"]]
+        self.assertEqual(ids, ["base", "guest"])  # deduped, resolved identity first
+
+    def test_declared_voice_bundle_is_used_only_for_roster_characters(self):
+        deps = self._deps(characters={"guest": "guest-a"})
+        with mock.patch.object(serve_app.config_loader, "load_voice",
+                               return_value={"ref_wav": "/clip/guest.wav",
+                                             "model_repo": "repo/guest"}) as load:
+            self.assertIs(serve_app._voice_deps(deps, {"voice": "stranger"}), deps)
+            load.assert_not_called()
+            routed = serve_app._voice_deps(deps, {"voice": "guest"})
+            self.assertEqual((routed.ref_wav, routed.tts_model),
+                             ("/clip/guest.wav", "repo/guest"))
+            self.assertEqual((deps.ref_wav, deps.tts_model), ("/dev/null", "t"))
+            serve_app._voice_deps(deps, {"model": "guest"})
+            load.assert_called_once_with("guest", "guest-a")  # cached per character
+
+
 # ── the config gate: anchors resolve at import ⇒ subprocess (test_data_root shape) ──
 
 _GATE_PROBE = """
@@ -642,6 +1236,29 @@ class TestConfigGate(unittest.TestCase):
         self.assertEqual(intent["llm_provider"], "ollama")
         self.assertEqual(intent["llm_model"], "qwen3-coder:30b")
         self.assertEqual(intent["companions"], {"guest": False})
+
+    def test_serve_defaults_off_and_normalized(self):
+        """Absent [memory.serve] ⇒ normalized, disabled — the facade lane ships
+        dark. Present ⇒ its boundaries are honored."""
+        res = self._run("[memory]\nenabled = true\n")
+        self.assertEqual(res.returncode, 0, res.stderr)
+        serve = json.loads(res.stdout)["cfg"]["serve"]
+        self.assertFalse(serve["enabled"])
+        self.assertEqual(serve["idle_close_voice"], 5)
+        self.assertEqual(serve["idle_close_chat"], 480)
+        self.assertTrue(serve["checkpoint"])
+
+        res = self._run(
+            "[memory]\nenabled = true\n"
+            "[memory.serve]\nenabled = true\nidle_close_voice = 3\n"
+            "idle_close_chat = 60\ncheckpoint = false\n"
+        )
+        self.assertEqual(res.returncode, 0, res.stderr)
+        serve = json.loads(res.stdout)["cfg"]["serve"]
+        self.assertTrue(serve["enabled"])
+        self.assertEqual(serve["idle_close_voice"], 3)
+        self.assertEqual(serve["idle_close_chat"], 60)
+        self.assertFalse(serve["checkpoint"])
 
     def test_unknown_backend_is_config_error(self):
         res = self._run("[memory]\nenabled = true\nbackend = \"warpdrive\"\n")

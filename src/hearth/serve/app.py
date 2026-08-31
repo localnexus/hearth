@@ -35,7 +35,7 @@ import contextlib
 import hmac
 import json
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Optional
 
@@ -71,6 +71,20 @@ class FacadeDeps:
     # Tag-envelope policy: may per-tag knob profiles overlay the pinned knobs?
     # True when no pin exists; a pin must opt in via allow_tag_profiles = true.
     allow_tag_profiles: bool = True
+    # Composition inputs for a CLIENT-DECLARED character (the /v1/models roster):
+    # the active model's template name and the resolved identity's persona
+    # variant, so a declared companion composes exactly as the pinned one does.
+    model_name: str = ""
+    persona: str = "default"
+    # [serve.characters] — character name → its default voice bundle.
+    characters: dict = field(default_factory=dict)
+    # The facade-lane memory glue (serve/memory_glue.ServeMemory) or None when
+    # [memory.serve] is absent/disabled. None ⇒ every path below is untouched.
+    memory: Optional[object] = None
+    # Resolution caches: declared character → (character, persona, instruction)
+    # or None (a name that is not a character), and character → (ref_wav, model).
+    identity_cache: dict = field(default_factory=dict)
+    voice_cache: dict = field(default_factory=dict)
     session: Optional[aiohttp.ClientSession] = field(default=None)
 
 
@@ -154,6 +168,64 @@ def _sse_text(raw: bytes) -> str:
     return "".join(parts)
 
 
+def _declared_identity(deps: "FacadeDeps", name: str):
+    """(character, persona, system_instruction) for a client-declared character.
+
+    The client picks from /v1/models, and a name that resolves to a REAL
+    character on this machine is honored — the bearer already grants access to
+    the facade, and identity is what memory attribution follows, so a walk with
+    one companion must not file under another. Anything else (a model id, a
+    typo, a traversal attempt) returns None and the caller keeps the identity
+    start() resolved. Both answers are cached: composition reads persona files.
+    """
+    if not name or name == deps.character:
+        return None
+    if name in deps.identity_cache:
+        return deps.identity_cache[name]
+    identity = None
+    try:
+        if config_loader._NAME_RE.match(name) and not name.startswith("."):
+            if config_loader.persona_path(name).is_file():
+                identity = (name, "default",
+                            config_loader.compose_system_instruction(deps.model_name, name))
+    except Exception as exc:  # noqa: BLE001 — an unknown name is not an error
+        logger.warning("[serve] declared character {!r} unusable ({}) — using the "
+                       "resolved identity", name, type(exc).__name__)
+        identity = None
+    deps.identity_cache[name] = identity
+    if identity is not None:
+        logger.info("[serve] client-declared character: {}", name)
+    return identity
+
+
+def _voice_deps(deps: "FacadeDeps", body: dict) -> "FacadeDeps":
+    """deps, or a copy carrying a declared character's own voice bundle.
+
+    A client that names a character listed in [serve.characters] gets THAT
+    character's mapped bundle for this request; every other request keeps the
+    pinned voice byte-for-byte (the client "voice"/"model" fields stay ignored,
+    as they always were, for anything not on the roster).
+    """
+    name = str(body.get("voice") or body.get("model") or "").strip()
+    if not name or name not in deps.characters:
+        return deps
+    if name in deps.voice_cache:
+        resolved = deps.voice_cache[name]
+    else:
+        resolved = None
+        try:
+            bundle = config_loader.load_voice(name, str(deps.characters[name]))
+            resolved = (bundle["ref_wav"],
+                        str(bundle.get("model_repo") or deps.cfg["tts_model"]))
+        except Exception as exc:  # noqa: BLE001 — a bad bundle costs the pin, not the reply
+            logger.warning("[serve] voice bundle for {!r} unusable ({}) — pinned voice kept",
+                           name, type(exc).__name__)
+        deps.voice_cache[name] = resolved
+    if resolved is None:
+        return deps
+    return replace(deps, ref_wav=resolved[0], tts_model=resolved[1])
+
+
 # ── handlers ──────────────────────────────────────────────────────────────────
 
 async def _health(_req: web.Request) -> web.Response:
@@ -162,9 +234,13 @@ async def _health(_req: web.Request) -> web.Response:
 
 async def _models(request: web.Request) -> web.Response:
     deps: FacadeDeps = request.app["deps"]
+    # The resolved identity first, then [serve.characters] — deduped, order kept.
+    # A client can only declare a companion it was offered here.
+    names = list(dict.fromkeys([deps.character, *deps.characters]))
     return web.json_response(
         {"object": "list",
-         "data": [{"id": deps.character, "object": "model", "created": 0, "owned_by": "hearth"}]}
+         "data": [{"id": name, "object": "model", "created": 0, "owned_by": "hearth"}
+                  for name in names]}
     )
 
 
@@ -187,10 +263,24 @@ async def _chat(request: web.Request) -> web.StreamResponse:
     # whitelists the value, anything else files as the default "chat".
     tap_channel = request.headers.get("X-Hearth-Channel")
     last_user = ""
+    # Whose conversation is this? A client that names a real character in
+    # `model` gets THAT companion (it picked from the /v1/models roster);
+    # anything else keeps the identity start() resolved. This is also the memory
+    # attribution — records file under the companion who actually spoke.
+    character, persona, instruction = deps.character, deps.persona, deps.system_instruction
+    hint = request.headers.get("X-Hearth-Session", "")
     if internal:
         messages = [m for m in body.get("messages") or [] if isinstance(m, dict)]
     else:
-        messages = [{"role": "system", "content": deps.system_instruction}]
+        declared = _declared_identity(deps, str(body.get("model") or "").strip())
+        if declared is not None:
+            character, persona, instruction = declared
+        if deps.memory is not None:
+            # Opens the conversation on its first turn (recall paid once) and
+            # returns the AUGMENTED instruction; later turns are a dict lookup.
+            instruction = await deps.memory.instruction(
+                character, persona, tap_channel, hint, instruction)
+        messages = [{"role": "system", "content": instruction}]
         for m in body.get("messages") or []:
             if not isinstance(m, dict) or m.get("role") == "system":
                 continue  # persona integrity: the facade owns the system layer
@@ -240,6 +330,8 @@ async def _chat(request: web.Request) -> web.StreamResponse:
             reply = data["choices"][0]["message"]["content"] or ""
         if deps.tap and last_user and reply:
             deps.tap.record(last_user, reply, channel=tap_channel)
+        if deps.memory is not None and not internal and last_user and reply:
+            deps.memory.note_exchange(character, tap_channel, hint, last_user, reply)
         return web.json_response(data)
 
     # SSE passthrough: bytes forwarded verbatim; a copy accumulates for the tap.
@@ -260,6 +352,8 @@ async def _chat(request: web.Request) -> web.StreamResponse:
     reply = _sse_text(bytes(raw))
     if deps.tap and last_user and reply:
         deps.tap.record(last_user, reply, channel=tap_channel)
+    if deps.memory is not None and not internal and last_user and reply:
+        deps.memory.note_exchange(character, tap_channel, hint, last_user, reply)
     return resp
 
 
@@ -273,7 +367,8 @@ async def _speech(request: web.Request) -> web.StreamResponse:
         return web.json_response({"error": "invalid JSON body"}, status=400)
     # Parity prep: paralinguistic repair/strip + live knob forwarding; voice
     # identity pinned server-side (client "model"/"voice" ignored). See tts_prep.
-    payload, err = tts_prep.build_speech_payload(deps, body)
+    speech_deps = _voice_deps(deps, body)
+    payload, err = tts_prep.build_speech_payload(speech_deps, body)
     if payload is None:
         if err:
             return web.json_response({"error": err}, status=400)
@@ -287,7 +382,7 @@ async def _speech(request: web.Request) -> web.StreamResponse:
         # call ⇒ the tag envelope (if any) covers this whole call.
         try:
             upstream = await deps.session.post(
-                url, json=tts_prep.with_tag_profile(payload, deps),
+                url, json=tts_prep.with_tag_profile(payload, speech_deps),
                 timeout=aiohttp.ClientTimeout(total=300, sock_connect=5)
             )
         except aiohttp.ClientError as exc:
@@ -319,7 +414,7 @@ async def _speech(request: web.Request) -> web.StreamResponse:
             # Tag envelope per CHUNK: a style tag elevates only the sentence-chunk
             # that carries it; the next chunk falls back to the base payload.
             upstream = await deps.session.post(
-                url, json=tts_prep.with_tag_profile(dict(payload, input=chunk_text), deps),
+                url, json=tts_prep.with_tag_profile(dict(payload, input=chunk_text), speech_deps),
                 timeout=aiohttp.ClientTimeout(total=300, sock_connect=5),
             )
         except aiohttp.ClientError as exc:
@@ -395,7 +490,25 @@ def build_app(deps: FacadeDeps) -> web.Application:
         if app_["deps"].session is not None:
             await app_["deps"].session.close()
 
+    async def _memory_up(app_: web.Application) -> None:
+        try:
+            await app_["deps"].memory.start()
+        except Exception as exc:  # noqa: BLE001 — memory never costs the facade
+            logger.warning("[serve] memory glue start failed ({})", type(exc).__name__)
+
+    async def _memory_down(app_: web.Application) -> None:
+        # Ordered before _close on purpose: every open conversation becomes a
+        # record while the process is still healthy — a bootout writes records,
+        # not orphans.
+        try:
+            await app_["deps"].memory.stop()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[serve] memory glue stop failed ({})", type(exc).__name__)
+
     app.on_startup.append(_open)
+    if deps.memory is not None:
+        app.on_startup.append(_memory_up)
+        app.on_cleanup.append(_memory_down)
     app.on_cleanup.append(_close)
     return app
 
@@ -411,9 +524,10 @@ async def start(active, cfg: dict, lm_base_url: str, lm_token: str) -> Optional[
     ident = cfg.get("identity")
     if ident:
         character = str(ident["character"])
+        persona_name = str(ident.get("persona") or "default")
         pinned_voice = config_loader.load_voice(character, str(ident["voice"]))
         system_instruction = config_loader.compose_system_instruction(
-            active.model_name, character, persona=str(ident.get("persona") or "default"))
+            active.model_name, character, persona=persona_name)
         ref_wav = pinned_voice["ref_wav"]
         tts_model = str(pinned_voice.get("model_repo") or cfg["tts_model"])
         # Optional TTS knob pin: pinned keys win over the shared live layer
@@ -435,6 +549,7 @@ async def start(active, cfg: dict, lm_base_url: str, lm_token: str) -> Optional[
         pin_note = f", voice={ident['voice']} [pinned]{knob_note}"
     else:
         character = active.character
+        persona_name = active.persona_name
         system_instruction = active.system_instruction
         ref_wav = active.ref_wav
         tts_model = str(active.model_repo or cfg["tts_model"])
@@ -448,6 +563,15 @@ async def start(active, cfg: dict, lm_base_url: str, lm_token: str) -> Optional[
             tdir = config_loader.companion_state_dir(character, str(tdir))
         tap = TranscriptTap(tdir, character,
                             channel="chat", model=active.model_id)
+    # The facade-lane memory glue: OFF unless [memory.serve] enabled = true.
+    # Absent or disabled, nothing is imported and every path above behaves
+    # exactly as it did before the seam existed (the house gate idiom).
+    glue = None
+    mem_cfg = config_loader.load_memory_config()
+    if mem_cfg and dict(mem_cfg.get("serve") or {}).get("enabled"):
+        from .memory_glue import ServeMemory  # lazy: the seam loads only past the gate
+
+        glue = ServeMemory(mem_cfg)
     deps = FacadeDeps(
         system_instruction=system_instruction,
         model_id=active.model_id,
@@ -463,6 +587,10 @@ async def start(active, cfg: dict, lm_base_url: str, lm_token: str) -> Optional[
         tap=tap,
         pinned_tts=pinned_tts,
         allow_tag_profiles=allow_tag_profiles,
+        model_name=active.model_name,
+        persona=persona_name,
+        characters=dict(cfg.get("characters") or {}),
+        memory=glue,
     )
     runner = web.AppRunner(build_app(deps))
     await runner.setup()
@@ -475,6 +603,7 @@ async def start(active, cfg: dict, lm_base_url: str, lm_token: str) -> Optional[
                        "(standalone `python -m hearth.serve` already running?)", host, port, exc)
         await runner.cleanup()
         return None
-    print(f"[serve] /v1 facade → http://{host}:{port}/v1 (character={character}{pin_note})",
-          flush=True)
+    mem_note = ", memory=on" if glue is not None else ""
+    print(f"[serve] /v1 facade → http://{host}:{port}/v1 "
+          f"(character={character}{pin_note}{mem_note})", flush=True)
     return runner
