@@ -362,6 +362,13 @@ def load_memory_config() -> dict | None:
     ``backend`` is the default for every companion, the [memory.companions]
     sub-table overrides it by name, and the value "none" opts a companion out.
     The seam (hearth.memory.maybe_attach) is the only consumer.
+
+    [memory.intent] (intent-primed boot recall) is normalized here and always
+    present in the returned dict, default disabled — with no config change the
+    engine stays byte-identical. Its LLM settings fall back to
+    [memory.hindsight]'s, which is where the local extraction model is already
+    named; the intent lane calls that model directly (backend-independent), so
+    floor companions get the feature too.
     """
     if not MEMORY_TOML.exists():
         return None
@@ -375,6 +382,17 @@ def load_memory_config() -> dict | None:
         "companions": {},
     }
     cfg.update(mem)
+    intent = dict(cfg.get("intent") or {})
+    hindsight = dict(cfg.get("hindsight") or {})
+    cfg["intent"] = {
+        "enabled": bool(intent.get("enabled", False)),
+        "expiry_days": int(intent.get("expiry_days", 14)),
+        "llm_provider": str(intent.get("llm_provider")
+                            or hindsight.get("llm_provider") or "ollama"),
+        "llm_model": str(intent.get("llm_model") or hindsight.get("llm_model") or ""),
+        "llm_url": str(intent.get("llm_url") or ""),
+        "companions": dict(intent.get("companions") or {}),
+    }
     return cfg
 
 

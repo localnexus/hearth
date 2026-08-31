@@ -36,6 +36,28 @@ recall_query = "the user's life, preferences, and recent conversations"
 # ani = "hindsight"
 # guest = "none"
 
+# Intent-primed boot recall: "next time, let's talk about X" survives the gap.
+# Off by default. Enabled, at session close the seam asks the local extraction
+# model ONE question — did the user explicitly state what to discuss next
+# session? — and an explicit answer is kept in a one-line slot
+# (characters/<companion>/memory/intent.json, 0600, gitignored). At the next
+# session start it steers the recall query AND adds a dated line to the memory
+# block ("On <date> you agreed to pick up <topic> next time"), then the slot is
+# deleted: one boot, one use. Works on every backend, floor included.
+# Capture is conservative by design — explicit statements only, "none" on any
+# doubt. See docs/memory.md.
+[memory.intent]
+# enabled = false
+# expiry_days = 14                 # skip + clear a slot older than this (0 = no expiry)
+# llm_provider = "ollama"          # "ollama" is the only transport implemented;
+# llm_model = "qwen3-coder:30b"    # provider/model fall back to [memory.hindsight]
+# llm_url = "http://127.0.0.1:11434"
+
+# Per-companion override of `enabled` above (the [memory.companions] pattern).
+[memory.intent.companions]
+# ani = true
+# guest = false
+
 # Hindsight backend settings (only read when some companion selects it).
 # llm_model is REQUIRED: the local model Hindsight uses to extract facts at
 # session end (never on the per-turn path). Provider + model must exist on this

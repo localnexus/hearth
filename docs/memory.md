@@ -58,6 +58,54 @@ ephemeral-by-default and deletes on graceful stop. They are 0600 files in a 0700
 directory under your data root, gitignored, local-only — the same sensitivity
 class as held sessions. Per-companion opt-out: map that companion to `"none"`.
 
+## Intent-primed boot recall
+
+Off by default. Enabled, it makes *"next time, let's talk about X"* actually
+land next time:
+
+* **At session close** — after the canonical record is safely written, the seam
+  asks the local extraction model **one** question over the tail of the
+  transcript: *did the user explicitly state what they want to discuss next
+  session?* An explicit answer goes into a one-line **intent slot**; anything
+  else answers `none` and nothing is kept.
+* **At the next session start** — the recall query becomes the standing
+  `recall_query` **plus** the stated topic (semantic backends surface material
+  *about* it), and the memory block gains a dated line: *"On 2026-08-30 you
+  agreed to pick up the tea ceremony next time."* She opens aware of the plan.
+* **Consume-once** — the slot is deleted the moment it has been injected. A
+  plan that re-asserts itself for weeks is worse than no plan. An expiry
+  backstop (`expiry_days`, default 14) clears one that was never used.
+
+This works on **every** backend, the floor included: the capture call goes to
+the extraction model directly from the seam, and the injected line doesn't
+depend on recall at all.
+
+```toml
+[memory.intent]
+enabled = true          # default false — absent, nothing changes and no LLM is called
+expiry_days = 14        # skip + clear a slot older than this (0 = no expiry)
+# llm_provider = "ollama"        # only "ollama" is implemented; falls back to
+# llm_model = "qwen3-coder:30b"  # [memory.hindsight]'s provider/model when absent
+# llm_url = "http://127.0.0.1:11434"
+
+[memory.intent.companions]
+# ani = true            # per-companion override of `enabled`, the house pattern
+# guest = false
+```
+
+**Capture is deliberately conservative.** A wrongly-inferred plan asserted at
+boot is a confident wrong memory — the exact failure the dated, provenance-first
+framing exists to prevent. So the prompt demands an explicit statement, the
+parser rejects anything that isn't a short topic, and every doubt resolves to
+"no slot". Missing an intent costs a hint; inventing one costs trust.
+
+**Privacy.** The slot (`characters/<c>/memory/intent.json`) holds the stated
+topic, a timestamp, and the source session id — 0600 in the same 0700 tree as
+the records, gitignored, local-only, and deleted on first use. It is a sidecar,
+not substrate: losing it loses one hint, never a memory, and it takes no part in
+`rebuild`. Capture calls the same local model the extraction lane already uses —
+nothing leaves the machine.
+
 ## Backends
 
 | backend | needs | recall |
@@ -112,5 +160,7 @@ Run-verified (survey §5b, 2026-08-29/30) against fully local models. Be aware:
 ## Not built yet (deliberate)
 
 An idle-time consolidate trigger; a "what she remembers" panel page with
-accept/edit/discard cards for extracted facts; topic-shift recall mid-session.
+accept/edit/discard cards for extracted facts; topic-shift recall mid-session
+(the sibling of intent-primed recall — same query composition, plus a drift
+detector the engine doesn't have yet).
 The seam's contracts already leave room for all three.
