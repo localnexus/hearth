@@ -67,7 +67,7 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMUserAggregatorParams,
 )
 from loguru import logger
-from hearth.tts.mlx_tts_service import MLXAudioTTSService, SAMPLE_RATE
+from hearth.tts.params import SAMPLE_RATE  # engine-owned output rate (backend-neutral module)
 from hearth.stt.stt_service import MLXWhisperSTTService
 from hearth.control.control import start_web_server
 from hearth.control.engine_probe_llamaserver import fetch_engine_info_for
@@ -279,6 +279,15 @@ async def build_pipeline(
     # Pass fully-initialised settings to silence TTSSettings NOT_GIVEN validator
     # warnings (model/voice/language are baked into the service at init; not
     # runtime-configurable via settings frames for this service).
+    # Import deferred to construction (not module scope) so the base install —
+    # no [mac] extra — stays importable on any host: this module pulls mlx.core.
+    try:
+        from hearth.tts.mlx_tts_service import MLXAudioTTSService
+    except ImportError as exc:
+        raise RuntimeError(
+            "in-process TTS needs the MLX speech chain — install with the [mac] "
+            "extra on Apple Silicon (gold tier); hearth[cuda] is not built yet"
+        ) from exc
     tts = MLXAudioTTSService(
         settings=TTSSettings(model=None, voice=None, language=None),
         # ref_wav now comes from the active voice descriptor

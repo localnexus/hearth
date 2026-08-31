@@ -60,6 +60,7 @@ from pipecat.services.tts_service import TTSService
 from hearth.config import config_loader
 from hearth.tts import paralinguistics
 from hearth.tts import tag_profiles
+from hearth.tts.params import SAMPLE_RATE  # re-export: engine rate, backend-neutral owner
 
 logger = logging.getLogger(__name__)
 
@@ -125,8 +126,8 @@ different voice, add a bundle under characters/ and select it there — don't ed
 this (mono, ~24 kHz, > 5 s).
 """
 
-SAMPLE_RATE: int = 24000
-"""Chatterbox-Turbo always outputs 24 kHz mono audio."""
+# SAMPLE_RATE (24 kHz mono, Chatterbox-Turbo's fixed output rate) moved to
+# hearth.tts.params (backend-neutral owner); re-exported via the import above.
 
 STREAMING_INTERVAL: float = 2.0
 """Seconds of audio per mlx-audio GenerationResult chunk.
