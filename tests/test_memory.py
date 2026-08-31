@@ -408,6 +408,10 @@ class TestHindsightSidecar(unittest.TestCase):
             try:
                 self.assertEqual(b._url, "http://127.0.0.1:59999")
                 self.assertIsNone(proc.poll())  # still running until close
+                # Own process group (start_new_session): the operator's Ctrl+C
+                # must never reach the sidecar (run-observed 2026-08-30 — the
+                # terminal's SIGINT killed it before the close-time store).
+                self.assertNotEqual(os.getpgid(proc.pid), os.getpgid(os.getpid()))
             finally:
                 b.close()
             self.assertIsNotNone(proc.poll())   # terminated by close

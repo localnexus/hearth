@@ -313,9 +313,15 @@ class HindsightBackend:
             "--log-level", str(self._cfg.get("log_level", "warning")),
         ]
         self._log = self._open_log()
+        # start_new_session: the sidecar gets its OWN process group, so the
+        # operator's Ctrl+C (SIGINT to the terminal's foreground group) never
+        # reaches it. Run-observed 2026-08-30 (twice, rc=0 both times): the
+        # child shut down gracefully the instant ^C landed, and the seam's
+        # close-time store found a dead server 260 ms later. The sidecar's
+        # lifetime is OURS to end — close() SIGTERMs it after store/extraction.
         proc = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=self._log,
-            text=True, env=self._spawn_env(),
+            text=True, env=self._spawn_env(), start_new_session=True,
         )
         deadline = time.monotonic() + float(
             self._cfg.get("start_timeout_s", _SIDECAR_START_TIMEOUT_S)
