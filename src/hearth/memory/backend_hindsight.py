@@ -27,10 +27,14 @@ runner set LITELLM_LOCAL_MODEL_COST_MAP. First-ever run must fetch the
 embed/rerank models once: HF_HUB_OFFLINE=0.
 
 Async caveat baked in: the client SDK's sync methods raise inside a running
-event loop (they call run_until_complete). The seam invokes this adapter from
-the bot's async context, so every client call goes through ``_sync_call``,
-which hops to a worker thread — where the SDK's private loop is legal — and
-joins. Semantics stay synchronous, as the seam contract requires.
+event loop (they call run_until_complete), AND the SDK caches one aiohttp
+ClientSession bound to the event loop of the first call. The seam invokes
+this adapter from the bot's async context, so every client call goes through
+``self._call``, which hops to ONE persistent worker thread owned by the
+backend — same thread, same loop, for the client's whole lifetime — and
+joins. (Short-lived per-call threads leave the cached session on a dead
+loop: RuntimeError on the second call. Run-observed 2026-08-30, the first
+in-bot store.) Semantics stay synchronous, as the seam contract requires.
 """
 
 from __future__ import annotations
@@ -79,21 +83,6 @@ def _render_transcript(record: SessionRecord, max_chars: int) -> str:
     return text
 
 
-def _sync_call(fn, /, *args, **kwargs):
-    """Run a sync SDK method safely from sync OR async context.
-
-    In a plain script (CLI rebuild) the call goes straight through. Inside a
-    running event loop (the bot) it executes on a short-lived worker thread,
-    where the SDK's internal run_until_complete has a loop of its own.
-    """
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return fn(*args, **kwargs)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(fn, *args, **kwargs).result()
-
-
 class HindsightBackend:
     """retain/recall against a Hindsight server, one bank per companion."""
 
@@ -106,6 +95,28 @@ class HindsightBackend:
         self._server = None  # embedded mode only
         self._client = None
         self._url: str | None = None
+        self._pool: concurrent.futures.ThreadPoolExecutor | None = None
+
+    def _call(self, fn, /, *args, **kwargs):
+        """Run a sync SDK method safely from sync OR async context.
+
+        In a plain script (CLI rebuild) the call goes straight through. Inside
+        a running event loop (the bot) it executes on ONE persistent worker
+        thread owned by this backend: the SDK caches an aiohttp ClientSession
+        bound to the loop of the first call, so every call must share that
+        thread/loop pair. A short-lived per-call thread leaves the cached
+        session on a dead loop — RuntimeError on the second call (run-observed
+        2026-08-30, the first in-bot store after a recall).
+        """
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return fn(*args, **kwargs)
+        if self._pool is None:
+            self._pool = concurrent.futures.ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="hindsight-io"
+            )
+        return self._pool.submit(fn, *args, **kwargs).result()
 
     # ── lifecycle ────────────────────────────────────────────────────────────
 
@@ -184,6 +195,17 @@ class HindsightBackend:
         logger.info("[memory] hindsight embedded server up at {}", server.url)
 
     def close(self) -> None:
+        if self._client is not None:
+            try:
+                # On the same persistent thread: no running loop there, so the
+                # SDK's sync close path runs and the cached aiohttp session
+                # closes cleanly (retires the "Unclosed client session" noise).
+                self._call(self._client.close)
+            except Exception as exc:  # noqa: BLE001 — shutdown must not raise
+                logger.warning("[memory] hindsight client close failed ({})", type(exc).__name__)
+        if self._pool is not None:
+            self._pool.shutdown(wait=True)
+            self._pool = None
         if self._proc is not None:
             try:
                 self._proc.terminate()
@@ -208,7 +230,7 @@ class HindsightBackend:
 
     def recall(self, companion: str, query: str, limit: int) -> list[MemoryItem]:
         self._ensure()
-        result = _sync_call(self._client.recall, bank_id=companion, query=query)
+        result = self._call(self._client.recall, bank_id=companion, query=query)
         raw = getattr(result, "results", result) or []
         items: list[MemoryItem] = []
         for entry in list(raw)[: max(0, int(limit))]:
@@ -228,7 +250,7 @@ class HindsightBackend:
         if not transcript:
             return
         self._ensure()
-        _sync_call(self._client.retain, bank_id=companion, content=transcript)
+        self._call(self._client.retain, bank_id=companion, content=transcript)
 
     def consolidate(self, companion: str) -> None:  # noqa: ARG002
         """No-op this pass: retain already extracts; Hindsight's ``reflect`` is

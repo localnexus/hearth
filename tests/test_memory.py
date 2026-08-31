@@ -15,12 +15,14 @@ Run:  .venv/bin/python -m unittest tests/test_memory.py
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -231,6 +233,27 @@ class TestHindsightSidecar(unittest.TestCase):
         b = HindsightBackend({"mode": "sidecar", "llm_model": "m"})
         with self.assertRaises(ValueError):
             b._start_sidecar()
+
+    def test_call_pins_one_persistent_thread_in_async_context(self):
+        """Regression (run-observed 2026-08-30, first in-bot store): the SDK
+        caches an aiohttp ClientSession on the first call's event loop, so all
+        async-context calls must share ONE persistent worker thread — per-call
+        threads leave the session on a dead loop (RuntimeError on call #2)."""
+        from hearth.memory.backend_hindsight import HindsightBackend
+
+        b = HindsightBackend({"mode": "sidecar", "llm_model": "m"})
+        idents: list[int] = []
+
+        async def scenario():
+            idents.append(b._call(threading.get_ident))
+            idents.append(b._call(threading.get_ident))
+
+        asyncio.run(scenario())
+        self.assertEqual(idents[0], idents[1])            # same worker thread
+        self.assertNotEqual(idents[0], threading.get_ident())  # not the caller's
+        b.close()  # shuts the pool with no client/proc — must not raise
+        # sync context (CLI rebuild) goes straight through on the caller's thread
+        self.assertEqual(b._call(threading.get_ident), threading.get_ident())
 
 
 # ── the config gate: anchors resolve at import ⇒ subprocess (test_data_root shape) ──
