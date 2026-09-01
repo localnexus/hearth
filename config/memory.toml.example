@@ -74,6 +74,7 @@ recall_query = "the user's life, preferences, and recent conversations"
 # llm_api_key = ""
 # db_url = "pg0"                   # bundled embedded PostgreSQL (port 5432, ~/.pg0)
 # retain_max_chars = 6000          # transcript tail handed to extraction at stop
+# recent_boost = 3                 # last-session slot: newest valid facts appended past semantic rank (0 = off)
 # log_level = "warning"
 # log_file = "/path/to/hindsight-sidecar.log"   # the sidecar CHILD's own stdout+stderr.
 #                                  # Unset: <data root>/logs/hindsight-sidecar.log (0600 in a

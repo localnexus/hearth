@@ -264,6 +264,7 @@ class _MemHindsight(_Cfg):
     llm_api_key: str = Field("", description="provider key if the local server wants one")
     db_url: str = Field("pg0", description="backend store — pg0 = bundled embedded PostgreSQL")
     retain_max_chars: int = Field(6000, ge=0, description="transcript tail handed to extraction at stop")
+    recent_boost: int = Field(3, ge=0, description="the last-session slot: newest valid facts appended past semantic rank (0 = off)")
     log_level: str = Field("warning", description="sidecar log level")
     log_file: Optional[str] = Field(None, description="sidecar child's own stdout+stderr (default: <data root>/logs/…)")
     start_timeout_s: Optional[float] = Field(None, gt=0.0, description="sidecar start timeout override, seconds")

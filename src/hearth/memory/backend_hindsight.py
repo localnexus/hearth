@@ -65,6 +65,7 @@ from .backend import MemoryItem, SessionRecord
 os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 
 _MAX_RETAIN_CHARS_DEFAULT = 6000
+_RECENT_BOOST_DEFAULT = 3  # newest facts appended past semantic rank (0 = off)
 _SIDECAR_START_TIMEOUT_S = 180.0  # cold pg0 init + model load can be slow once
 
 # Same permission discipline as records.py: the sidecar log carries startup
@@ -422,7 +423,42 @@ class HindsightBackend:
             # text ("… | When: on Sunday, August 30, 2026 | …"); ``when`` stays ""
             # and the framing relies on the text (see MemoryItem docstring).
             items.append(MemoryItem(text=text, source_session=f"hindsight/{companion}"))
-        return items
+        return items + self._recent_boost(companion, {i.text for i in items})
+
+    def _recent_boost(self, companion: str, seen: set[str]) -> list[MemoryItem]:
+        """The last-session slot (finding 2026-09-01): recall is a single
+        top-K semantic query at session open, so a fact retained minutes ago
+        can rank far below the cut and never reach the companion. Append the
+        N newest valid facts (``list_memories`` is newest-first) the semantic
+        pass didn't already surface. Contained: a failed boost costs nothing
+        but itself."""
+        n = int(self._cfg.get("recent_boost", _RECENT_BOOST_DEFAULT))
+        if n <= 0:
+            return []
+        out: list[MemoryItem] = []
+        try:
+            result = self._call(
+                self._client.list_memories, bank_id=companion, limit=max(n * 3, n + 2)
+            )
+            for entry in list(getattr(result, "items", None) or []):
+                m = dict(entry)
+                text = str(m.get("text") or "").strip()
+                if not text or text in seen or str(m.get("state") or "valid") != "valid":
+                    continue
+                out.append(MemoryItem(
+                    text=text,
+                    when=str(m.get("date") or "")[:10],
+                    source_session=f"hindsight/{companion}/recent",
+                ))
+                seen.add(text)
+                if len(out) >= n:
+                    break
+        except Exception as exc:  # noqa: BLE001 — the boost must never cost the recall
+            logger.warning(
+                "[memory] recent-boost failed ({}) — semantic recall only",
+                type(exc).__name__,
+            )
+        return out
 
     def store(self, companion: str, record: SessionRecord) -> None:
         transcript = _render_transcript(
