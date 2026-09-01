@@ -11,6 +11,10 @@ dependencies = [
     "aiohttp>=3.14.1",
     "pipecat-ai[local,silero]>=1.4.0",
 ]
+# NOTE: hearth.config.settings_registry uses pydantic v2, guaranteed transitively
+# (pipecat-ai pins pydantic>=2.10.6,<3). Deliberately not declared above this
+# stroke — uv.lock regeneration was out of scope; declare it explicitly at the
+# next legitimate lock regeneration.
 
 [project.optional-dependencies]
 # mac — the Apple-Silicon MLX chain (TTS + STT). transformers==5.5.0 is pinned here

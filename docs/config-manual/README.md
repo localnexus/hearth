@@ -78,3 +78,4 @@ Model / prompt / voice = **data files** now (edit + restart; `config_loader.load
 | [audio-devices.md](audio-devices.md) | §E — Audio devices & sample rates: mic/speaker pinning, the fixed 16 kHz input. |
 | [misc.md](misc.md) | §F — Misc: T4 latency logs, idle-timeout keep-alive, HF Hub airgap, the transformers pin. |
 | [session-continuity.md](session-continuity.md) | §G — Session continuity: the `sessions/` dir and the `--resume`/`--new`/`--hold`/`--discard-held` CLI flags. |
+| [settings-reference.md](settings-reference.md) · [settings-reference-gates.md](settings-reference-gates.md) | §H — GENERATED settings reference: every file-configurable key (type, default, range, live path) + the gate files, from the settings registry. Validate your install: `python -m hearth.config.check`. |

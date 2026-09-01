@@ -34,6 +34,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from loguru import logger
+
 # ── the two anchors ──────────────────────────────────────────────────────────
 #
 # HEARTH_ROOT — the ENGINE tree: this package plus what ships with it (the calibrated
@@ -193,6 +195,25 @@ def _require(mapping: dict, key: str, path: Path):
     return mapping[key]
 
 
+def _schema_check(kind: str, data: dict, path: Path) -> None:
+    """Registry-backed shape check (settings_registry — schema-driven settings, step 1).
+
+    Lenient at load time by design: UNKNOWN keys and out-of-range values only
+    WARN (an operator's extra key or bold value never blocks a boot that works
+    today); a TYPE violation on a present key fails fast naming the file —
+    that class otherwise dies later as a raw traceback deep in the pipeline.
+    Required-ness stays with the callers' _require (their messages are the
+    contract). Strict validation lives in `python -m hearth.config.check`.
+    """
+    from hearth.config import settings_registry
+    try:
+        notes = settings_registry.loader_check(kind, data)
+    except settings_registry.SchemaError as exc:
+        raise ConfigError(f"invalid value in {path}: {exc}") from exc
+    for note in notes:
+        logger.warning("config: {} — {}", path, note)
+
+
 def _strip_comments(text: str) -> str:
     """Drop every HTML comment block. The pilot files carry authoring notes as
     <!-- … --> comments that must NOT reach the composed prompt."""
@@ -249,6 +270,7 @@ def load_active_selection() -> dict:
     `persona` is optional: absent → "default" (the character's persona.md); a name
     selects the sibling variant file persona.<name>.md."""
     data = _read_toml(ACTIVE_TOML)
+    _schema_check("active", data, ACTIVE_TOML)
     persona = str(data.get("persona", "default") or "default")
     return {
         "character": _require(data, "character", ACTIVE_TOML),
@@ -262,6 +284,7 @@ def load_model(model_name: str) -> dict:
     """Read config/models/<model_name>/model.toml (DATA, else the shipped one). Requires 'id'."""
     path = model_dir(model_name) / "model.toml"
     data = _read_toml(path)
+    _schema_check("model", data, path)
     _require(data, "id", path)
     return data
 
@@ -280,6 +303,7 @@ def load_voice(character: str, voice: str) -> dict:
     vdir = voice_dir(character, voice)
     path = vdir / "voice.toml"
     data = _read_toml(path)
+    _schema_check("voice", data, path)
     _require(data, "tag", path)
     ref = _require(data, "ref_wav", path)
     ref_path = Path(ref).expanduser()
@@ -330,6 +354,7 @@ def load_openclaw_config() -> dict | None:
     oc = _read_toml(OPENCLAW_TOML).get("openclaw")
     if not isinstance(oc, dict) or not oc.get("enabled"):
         return None
+    _schema_check("openclaw", oc, OPENCLAW_TOML)
     cfg: dict = {
         "gateway_url": "http://127.0.0.1:18789",
         "agent": "hands",
@@ -383,6 +408,7 @@ def load_memory_config() -> dict | None:
     mem = _read_toml(MEMORY_TOML).get("memory")
     if not isinstance(mem, dict) or not mem.get("enabled"):
         return None
+    _schema_check("memory", mem, MEMORY_TOML)
     cfg: dict = {
         "backend": "floor",
         "recall_limit": 6,
@@ -446,6 +472,7 @@ def load_serve_config() -> dict | None:
     sv = _read_toml(SERVE_TOML).get("serve")
     if not isinstance(sv, dict) or not sv.get("enabled"):
         return None
+    _schema_check("serve", sv, SERVE_TOML)
     ident = sv.get("identity")
     if ident is not None:
         if not isinstance(ident, dict):

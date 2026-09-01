@@ -1,1 +1,1 @@
-"""config — config loader and hot-reload."""
+"""config — config loader, hot-reload, and the settings registry."""
