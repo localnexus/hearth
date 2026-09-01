@@ -533,7 +533,8 @@ def build_app(deps: FacadeDeps) -> web.Application:
     return app
 
 
-async def start(active, cfg: dict, lm_base_url: str, lm_token: str) -> Optional[web.AppRunner]:
+async def start(active, cfg: dict, lm_base_url: str, lm_token: str,
+                mount=None) -> Optional[web.AppRunner]:
     """Bind the facade per serve.toml. Config problems raise (fail-fast, naming
     the file/path); a busy port warns and returns None — the caller (the voice
     appliance) must survive a standalone facade already holding the socket."""
@@ -617,7 +618,10 @@ async def start(active, cfg: dict, lm_base_url: str, lm_token: str) -> Optional[
         characters=dict(cfg.get("characters") or {}),
         memory=glue,
     )
-    runner = web.AppRunner(build_app(deps))
+    app = build_app(deps)
+    if mount is not None:
+        mount(app)  # [serve.supervisor] — the daemon face (ADR 007); joins BEFORE setup
+    runner = web.AppRunner(app)
     await runner.setup()
     host, port = str(cfg["host"]), int(cfg["port"])
     try:

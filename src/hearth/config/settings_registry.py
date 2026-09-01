@@ -202,6 +202,14 @@ class _ServeIdentity(_Cfg):
     tts: Optional[_ServeIdentityTts] = Field(None, description="pinned synth knobs; win over client body and live layer")
 
 
+class _ServeSupervisor(_Cfg):
+    enabled: bool = Field(False, description="mount the daemon face (/admin routes + panel proxy) in the STANDALONE facade")
+    panel_url: str = Field("http://127.0.0.1:65000", description="the bot's control panel — proxy target + reachability probe")
+    stop_grace_s: float = Field(15.0, gt=0.0, description="seconds after SIGINT before escalating (memory-consolidation headroom)")
+    term_grace_s: float = Field(5.0, gt=0.0, description="seconds after SIGTERM before SIGKILL")
+    env: dict[str, str] = Field(default_factory=dict, description="extra child env for the spawned bot (e.g. LM_PROVIDER) — values never printed")
+
+
 class ServeTable(_Cfg):
     enabled: bool = Field(False, description="master gate: off ⇒ nothing loads, no socket (byte-identical appliance)")
     host: str = Field("127.0.0.1", description="bind address — loopback by default; NEVER 0.0.0.0 without an overlay network")
@@ -219,6 +227,8 @@ class ServeTable(_Cfg):
     identity: Optional[_ServeIdentity] = Field(None, description="fixed facade identity instead of the active.toml snapshot")
     characters: dict[str, str] = Field(default_factory=dict,
                                        description="roster a client may declare: character name → its voice bundle (/v1/models)")
+    supervisor: Optional[_ServeSupervisor] = Field(
+        None, description="the daemon face (ADR 007): the standalone facade owns the voice bot as a child; absent/off ⇒ byte-identical")
 
 
 # ── config/memory.toml [memory] (the memory seam gate) ───────────────────────

@@ -37,3 +37,16 @@ transcriptions_enabled = false
 # data root — gitignored); an absolute path is used as given.
 transcript_tap = true
 transcript_dir = "transcripts"
+
+# ── The daemon face (ADR 007) — off by default ────────────────────────────────
+# With enabled = true the STANDALONE facade (`python -m hearth.serve`) also
+# supervises the voice bot: POST /admin/bot/start|stop, GET /admin/state, POST
+# /admin/daemon/restart, and a reverse proxy to the bot's control panel — all
+# behind the same bearer (one door). The in-process attach never mounts this.
+# Stop is warm: your LLM server is never touched.
+#[serve.supervisor]
+#enabled = true
+#stop_grace_s = 15.0        # SIGINT → escalate wait (graceful-shutdown headroom)
+#term_grace_s = 5.0         # SIGTERM → SIGKILL wait
+#[serve.supervisor.env]     # extra env for the spawned bot (values never printed)
+#LM_PROVIDER = "lmstudio"

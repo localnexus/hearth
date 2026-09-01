@@ -35,6 +35,7 @@ All keys below live under the `[serve]` table.
 | `transcript_dir` | str | `transcripts` |  | — | relative ⇒ inside each companion's own directory; absolute used as-is |
 | `identity` | table | — |  | — | fixed facade identity instead of the active.toml snapshot |
 | `characters` | map(str → str) | — |  | — | roster a client may declare: character name → its voice bundle (/v1/models) |
+| `supervisor` | table | — |  | — | the daemon face (ADR 007): the standalone facade owns the voice bot as a child; absent/off ⇒ byte-identical |
 | `identity.character` | str | **required** |  | — | pinned facade character (independent of active.toml) |
 | `identity.voice` | str | **required** |  | — | pinned voice bundle for that character |
 | `identity.tts` | table | — |  | — | pinned synth knobs; win over client body and live layer |
@@ -44,6 +45,11 @@ All keys below live under the `[serve]` table.
 | `identity.tts.repetition_penalty` | float | — | 0.5–5.0 | — | pinned repetition penalty |
 | `identity.tts.speed` | float | — | 0.0– | — | pinned playback-rate multiplier (upstream mlx-audio) |
 | `identity.tts.allow_tag_profiles` | bool | `false` |  | — | policy flag: may per-tag profiles overlay the pin? never forwarded upstream |
+| `supervisor.enabled` | bool | `false` |  | — | mount the daemon face (/admin routes + panel proxy) in the STANDALONE facade |
+| `supervisor.panel_url` | str | `http://127.0.0.1:65000` |  | — | the bot's control panel — proxy target + reachability probe |
+| `supervisor.stop_grace_s` | float | `15.0` | 0.0– | — | seconds after SIGINT before escalating (memory-consolidation headroom) |
+| `supervisor.term_grace_s` | float | `5.0` | 0.0– | — | seconds after SIGTERM before SIGKILL |
+| `supervisor.env` | map(str → str) | — |  | — | extra child env for the spawned bot (e.g. LM_PROVIDER) — values never printed |
 
 ## `config/memory.toml` — The memory-seam gate
 

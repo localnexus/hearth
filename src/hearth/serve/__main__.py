@@ -29,7 +29,16 @@ async def _main() -> int:
 
     from . import app as serve_app
 
-    runner = await serve_app.start(active, cfg, "", "")
+    # [serve.supervisor] (ADR 007): the daemon face mounts ONLY here, in the
+    # standalone process — gate off/absent => mount=None, facade byte-identical.
+    mount = None
+    sup_cfg = dict(cfg.get("supervisor") or {})
+    if sup_cfg.get("enabled"):
+        from hearth.supervisor import build_mount  # lazy: loads only past the gate
+
+        mount = build_mount(sup_cfg)
+
+    runner = await serve_app.start(active, cfg, "", "", mount=mount)
     if runner is None:
         return 1
     try:
