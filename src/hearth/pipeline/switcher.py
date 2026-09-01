@@ -130,6 +130,7 @@ class LiveSwitcher:
         self._context = context
         self._store = store
         self._seam = seam
+        self._meter = None  # TokenMeter, attached late by bot.py (created after us)
         self._lm_provider = lm_provider
         self._lm_base_url = lm_base_url
         self._lm_token = lm_token
@@ -153,6 +154,10 @@ class LiveSwitcher:
     @property
     def current_seam(self):
         return self._seam
+
+    def attach_meter(self, meter) -> None:
+        """Late-bind the TokenMeter (duck-typed; this module stays pipecat-free)."""
+        self._meter = meter
 
     def snapshot(self, messages) -> None:
         """Per-turn persistence hook target — always the CURRENT store."""
@@ -349,6 +354,10 @@ class LiveSwitcher:
         else:
             carry, old_msgs = [], msgs
         self._context.set_messages(list(p["resume_messages"] or []) + carry)
+        if self._meter is not None:
+            # Re-seed the runway gauge for the new companion's pre-fill; the
+            # panel shows it estimated until their first turn reports.
+            self._meter.prime_estimate(p["system_instruction"], self._context.messages)
 
         # 2. Voice re-clone (HIDEABLE ~0.2 s, masked under LLM think-time).
         voice_note = "unchanged"

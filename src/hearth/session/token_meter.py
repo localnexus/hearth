@@ -3,7 +3,9 @@
 A pipecat BaseObserver that watches the MetricsFrame -> LLMUsageMetricsData that
 OpenAILLMService already emits (the model server's OWN usage block — ground truth,
 not a tiktoken estimate). It records per-turn prompt/completion/total counts, keeps
-a session cumulative running total, and prints a shutdown summary.
+a session cumulative running total, and prints a shutdown summary. An open-time
+chars/4 estimate (prime_estimate) fills the gauge's dead zone — after a resume or
+live switch the pre-fill is real context the server won't report until turn 1.
 
 Thinking-off guard: Qwen3.6 is a hybrid thinking model with reasoning forced OFF.
 If reasoning_tokens > 0 ever appears, chain-of-thought is leaking; we surface a
@@ -44,6 +46,9 @@ class TokenMeter(BaseObserver):
         # turn's value so we can report the turn-over-turn growth (net turn growth).
         self.last_prompt = 0
         self.prev_prompt = 0
+        self.last_completion = 0
+        # Estimate primed at open / live-switch; any real server report clears it.
+        self.est_pending: int | None = None
         self._seen_ids: set[int] = set()  # dedupe MetricsFrame.id (frames re-pushed)
 
     async def on_push_frame(self, data: FramePushed):
@@ -65,6 +70,8 @@ class TokenMeter(BaseObserver):
             # net turn growth = last_prompt − prev_prompt (0 on the first turn).
             self.prev_prompt = self.last_prompt
             self.last_prompt = u.prompt_tokens
+            self.last_completion = u.completion_tokens
+            self.est_pending = None
             rt = u.reasoning_tokens or 0
             if rt > 0:
                 # ALWAYS warn (not gated by verbose) — thinking-off is load-bearing.
@@ -81,6 +88,27 @@ class TokenMeter(BaseObserver):
                     f"· total {u.total_tokens}",
                     file=sys.stderr, flush=True,
                 )
+
+    def prime_estimate(self, system_instruction: str, messages) -> None:
+        """Seed the runway gauge before the server's first usage report.
+
+        Pre-fill (system prompt + memory block + any resumed transcript) is real
+        context, but the server reports it only with turn 1 — without this seed
+        the panel claims 0 held right after a resume or live switch. chars/4
+        heuristic; snapshot() flags it estimated until ground truth replaces it.
+        Duck-typed on purpose: the pipecat-free switcher calls it without
+        importing this module.
+        """
+        chars = len(system_instruction or "")
+        for m in messages or []:
+            content = m.get("content") if isinstance(m, dict) else None
+            if isinstance(content, str):
+                chars += len(content)
+            elif isinstance(content, list):  # multimodal parts
+                for part in content:
+                    if isinstance(part, dict) and isinstance(part.get("text"), str):
+                        chars += len(part["text"])
+        self.est_pending = chars // 4
 
     def summary(self) -> str:
         line = (
@@ -99,6 +127,12 @@ class TokenMeter(BaseObserver):
         # net turn growth = Δ of consecutive per-turn prompt_tokens; 0 on the
         # first turn (no prior turn to diff against).
         net_turn_growth = self.last_prompt - self.prev_prompt if self.turns > 1 else 0
+        if self.est_pending is not None:
+            held, estimated = self.est_pending, True
+        else:
+            # Last request's prompt + its completion — both sit in context now;
+            # prompt alone perpetually trails the gauge by one reply.
+            held, estimated = self.last_prompt + self.last_completion, False
         return {
             "turns": self.turns,
             "prompt": self.prompt,
@@ -107,7 +141,8 @@ class TokenMeter(BaseObserver):
             "reasoning_seen": self.reasoning_seen,
             "leak": self.reasoning_seen > 0,
             # Phase 1 status block (runway gauge):
-            "held_in_ctx": self.last_prompt,      # latest per-turn prompt_tokens
+            "held_in_ctx": held,
+            "estimated": estimated,               # True until the first server report
             "net_turn_growth": net_turn_growth,   # Δ per-turn prompt_tokens
         }
 

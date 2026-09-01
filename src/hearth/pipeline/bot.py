@@ -449,7 +449,7 @@ async def build_pipeline(
     ])
 
     return (pipeline, transport, context, mute_gate, speaking_tap, measure_observer,
-            recorder, memory_seam, live_switcher)
+            recorder, memory_seam, live_switcher, system_instruction)
 
 
 async def main(
@@ -467,7 +467,7 @@ async def main(
     await recording_repair_routing()
 
     (pipeline, transport, context, mute_gate, speaking_tap, measure_observer,
-     recorder, memory_seam, live_switcher) = await build_pipeline(
+     recorder, memory_seam, live_switcher, system_instruction) = await build_pipeline(
         dump_dir, resume_messages=resume_messages, store=store
     )
 
@@ -475,6 +475,10 @@ async def main(
     # Per-turn lines print only when verbose (T4_METRICS); the shutdown summary
     # and any reasoning-leak warning always print.
     meter = TokenMeter(verbose=T4_METRICS)
+    # Seed the runway gauge: pre-fill (system prompt + memory block + any resumed
+    # transcript) is real context the server won't report until the first turn.
+    meter.prime_estimate(system_instruction, context.messages)
+    live_switcher.attach_meter(meter)
 
     worker = PipelineWorker(
         pipeline,

@@ -391,7 +391,7 @@ async function pollUsage() {
     const tok = $('s-tokens');
     tok.className = 'zone-' + zone;
     tok.textContent =
-      `Tokens | ${fmt(held)} held [${pct} of ${fmt(budget)} reliable] · ${remaining} to line · advertised ${fmt(allot)} · model max: ${fmt(engine.model_max)}`;
+      `Tokens | ${fmt(held)}${u.estimated ? ' est.' : ''} held [${pct} of ${fmt(budget)} reliable] · ${remaining} to line · advertised ${fmt(allot)} · model max: ${fmt(engine.model_max)}`;
     $('ctxwarn').classList.toggle('hidden', zone === 'ok' || zone === 'na');
     $('s-misc').textContent =
       `Misc   | Session: ${engine.session || DASH} · Turns: ${fmt(u.turns)} · net turn growth: ${fmt(u.net_turn_growth)} · total tok. xmitted: ${fmt(u.prompt)}`;
