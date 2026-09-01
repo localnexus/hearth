@@ -3,8 +3,11 @@
 POST /admin/switch = a registry-validated `config/active.toml` write + a
 supervised bot restart: today's ritual (edit the selection → stop → relaunch)
 performed by the daemon, so the user presses one button instead of following
-a runbook. NO bot internals change — the bot still reads active.toml once at
-startup (stroke 3 moves pieces live; the button's UX never will change).
+a runbook. Stroke 3 escalates: when every changed field has a declared live
+path (live_capable_fields below) and the bot is up, the daemon hands the same
+bundle to the bot's intent slot (/switch/live) and it applies at the next turn
+boundary — no restart; anything heavier (or a refused/unreachable live arm)
+falls back to the stroke-2 supervised restart. Same button either way.
 
 File discipline (ADR 007 §2): active.toml stays the durable selection record
 and the cold-boot truth. The write is atomic (tmp → rename), keeps unknown
@@ -183,9 +186,43 @@ def choices() -> dict:
         entry["voices"] = config_loader.list_voices(entry["name"])
         entry["personas"] = sorted(entry["personas"])
     models = set()
+    model_ids = {}
     for root in roots:
         for marker in (root / "config" / "models").glob("*/model.toml"):
-            if not marker.parent.name.startswith("."):
-                models.add(marker.parent.name)
+            name = marker.parent.name
+            if name.startswith("."):
+                continue
+            models.add(name)
+            if name not in model_ids:  # data root first — its id wins (lookup rule)
+                try:
+                    with open(marker, "rb") as f:
+                        mid = tomllib.load(f).get("id")
+                    if mid:
+                        model_ids[name] = str(mid)
+                except (OSError, tomllib.TOMLDecodeError):
+                    pass  # unreadable → no id advertised; the name still lists
     return {"characters": [characters[k] for k in sorted(characters)],
-            "models": sorted(models)}
+            "models": sorted(models),
+            "model_ids": model_ids}
+
+
+# ── the router's registry consult (ADR 007 stroke 3) ─────────────────────────
+
+def live_capable_fields() -> frozenset:
+    """Selection fields with a DECLARED live path — the x-hearth.hot_via extra
+    on the registry's ActiveFile fields. The router's mechanical lookup
+    (ADR 007 §2): a switch whose every changed field appears here may be
+    handed to the running bot's intent slot; anything else restarts."""
+    out = set()
+    for name, field in sr.ActiveFile.model_fields.items():
+        extra = field.json_schema_extra if isinstance(field.json_schema_extra, dict) else {}
+        if (extra.get("x-hearth") or {}).get("hot_via"):
+            out.add(name)
+    return frozenset(out)
+
+
+def changed_fields(previous, merged: dict) -> list:
+    """Which selection keys a switch actually changes (previous may be None —
+    then every key counts as changed)."""
+    prev = dict(previous or {})
+    return [k for k in SELECTION_KEYS if prev.get(k) != merged.get(k)]

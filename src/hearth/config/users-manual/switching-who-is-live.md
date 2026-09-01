@@ -26,9 +26,13 @@ With the **supervisor daemon** on (`[serve.supervisor] enabled = true` in `serve
 facade running), the **desk voice loop's** version of this ritual is one action: the control
 panel's **COMPANION** box — or an authed `POST /admin/switch` at the facade — validates your
 selection (registry + on-disk existence; a refused switch writes nothing), writes
-`config/active.toml` (previous copy kept beside it as `active.toml.prev`), and warm-restarts the
-voice bot for you. The stop is the graceful ladder, so session finalize/hold semantics are
-preserved — tick **keep this session** to hold. Your LLM server is never touched.
+`config/active.toml` (previous copy kept beside it as `active.toml.prev`), and applies it the
+lightest way it can. When every changed piece has a live path (persona · voice · a model your
+LLM server already holds), the switch lands **live at your next words** — the old session
+finalizes exactly as a graceful stop would, the new companion arrives with their own recall,
+and nothing restarts. Anything heavier falls back to a warm restart of the voice bot. Either
+way the finalize/hold semantics are preserved — tick **keep this session** to hold — and your
+LLM server is never touched.
 
 **What it does NOT do:** bounce the facade. The facade lane keeps its own rules — a
 `[serve.identity]` pin or `[serve.characters]` roster entry already decouples it from

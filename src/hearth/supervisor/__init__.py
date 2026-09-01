@@ -18,6 +18,12 @@ deletability test, by construction.
 Stroke 2 (same deletability): /admin/switch — switch-companion as one
 action, a registry-validated active.toml write + a supervised warm
 restart (switch.py).
+
+Stroke 3 (same deletability): the switch goes LIVE when it can — the
+router consults the registry (switch.live_capable_fields) and hands the
+bundle to the running bot's turn-boundary intent slot (bot-side half:
+pipeline/switcher.py + the /switch/live panel routes); the supervised
+restart stays the fallback and the cold path. Same button either way.
 """
 
 from .routes import build_mount  # noqa: F401

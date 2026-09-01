@@ -95,6 +95,7 @@ from hearth.config import config_reload
 from hearth.bridges import openclaw_bridge
 from hearth import serve
 from hearth import memory as hearth_memory
+from hearth.pipeline import switcher as switcher_mod
 
 # ── L2 panel features (activation = import; registers routes on control_routes) ──
 # Each import runs the module's @register side effect, adding its routes to the web
@@ -112,6 +113,12 @@ import hearth.control.features.manual  # noqa: F401
 #                      companion.py); inert unless [serve.supervisor] is enabled AND
 #                      the panel binds loopback — see the module docstring.
 import hearth.control.features.companion  # noqa: F401
+#   /switch/live     — the bot half of the LIVE companion switch (features/
+#                      live_switch.py): the supervisor's /admin/switch hands a
+#                      bundle here when every changed piece has a live path
+#                      (ADR 007 stroke 3); routes answer 503 until main()
+#                      attaches the pipeline's LiveSwitcher below.
+import hearth.control.features.live_switch  # noqa: F401
 # Already pulled in by config_profiles; imported explicitly because bot core calls its
 # F9 startup scrub below (remove that call too if these feature imports ever go).
 import hearth.control.features.config_knobs  # noqa: F401
@@ -341,7 +348,8 @@ async def build_pipeline(
         @assistant_agg.event_handler("on_assistant_turn_stopped")
         async def _persist_turn(_aggregator, _message):  # _message: AssistantTurnStoppedMessage
             try:
-                store.snapshot(context.messages)
+                # via the switcher: a live companion switch repoints the store.
+                live_switcher.snapshot(context.messages)
             except Exception as exc:  # noqa: BLE001 — persistence must never break the loop
                 logger.warning("[session] snapshot failed ({}) — continuing", type(exc).__name__)
 
@@ -408,7 +416,18 @@ async def build_pipeline(
         baseline_voice=_CFG.ref_wav,
         baseline_vad=vad_baseline,
     )
-    config_reload_proc = config_reload.ConfigReloadProcessor(_reloader, tts, vad_analyzer=vad_analyzer)
+    # ADR 007 stroke 3 — the LIVE companion switch. Owns the CURRENT session's
+    # store/seam (the shutdown path reads them back from here so a live switch
+    # is honored at stop), arms intents POSTed on /switch/live, and applies
+    # them at the turn boundary via the processor below (which also rebases
+    # the reloader onto the new companion's baselines).
+    live_switcher = switcher_mod.LiveSwitcher(
+        active=_CFG, reloader=_reloader, tts=tts, context=context,
+        store=store, seam=memory_seam,
+        lm_provider=LM_PROVIDER, lm_base_url=LM_BASE_URL, lm_token=LM_API_TOKEN,
+    )
+    config_reload_proc = config_reload.ConfigReloadProcessor(
+        _reloader, tts, vad_analyzer=vad_analyzer, switcher=live_switcher)
 
     # Assemble pipeline
     pipeline = Pipeline([
@@ -430,7 +449,7 @@ async def build_pipeline(
     ])
 
     return (pipeline, transport, context, mute_gate, speaking_tap, measure_observer,
-            recorder, memory_seam)
+            recorder, memory_seam, live_switcher)
 
 
 async def main(
@@ -448,7 +467,7 @@ async def main(
     await recording_repair_routing()
 
     (pipeline, transport, context, mute_gate, speaking_tap, measure_observer,
-     recorder, memory_seam) = await build_pipeline(
+     recorder, memory_seam, live_switcher) = await build_pipeline(
         dump_dir, resume_messages=resume_messages, store=store
     )
 
@@ -502,6 +521,12 @@ async def main(
     # window. None → the panel falls back to `allotted` (advertised) — see control.py.
     engine_info["reliable"] = _CFG.reliable_context
 
+    # ADR 007 stroke 3: hand the switcher its late-bound deps and expose it on
+    # the panel — features/live_switch.py routes answer 503 until this attach.
+    live_switcher.engine_info = engine_info
+    live_switcher.recorder = recorder
+    hearth.control.features.live_switch.attach(live_switcher)
+
     # LM Studio serves several clients, so Hearth's model can be
     # swapped/unloaded mid-run — a startup-frozen Engine line would then show
     # something false. Re-poll the probe on a slow cadence into the SAME dict the
@@ -512,7 +537,10 @@ async def main(
     async def _engine_repoll(interval_s: float = 60.0) -> None:
         while True:
             await asyncio.sleep(interval_s)
-            engine_info.update(await fetch_engine_info_for(LM_PROVIDER, LM_BASE_URL, LM_API_TOKEN, LM_MODEL))
+            # live_switcher.lm_model tracks the ACTIVE model id across live
+            # switches (ADR 007 stroke 3); it starts equal to LM_MODEL.
+            engine_info.update(await fetch_engine_info_for(
+                LM_PROVIDER, LM_BASE_URL, LM_API_TOKEN, live_switcher.lm_model))
 
     engine_repoll_task = asyncio.create_task(_engine_repoll())
 
@@ -560,20 +588,27 @@ async def main(
         # file. The seam writes the canonical memory record first, then lets the
         # backend index it; every step is contained inside on_session_end (a
         # memory failure degrades, never breaks shutdown — decider 6).
-        if memory_seam is not None:
-            mem_status = memory_seam.on_session_end(context.messages, store)
+        # A live companion switch (ADR 007 stroke 3) may have replaced the
+        # store/seam mid-run — the switcher owns the CURRENT pair. Drain its
+        # background old-session finalize first so the two never interleave.
+        await live_switcher.drain(30.0)
+        seam_now = live_switcher.current_seam
+        store_now = live_switcher.current_store
+        if seam_now is not None:
+            mem_status = seam_now.on_session_end(context.messages, store_now)
             if mem_status:
                 print(f"[memory] {mem_status}", flush=True)
-            memory_seam.close()
+            seam_now.close()
+        live_switcher.close_pending()
         # Session lifecycle (Tier 1): ephemeral-default. On this graceful SIGINT/finally
         # path (what ./stop.sh triggers) the bot truly deletes its own session file
         # UNLESS held (or a --hold request marker is present). Snapshot+os.replace means
         # no file handle is open here → delete frees it cleanly. An UNCLEAN death
         # (kill -9 / crash / outage) skips this block entirely → the file survives as a
         # recoverable orphan, which is exactly what enables battery/outage resume.
-        if store is not None:
+        if store_now is not None:
             try:
-                status = session_store.finalize(store, context.messages)
+                status = session_store.finalize(store_now, context.messages)
                 print(f"[session] {status}", flush=True)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("[session] finalize failed: {}", type(exc).__name__)

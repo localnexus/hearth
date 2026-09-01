@@ -180,18 +180,20 @@
 <!-- Companion switcher — hidden unless features/companion answers GET /companion
      (i.e. the supervisor daemon is configured, the panel binds loopback, and the
      standalone facade is up). The switch itself runs in the DAEMON (one door):
-     a validated active.toml write + a supervised bot restart — this page dies
-     with the bot and comes back on its own. -->
+     a validated active.toml write, then either a LIVE handoff to this bot's
+     /switch/live intent slot (ADR 007 stroke 3 — applies at your next words,
+     no restart) or a supervised bot restart; in the restart case this page
+     dies with the bot and comes back on its own. -->
 <div id="switcher" class="hidden">
   <div class="kpanel" id="kp-switch">
     <div class="khead">COMPANION — <span id="sw-current">…</span></div>
-    <div class="klegend">Pick who's live. <b>Switch &amp; restart</b> writes <code>active.toml</code> (previous file kept as <code>.prev</code>) and warm-restarts the voice bot — the LLM server is never touched. Same ritual as edit-then-restart, one button.</div>
+    <div class="klegend">Pick who's live. <b>Switch</b> writes <code>active.toml</code> (previous file kept as <code>.prev</code>) and applies it the lightest way the daemon can: LIVE at your next words when every changed piece has a live path (persona · voice · resident model — the session hands over in-process), otherwise a warm restart of the voice bot. The LLM server is never touched either way. Models marked ● are loaded on the server right now.</div>
     <div class="krow"><span class="kname">Character</span><select id="sw-char"></select></div>
     <div class="krow"><span class="kname">Voice</span><select id="sw-voice"></select></div>
     <div class="krow"><span class="kname">Persona</span><select id="sw-persona"></select></div>
     <div class="krow"><span class="kname">Model</span><select id="sw-model"></select></div>
     <label class="krow" id="sw-holdrow" title="drop a hold marker before stopping, so the current session is kept (named) instead of discarded"><input type="checkbox" id="sw-hold"> keep this session (hold)</label>
-    <div class="kbtns"><button id="sw-go">Switch &amp; restart</button> <span id="sw-state"></span></div>
+    <div class="kbtns"><button id="sw-go">Switch</button> <span id="sw-state"></span></div>
   </div>
 </div>
 </div><!-- /dest-controls -->
@@ -720,8 +722,11 @@ initManual();
 
 // ── Companion switcher (self-gating: hidden unless GET /companion answers) ────
 // The POST is relayed by features/companion.py to the supervisor daemon, which
-// validates + writes active.toml and restarts the bot in the background. This
-// page goes down with the bot; we watch for the down→up edge, then reload.
+// validates + writes active.toml and then ROUTES it (ADR 007 stroke 3): a LIVE
+// handoff to this bot's /switch/live intent slot when every changed piece has a
+// live path (we then poll /switch/live for the applied moment), otherwise a
+// restart in the background (this page goes down with the bot; we watch the
+// down→up edge, then reload).
 async function initSwitcher() {
   let d = null;
   try { const r = await fetch('/companion'); if (!r.ok) return; d = await r.json(); }
@@ -736,6 +741,19 @@ async function initSwitcher() {
   }
   fill($('sw-char'), chars.map(c => c.name), cur.character);
   fill($('sw-model'), d.choices.models || [], cur.model);
+  // M4c: mark models the LLM server actually holds right now (live-swappable).
+  try {
+    const lr = await fetch('/switch/live');
+    if (lr.ok) {
+      const ls = await lr.json();
+      const ids = d.choices.model_ids || {};
+      if (ls.resident_models) {
+        for (const o of $('sw-model').options) {
+          if (ids[o.value] && ls.resident_models.includes(ids[o.value])) o.textContent = o.value + ' \u25cf';
+        }
+      }
+    }
+  } catch (e) { /* older bot / not wired — names stay plain */ }
   function charInfo() { return chars.find(c => c.name === $('sw-char').value) || {voices: [], personas: ['default']}; }
   function refreshDependents(keepCurrent) {
     const c = charInfo();
@@ -754,16 +772,45 @@ async function initSwitcher() {
                    hold: $('sw-hold').checked, start: true };
     $('sw-go').disabled = true;
     $('sw-state').textContent = 'switching…';
+    let j = null;
     try {
       const r = await fetch('/companion/switch', {method: 'POST',
         headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
-      const j = await r.json();
+      j = await r.json();
       if (!r.ok || !j.ok) {
         $('sw-state').textContent = 'refused: ' + ((j.errors || [j.error || r.status]).join(' · '));
         $('sw-go').disabled = false;
         return;
       }
-    } catch (e) { /* bot may already be going down mid-reply — treat as underway */ }
+    } catch (e) { /* bot may already be going down mid-reply — treat as a restart underway */ }
+    if (j && j.applied === 'live') {
+      // LIVE path (stroke 3): the bot stays up; the swap lands at the next
+      // turn boundary — poll our own /switch/live for the applied moment.
+      $('sw-state').textContent = 'armed — applies the moment you next speak…';
+      const lt0 = Date.now();
+      const lpoll = setInterval(async () => {
+        try {
+          const r = await fetch('/switch/live');
+          if (r.ok) {
+            const st = await r.json();
+            if (!st.armed && st.last && st.last.phase === 'applied') {
+              clearInterval(lpoll); $('sw-state').textContent = 'switched ✓'; location.reload(); return;
+            }
+            if (st.last && st.last.phase === 'failed') {
+              clearInterval(lpoll);
+              $('sw-state').textContent = 'live apply failed — check the terminal / logs';
+              $('sw-go').disabled = false; return;
+            }
+          }
+        } catch (e) { /* transient */ }
+        if (Date.now() - lt0 > 600000) {
+          clearInterval(lpoll);
+          $('sw-state').textContent = 'still armed — it applies whenever you next speak';
+          $('sw-go').disabled = false;
+        }
+      }, 2000);
+      return;
+    }
     $('sw-state').textContent = 'restarting — this page comes back on its own (≈10–30 s)…';
     const t0 = Date.now();
     let wentDown = false;   // wait for the down→up edge, never reload into the dying bot

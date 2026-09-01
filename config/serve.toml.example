@@ -42,10 +42,11 @@ transcript_dir = "transcripts"
 # With enabled = true the STANDALONE facade (`python -m hearth.serve`) also
 # supervises the voice bot: POST /admin/bot/start|stop, GET /admin/state, POST
 # /admin/daemon/restart, POST /admin/switch (switch companion: a registry-
-# validated active.toml write + a supervised warm restart — the control
-# panel's COMPANION switcher rides this), and a reverse proxy to the bot's
-# control panel — all behind the same bearer (one door). The in-process attach never mounts this.
-# Stop is warm: your LLM server is never touched.
+# validated active.toml write, then LIVE at the bot's next turn boundary when
+# every changed piece has a live path — else a supervised warm restart; the
+# control panel's COMPANION switcher rides this), and a reverse proxy to the
+# bot's control panel — all behind the same bearer (one door). The in-process
+# attach never mounts this. Stop is warm: your LLM server is never touched.
 #[serve.supervisor]
 #enabled = true
 #stop_grace_s = 15.0        # SIGINT → escalate wait (graceful-shutdown headroom)

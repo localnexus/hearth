@@ -4,8 +4,10 @@
 > (`hearth/config/settings_registry.py`). Regenerate both pages:
 > `python -m hearth.config.check --emit-manual <this directory>`; a test fails on drift.
 
-Companion page: [settings-reference-gates.md](settings-reference-gates.md). **Live path** = the `config/overrides.toml` dotted key that
-hot-applies a setting at the next turn boundary (the panel writes that layer). **Restart** (in each
+Companion page: [settings-reference-gates.md](settings-reference-gates.md). **Live path** = how a setting hot-applies at the next turn
+boundary: a `config/overrides.toml` dotted key (the panel writes that layer), or the supervisor's
+*switch intent* for the selection fields (the COMPANION button / `/admin/switch`, ADR 007 stroke 3).
+**Restart** (in each
 section header) = what must relaunch for a persisted edit to land: *bot* = the desk pipeline
 (`start.sh`) · *facade* = the serve facade (kickstart) · *none* = applies live. Strict validation
 of your install: `python -m hearth.config.check`.
@@ -14,14 +16,14 @@ of your install: `python -m hearth.config.check`.
 
 *place scope · operator-owned · selection · restart: bot+facade*
 
-Your one deliberate lever for who is live. Read once at startup; the facade snapshots it too, so bounce both for a switch to follow everywhere.
+Your one deliberate lever for who is live. Read once at startup; the supervisor's switch button writes it and applies it live at the next turn boundary (or via a warm restart) — hand-edit + restart keeps working. The facade re-reads at kickstart (a [serve.identity] pin keeps its own voice regardless).
 
 | key | type | default | range | live path | what it sets |
 |---|---|---|---|---|---|
-| `character` | str | **required** |  | — | who is live — dir under characters/ |
-| `model` | str | **required** |  | — | model config — dir under config/models/ |
-| `voice` | str | **required** |  | — | voice bundle — dir under characters/<character>/voices/ |
-| `persona` | str | `default` |  | — | persona variant: "default" = persona.md, else persona.<name>.md |
+| `character` | str | **required** |  | `switch intent (turn boundary)` | who is live — dir under characters/ |
+| `model` | str | **required** |  | `switch intent (turn boundary; resident models only)` | model config — dir under config/models/ |
+| `voice` | str | **required** |  | `switch intent (turn boundary)` | voice bundle — dir under characters/<character>/voices/ |
+| `persona` | str | `default` |  | `switch intent (turn boundary)` | persona variant: "default" = persona.md, else persona.<name>.md |
 
 ## `config/models/<model>/model.toml` — Model load facts
 

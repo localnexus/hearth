@@ -20,7 +20,8 @@ and never logged, echoed, or returned in any response.
 
 API (mirrors the daemon, names only):
     GET  /companion         → GET  <daemon>/admin/switch   (current + choices + bot state)
-    POST /companion/switch  → POST <daemon>/admin/switch   (allowlisted body keys)
+    POST /companion/switch  → POST <daemon>/admin/switch   (allowlisted body keys;
+                              "apply" steers live vs restart — ADR 007 stroke 3)
 Daemon down ⇒ 502 {"error": "supervisor unreachable"} — the page hides itself.
 """
 
@@ -37,7 +38,7 @@ from hearth.control.control_routes import PanelContext, register
 
 _LOOPBACK = {"127.0.0.1", "localhost", "::1"}
 _BODY_KEYS = ("character", "model", "voice", "persona",
-              "hold", "hold_name", "mode", "name", "start")
+              "hold", "hold_name", "mode", "name", "start", "apply")
 
 
 def _daemon() -> tuple:
@@ -67,7 +68,10 @@ def _daemon() -> tuple:
 
 async def _relay(method: str, url: str, bearer: str, payload=None) -> web.Response:
     try:
-        timeout = aiohttp.ClientTimeout(total=20 if method == "POST" else 5)
+        # POST waits out a LIVE arm: the daemon's handoff prepares the new
+        # companion's recall eagerly (a cold memory sidecar can take ~15 s) and
+        # itself waits 40 s — stay above that so the refusal reason reaches us.
+        timeout = aiohttp.ClientTimeout(total=45 if method == "POST" else 5)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.request(
                 method, url, json=payload,

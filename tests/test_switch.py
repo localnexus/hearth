@@ -20,6 +20,12 @@ Proves, on real files and a real aiohttp app:
 The bot child here is a FAKE (calls recorded) — child process semantics are
 test_supervisor.py's job; this file owns the switch orchestration contract.
 
+  4. ROUTING (stroke 3) — the registry-consulted live handoff: a switch whose
+     every changed field has a live path goes to the bot's /switch/live (a
+     fake panel server here); a refusal or unreachable panel falls back to
+     the supervised restart; "apply" steers ("live" never restarts).
+     The bot-side apply semantics live in test_live_switch.py.
+
 Run:  .venv/bin/python -m unittest tests.test_switch
 """
 
@@ -189,7 +195,7 @@ class _FakeChild:
         pass
 
 
-class SwitchRoutes(AioHTTPTestCase):
+class _SwitchHarness(AioHTTPTestCase):
     BEARER = {"Authorization": "Bearer test-bearer"}
 
     async def get_application(self) -> web.Application:
@@ -242,6 +248,8 @@ class SwitchRoutes(AioHTTPTestCase):
         self._tmp.cleanup()
         await super().asyncTearDown()
 
+
+class SwitchRoutes(_SwitchHarness):
     async def test_bearer_required(self):
         for method, path in (("GET", "/admin/switch"), ("POST", "/admin/switch")):
             resp = await self.client.request(method, path)
@@ -336,6 +344,134 @@ class SwitchRoutes(AioHTTPTestCase):
         self.child.state = "down"
         resp = await self.client.get("/", headers=self.BEARER)
         self.assertIn("/admin/switch", await resp.text())
+
+
+class _FakePanel:
+    """A loopback stand-in for the bot's /switch/live intent slot."""
+
+    def __init__(self):
+        self.requests: list = []
+        self.response: tuple = ({"ok": True, "armed": True,
+                                 "changed": ["persona"],
+                                 "applies": "at the next turn boundary"}, 200)
+        self.runner = None
+        self.port = None
+
+    async def start(self):
+        app = web.Application()
+
+        async def arm(req: web.Request) -> web.Response:
+            self.requests.append(await req.json())
+            body, status = self.response
+            return web.json_response(body, status=status)
+
+        app.router.add_post("/switch/live", arm)
+        self.runner = web.AppRunner(app)
+        await self.runner.setup()
+        site = web.TCPSite(self.runner, "127.0.0.1", 0)
+        await site.start()
+        self.port = self.runner.addresses[0][1]
+
+    async def stop(self):
+        if self.runner is not None:
+            await self.runner.cleanup()
+
+
+class SwitchRouting(_SwitchHarness):
+    """Stroke 3: live-vs-restart routing on the same harness + a fake panel."""
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        self.panel = _FakePanel()
+        await self.panel.start()
+        self.app["panel_url"] = f"http://127.0.0.1:{self.panel.port}"
+        # a previous selection on disk → only the delta counts as changed
+        switch_mod.write_selection(dict(GOOD), path=self.active)
+
+    async def asyncTearDown(self):
+        await self.panel.stop()
+        await super().asyncTearDown()
+
+    async def test_live_handoff_taken(self):
+        resp = await self.client.post("/admin/switch", headers=self.BEARER,
+                                      json={"persona": "alt"})
+        self.assertEqual(resp.status, 200, await resp.text())
+        data = await resp.json()
+        self.assertEqual(data["applied"], "live")
+        self.assertIn("untouched", data["facade"])
+        self.assertEqual(self.child.calls, [], "live path must not restart")
+        self.assertEqual(len(self.panel.requests), 1)
+        self.assertEqual(self.panel.requests[0]["persona"], "alt")
+        self.assertEqual(self.panel.requests[0]["character"], "testchar")
+        self.assertEqual(self.app["switch_state"]["last"]["phase"], "live")
+        with open(self.active, "rb") as f:
+            self.assertEqual(tomllib.load(f)["persona"], "alt")
+
+    async def test_live_refusal_falls_back_to_restart(self):
+        self.panel.response = ({"ok": False,
+                                "errors": ["model 'x' is not resident"]}, 409)
+        resp = await self.client.post("/admin/switch", headers=self.BEARER,
+                                      json={"persona": "alt"})
+        data = await resp.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["applied"], "restart")
+        self.assertIn("not resident", " ".join(data["live_refused"]))
+        await self.app["switch_state"]["task"]
+        self.assertEqual(self.child.calls,
+                         [("stop", False, None), ("start", "new", None)])
+
+    async def test_apply_restart_skips_live(self):
+        resp = await self.client.post("/admin/switch", headers=self.BEARER,
+                                      json={"persona": "alt", "apply": "restart"})
+        data = await resp.json()
+        self.assertEqual(data["applied"], "restart")
+        self.assertEqual(self.panel.requests, [], "apply=restart must not touch the bot slot")
+        await self.app["switch_state"]["task"]
+
+    async def test_apply_live_never_restarts(self):
+        self.panel.response = ({"ok": False, "errors": ["busy"]}, 409)
+        resp = await self.client.post("/admin/switch", headers=self.BEARER,
+                                      json={"persona": "alt", "apply": "live"})
+        self.assertEqual(resp.status, 409)
+        data = await resp.json()
+        self.assertFalse(data["ok"])
+        self.assertIn("hint", data)
+        self.assertEqual(self.child.calls, [])
+        self.assertEqual(self.app["switch_state"]["last"]["phase"], "live-refused")
+
+    async def test_apply_live_bot_down_409(self):
+        self.child.state = "down"
+        self.child.managed = False
+        resp = await self.client.post("/admin/switch", headers=self.BEARER,
+                                      json={"persona": "alt", "apply": "live"})
+        self.assertEqual(resp.status, 409)
+        self.assertEqual(self.panel.requests, [])
+
+    async def test_hold_and_mode_forwarded_on_live(self):
+        resp = await self.client.post(
+            "/admin/switch", headers=self.BEARER,
+            json={"persona": "alt", "hold": True, "hold_name": "keep",
+                  "mode": "resume", "name": "keep"})
+        self.assertEqual((await resp.json())["applied"], "live")
+        req = self.panel.requests[0]
+        self.assertTrue(req["hold"])
+        self.assertEqual(req["hold_name"], "keep")
+        self.assertEqual(req["mode"], "resume")
+        self.assertEqual(req["name"], "keep")
+
+    async def test_unreachable_panel_falls_back(self):
+        self.app["panel_url"] = "http://127.0.0.1:1"
+        resp = await self.client.post("/admin/switch", headers=self.BEARER,
+                                      json={"persona": "alt"})
+        data = await resp.json()
+        self.assertEqual(data["applied"], "restart")
+        self.assertTrue(data["live_refused"])
+        await self.app["switch_state"]["task"]
+
+    async def test_choices_carry_model_ids(self):
+        resp = await self.client.get("/admin/switch", headers=self.BEARER)
+        data = await resp.json()
+        self.assertEqual(data["choices"]["model_ids"].get("m1"), "test-model")
 
 
 if __name__ == "__main__":

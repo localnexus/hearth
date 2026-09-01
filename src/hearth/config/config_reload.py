@@ -17,7 +17,11 @@ Tier map:
                    (the CALIBRATION tier — per-room/mic, never
                    profile-carried; baseline = config/vad.toml [live])
     HIDEABLE/voice ref_wav                                  → tts.set_ref_wav()  (~0.2s)
-The EXPENSIVE tier (LLM-model swap, TTS engine swap) is DEFERRED.
+The EXPENSIVE tier (TTS engine swap, STT model, audio devices) stays restart.
+ADR 007 stroke 3: the processor also carries the LIVE companion-switch intent
+slot (pipeline/switcher.py) — applied at the same turn boundary, BEFORE the
+poll, with the reloader REBASED to the new companion's baselines; the LLM
+model FIELD swap rides it (resident models only, M4c).
 
 Key design choice — **desired = baseline ⊗ overrides**, diffed against applied:
     A live override is an OVERLAY on the persisted baseline. `desired` is always the
@@ -327,6 +331,22 @@ class ConfigReloader:
     def commit_voice(self, path: str) -> None:
         self._applied_voice = path
 
+    # ── rebase (a live companion switch replaces the baselines wholesale) ──────
+
+    def rebase(self, *, model_name: str, baseline_llm: dict, baseline_voice: str,
+               applied_voice: str | None = None) -> None:
+        """Re-seed baselines + applied state after a LIVE companion switch
+        (ADR 007 stroke 3). Without this the next overrides poll would diff
+        against the OLD companion's baselines and fight the switch. TTS/VAD
+        baselines survive untouched (engine + room don't change with the
+        companion). ``applied_voice`` records reality when the re-clone failed
+        (baseline = target, applied = what's actually loaded)."""
+        self._model_name = model_name
+        self._baseline_llm = dict(baseline_llm)
+        self._applied_llm = dict(baseline_llm)
+        self._baseline_voice = baseline_voice
+        self._applied_voice = applied_voice if applied_voice is not None else baseline_voice
+
 
 class ConfigReloadProcessor(FrameProcessor):
     """Fires the reloader once per turn (on LLMContextFrame) and routes deltas.
@@ -345,16 +365,47 @@ class ConfigReloadProcessor(FrameProcessor):
     Every non-context frame is forwarded untouched.
     """
 
-    def __init__(self, reloader: ConfigReloader, tts, vad_analyzer=None, **kwargs) -> None:
+    def __init__(self, reloader: ConfigReloader, tts, vad_analyzer=None,
+                 switcher=None, **kwargs) -> None:
         super().__init__(**kwargs)
         self._reloader = reloader
         self._tts = tts
         self._vad_analyzer = vad_analyzer  # None ⇒ vad deltas are logged and skipped
+        self._switcher = switcher  # None ⇒ no live-switch intent slot (stroke 3)
 
     async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
 
         if isinstance(frame, LLMContextFrame):
+            # ADR 007 stroke 3 — the turn-boundary seam generalized to an
+            # intent slot: a pending LIVE companion switch applies FIRST
+            # (context/session/voice swapped, reloader rebased), so the poll
+            # below diffs against the NEW baselines; its settings frame pushes
+            # ahead of the context frame like every other turn-boundary delta.
+            if self._switcher is not None:
+                delta = None
+                try:
+                    delta = await self._switcher.apply_pending()
+                except Exception as exc:  # noqa: BLE001 — the loop survives a bad swap
+                    logger.warning("config_reload: switch apply raised ({}) — skipped",
+                                   type(exc).__name__)
+                if delta:
+                    try:
+                        settings = LLMSettings(
+                            model=delta["model"],
+                            temperature=delta["temperature"],
+                            system_instruction=delta["system_instruction"],
+                            extra={"reasoning_effort": delta["reasoning_effort"]},
+                        )
+                        await self.push_frame(
+                            LLMUpdateSettingsFrame(delta=settings), FrameDirection.DOWNSTREAM
+                        )
+                        logger.info("config_reload: switch intent applied (model field: {})",
+                                    delta["model"])
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning("config_reload: switch settings push failed ({})",
+                                       type(exc).__name__)
+
             try:
                 deltas = self._reloader.poll()
             except Exception as exc:  # reloader is fail-soft, but never trust the loop to one try

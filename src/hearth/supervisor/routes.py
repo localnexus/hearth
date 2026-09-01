@@ -15,6 +15,14 @@ Stroke 2 (ADR 007 §Execution 2) adds /admin/switch — switch-companion as ONE
 action: a registry-validated active.toml write + a supervised warm restart
 (the mechanics live in switch.py; the restart runs as a background task so
 the response returns before the SIGINT lands on the bot).
+
+Stroke 3 (ADR 007 §Execution 3) routes each switch: a registry-consulted
+(switch.live_capable_fields) LIVE handoff to the bot's /switch/live intent
+slot when the bot is up and every changed field has a live path — the reply
+then says applied: "live" and the bot swaps at its next turn boundary —
+falling back to the supervised restart otherwise. The optional body key
+"apply" steers it: "auto" (default) | "live" (live or 409, never restarts) |
+"restart" (force the stroke-2 path).
 """
 
 from __future__ import annotations
@@ -31,6 +39,9 @@ from .child import STOP_GRACE_S, TERM_GRACE_S, BotChild, _now_iso
 from . import switch as switch_mod
 
 PANEL_URL = "http://127.0.0.1:65000"
+
+_FACADE_NOTE = ("untouched — a [serve.identity] pin keeps its own voice; unpinned "
+                "LLM-leg params follow at the next facade restart")
 
 # Never forwarded to the loopback panel: the bearer stays at the one door.
 _DROP_HEADERS = {"Host", "Authorization", "Content-Length", "Transfer-Encoding", "Connection"}
@@ -210,6 +221,39 @@ async def _switch_post(request: web.Request) -> web.Response:
         return web.json_response({"ok": False, "errors": [str(exc)]}, status=409)
     child = app["bot_child"]
     running = child.state in ("starting", "running") or await child.adopt()
+    # Stroke 3 routing: the registry consult. Live only when the bot is up and
+    # every CHANGED field declares a live path; "apply" steers ("auto" default).
+    apply_mode = str(body.get("apply") or "auto").lower()
+    changed = switch_mod.changed_fields(wrote["previous"], merged)
+    live_eligible = bool(changed) and all(
+        k in switch_mod.live_capable_fields() for k in changed)
+    live_result = None
+    if apply_mode == "live" and not running:
+        return web.json_response(
+            {"ok": False, "errors": ['apply "live" needs a running bot'],
+             "wrote": merged}, status=409)
+    if running and apply_mode != "restart" and (live_eligible or apply_mode == "live"):
+        live_result = await _try_live(app, merged, body)
+        if live_result.get("ok"):
+            state["last"] = {"phase": "live", "to": merged, "at": _now_iso(),
+                             "error": None}
+            logger.info("[supervisor] switch → {} (live handoff)",
+                        {k: merged[k] for k in switch_mod.SELECTION_KEYS})
+            return web.json_response({
+                "ok": True, "wrote": merged, "previous": wrote["previous"],
+                "kept_extras": wrote["extras"], "applied": "live",
+                "live": {k: live_result.get(k) for k in
+                         ("changed", "warnings", "applies") if k in live_result},
+                "facade": _FACADE_NOTE,
+            })
+        if apply_mode == "live":
+            state["last"] = {"phase": "live-refused", "to": merged, "at": _now_iso(),
+                             "error": "; ".join(live_result.get("errors") or ["refused"])}
+            return web.json_response(
+                {"ok": False, "errors": live_result.get("errors") or ["live arm refused"],
+                 "wrote": merged,
+                 "hint": 'the selection IS written — repost with "apply": "auto" '
+                         "for the restart path"}, status=409)
     restart = running or bool(body.get("start"))
     if restart:
         state["last"] = {"phase": "restarting", "to": merged,
@@ -223,14 +267,48 @@ async def _switch_post(request: web.Request) -> web.Response:
         ))
     logger.info("[supervisor] switch → {} (restart: {})",
                 {k: merged[k] for k in switch_mod.SELECTION_KEYS}, restart)
-    return web.json_response({
+    resp = {
         "ok": True, "wrote": merged, "previous": wrote["previous"],
         "kept_extras": wrote["extras"],
+        "applied": "restart" if restart else "none",
         "restart": ("scheduled — watch GET /admin/state" if restart else
                     'not scheduled — bot not running (pass "start": true to launch)'),
-        "facade": "untouched — a [serve.identity] pin keeps its own voice; unpinned "
-                  "LLM-leg params follow at the next facade restart",
-    })
+        "facade": _FACADE_NOTE,
+    }
+    if live_result is not None:
+        resp["live_refused"] = live_result.get("errors") or ["live handoff failed"]
+    return web.json_response(resp)
+
+
+async def _try_live(app: web.Application, merged: dict, body: dict) -> dict:
+    """Hand the bundle to the bot's /switch/live intent slot. → the bot's own
+    response dict ({"ok": False, "errors": [...]} on any transport failure or
+    an older bot without the route). The generous wait covers a cold memory-
+    sidecar spin — the arm PREPARES the new companion's recall eagerly."""
+    deps = app["deps"]
+    if deps.session is None:
+        return {"ok": False, "errors": ["no probe session — cannot reach the bot"]}
+    payload = {k: merged[k] for k in switch_mod.SELECTION_KEYS}
+    for key in ("hold", "hold_name", "mode", "name"):
+        if body.get(key):
+            payload[key] = body[key]
+    try:
+        async with deps.session.post(
+                app["panel_url"] + "/switch/live", json=payload,
+                timeout=aiohttp.ClientTimeout(total=40)) as r:
+            if r.status == 404:
+                return {"ok": False,
+                        "errors": ["bot has no live-switch route (older build)"]}
+            try:
+                data = await r.json()
+            except Exception:  # noqa: BLE001 — a non-JSON body is a refusal
+                return {"ok": False, "errors": [f"bot answered HTTP {r.status}"]}
+            if not isinstance(data, dict):
+                return {"ok": False, "errors": ["malformed bot response"]}
+            data.setdefault("ok", r.status == 200)
+            return data
+    except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as exc:
+        return {"ok": False, "errors": [f"live handoff failed ({type(exc).__name__})"]}
 
 
 async def _do_restart(app: web.Application, *, hold, hold_name, mode, name) -> None:

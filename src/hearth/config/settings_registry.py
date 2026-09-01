@@ -53,7 +53,8 @@ CANONICAL_TAGS = frozenset({
 
 
 def _live(hot_via: str, status: str | None = None) -> dict:
-    """x-hearth extra for a field that hot-applies through overrides.toml."""
+    """x-hearth extra for a field with a live path: overrides.toml for the
+    knob tiers; the supervisor's switch intent for the selection fields."""
     return {"x-hearth": {"hot_via": hot_via, "status_source": status}}
 
 
@@ -66,11 +67,16 @@ class _Cfg(BaseModel):
 # ── config/active.toml ────────────────────────────────────────────────────────
 
 class ActiveFile(_Cfg):
-    character: str = Field(pattern=_NAME, description="who is live — dir under characters/")
-    model: str = Field(pattern=_NAME, description="model config — dir under config/models/")
-    voice: str = Field(pattern=_NAME, description="voice bundle — dir under characters/<character>/voices/")
+    character: str = Field(pattern=_NAME, description="who is live — dir under characters/",
+                           json_schema_extra=_live("switch intent (turn boundary)", "GET /admin/switch"))
+    model: str = Field(pattern=_NAME, description="model config — dir under config/models/",
+                       json_schema_extra=_live("switch intent (turn boundary; resident models only)",
+                                               "GET /admin/switch"))
+    voice: str = Field(pattern=_NAME, description="voice bundle — dir under characters/<character>/voices/",
+                       json_schema_extra=_live("switch intent (turn boundary)", "GET /admin/switch"))
     persona: str = Field("default", pattern=_NAME,
-                         description='persona variant: "default" = persona.md, else persona.<name>.md')
+                         description='persona variant: "default" = persona.md, else persona.<name>.md',
+                         json_schema_extra=_live("switch intent (turn boundary)", "GET /admin/switch"))
 
 
 # ── config/models/<model>/model.toml ─────────────────────────────────────────
@@ -315,8 +321,11 @@ class FileEntry:
 REGISTRY: dict[str, FileEntry] = {e.kind: e for e in (
     FileEntry("active", ActiveFile, "The selection pointer", "config/active.toml",
               "selection", "operator", "place", "bot+facade",
-              note="Your one deliberate lever for who is live. Read once at startup; the facade "
-                   "snapshots it too, so bounce both for a switch to follow everywhere."),
+              note="Your one deliberate lever for who is live. Read once at startup; the "
+                   "supervisor's switch button writes it and applies it live at the next turn "
+                   "boundary (or via a warm restart) — hand-edit + restart keeps working. The "
+                   "facade re-reads at kickstart (a [serve.identity] pin keeps its own voice "
+                   "regardless)."),
     FileEntry("model", ModelFile, "Model load facts", "config/models/<model>/model.toml",
               "load facts", "operator", "model", "bot",
               note="Per-model request facts. context_length is deliberately absent — the live "
@@ -569,8 +578,10 @@ def _render_page(name: str) -> str:
         "> (`hearth/config/settings_registry.py`). Regenerate both pages:",
         "> `python -m hearth.config.check --emit-manual <this directory>`; a test fails on drift.",
         "",
-        f"Companion page: [{other}]({other}). **Live path** = the `config/overrides.toml` dotted key that",
-        "hot-applies a setting at the next turn boundary (the panel writes that layer). **Restart** (in each",
+        f"Companion page: [{other}]({other}). **Live path** = how a setting hot-applies at the next turn",
+        "boundary: a `config/overrides.toml` dotted key (the panel writes that layer), or the supervisor's",
+        "*switch intent* for the selection fields (the COMPANION button / `/admin/switch`, ADR 007 stroke 3).",
+        "**Restart** (in each",
         "section header) = what must relaunch for a persisted edit to land: *bot* = the desk pipeline",
         "(`start.sh`) · *facade* = the serve facade (kickstart) · *none* = applies live. Strict validation",
         "of your install: `python -m hearth.config.check`.",

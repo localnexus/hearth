@@ -4,8 +4,10 @@
 > (`hearth/config/settings_registry.py`). Regenerate both pages:
 > `python -m hearth.config.check --emit-manual <this directory>`; a test fails on drift.
 
-Companion page: [settings-reference.md](settings-reference.md). **Live path** = the `config/overrides.toml` dotted key that
-hot-applies a setting at the next turn boundary (the panel writes that layer). **Restart** (in each
+Companion page: [settings-reference.md](settings-reference.md). **Live path** = how a setting hot-applies at the next turn
+boundary: a `config/overrides.toml` dotted key (the panel writes that layer), or the supervisor's
+*switch intent* for the selection fields (the COMPANION button / `/admin/switch`, ADR 007 stroke 3).
+**Restart** (in each
 section header) = what must relaunch for a persisted edit to land: *bot* = the desk pipeline
 (`start.sh`) · *facade* = the serve facade (kickstart) · *none* = applies live. Strict validation
 of your install: `python -m hearth.config.check`.

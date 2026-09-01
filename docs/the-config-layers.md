@@ -51,8 +51,10 @@ It's read **once at startup** — nothing hot-swaps. Edit, then restart.
 With the **supervisor daemon** enabled (`[serve.supervisor]` in `serve.toml`), that ritual is
 one action: the control panel's **COMPANION** switcher — or `POST /admin/switch` at the facade —
 validates your selection against the settings registry, writes this file (previous copy kept
-beside it as `active.toml.prev`), and warm-restarts the bot for you. Same file, same semantics,
-one button; hand-edit + restart keeps working unchanged (comments don't survive a daemon write).
+beside it as `active.toml.prev`), and applies it the lightest way it can: LIVE at your next
+words when every changed piece has a live path (persona · voice · a model the server already
+holds), else a warm bot restart. Same file, same semantics, one button; hand-edit + restart
+keeps working unchanged (comments don't survive a daemon write).
 
 ## `overrides.toml` — the panel's layer (hands off)
 
@@ -120,7 +122,7 @@ exposing the live file:
 
 ## The one-line takeaways
 
-- **Want to change who's live?** `active.toml` + restart — or the panel's **COMPANION** switcher (supervisor daemon on).
+- **Want to change who's live?** `active.toml` + restart — or the panel's **COMPANION** switcher (supervisor daemon on; live at your next words when the pieces allow).
 - **Want your companions outside the checkout?** Set `HEARTH_DATA`; the layout is identical there.
 - **A setting won't stick?** The **panel's** `overrides.toml` is probably winning — clear it
   via the panel, don't hand-edit.
