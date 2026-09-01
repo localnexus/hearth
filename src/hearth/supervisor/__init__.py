@@ -14,6 +14,10 @@ booleans on /admin/state — actuators are stroke 4); memory sidecars stay
 owned by the glue that spawns them. Deleting this directory (and the one
 mount call in serve/__main__.py) restores the pre-ADR-007 facade — the
 deletability test, by construction.
+
+Stroke 2 (same deletability): /admin/switch — switch-companion as one
+action, a registry-validated active.toml write + a supervised warm
+restart (switch.py).
 """
 
 from .routes import build_mount  # noqa: F401

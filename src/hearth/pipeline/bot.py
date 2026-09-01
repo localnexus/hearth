@@ -107,6 +107,11 @@ import hearth.control.features.config_profiles  # noqa: F401
 # The manual contributor — destinations rail + in-page manual pane:
 #   /manual/*        — users-manual/ pages rendered locally (features/manual.py)
 import hearth.control.features.manual  # noqa: F401
+
+#   /companion/*     — companion switcher: relay to the supervisor daemon (features/
+#                      companion.py); inert unless [serve.supervisor] is enabled AND
+#                      the panel binds loopback — see the module docstring.
+import hearth.control.features.companion  # noqa: F401
 # Already pulled in by config_profiles; imported explicitly because bot core calls its
 # F9 startup scrub below (remove that call too if these feature imports ever go).
 import hearth.control.features.config_knobs  # noqa: F401

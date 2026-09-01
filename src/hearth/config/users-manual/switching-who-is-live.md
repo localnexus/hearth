@@ -20,6 +20,23 @@ the companion is always the same shape: **edit the pointer → bounce the facade
 
 ---
 
+## The one-action path — the panel's COMPANION switcher (supervisor daemon)
+
+With the **supervisor daemon** on (`[serve.supervisor] enabled = true` in `serve.toml`, standalone
+facade running), the **desk voice loop's** version of this ritual is one action: the control
+panel's **COMPANION** box — or an authed `POST /admin/switch` at the facade — validates your
+selection (registry + on-disk existence; a refused switch writes nothing), writes
+`config/active.toml` (previous copy kept beside it as `active.toml.prev`), and warm-restarts the
+voice bot for you. The stop is the graceful ladder, so session finalize/hold semantics are
+preserved — tick **keep this session** to hold. Your LLM server is never touched.
+
+**What it does NOT do:** bounce the facade. The facade lane keeps its own rules — a
+`[serve.identity]` pin or `[serve.characters]` roster entry already decouples it from
+`active.toml`; an unpinned facade still follows at its next restart (the steps below).
+Hand-edit + restart keeps working unchanged either way.
+
+---
+
 ## The four steps
 
 ### 1 · Edit the selection
@@ -97,7 +114,7 @@ Three lanes read `active.toml` at *different* moments, so a switch reaches them 
 |---|---|---|
 | **Phone voice + chat** (via the facade) | Snapshots `active.toml` when the **facade** starts | The bounce in step 3 — that's the whole point |
 | **Open WebUI** (:65002 chat) | Reads the facade's `/v1/models` fresh on page load | **No restart.** Refresh the page / start a new chat and the new character id shows. **[UNVERIFIED]** old chats appear to stay pinned to whatever id they opened with (standard per-conversation model pinning — confirm by eye) |
-| **Desk voice loop** (`bot.py`, :65000) | Snapshots `active.toml` at **its own** launch | Separate lane entirely — a facade bounce doesn't touch a running desk loop. To move *it*, stop and relaunch `bot.py` (`docs/runbook/` §3→§2) |
+| **Desk voice loop** (`bot.py`, :65000) | Snapshots `active.toml` at **its own** launch | Separate lane entirely — a facade bounce doesn't touch a running desk loop. To move *it*, stop and relaunch `bot.py` (`docs/runbook/` §3→§2) — or one press of the panel's **COMPANION** switcher when the supervisor daemon is on |
 
 > **The mental model:** an interactively-launched `bot.py` and the launchd facade are *two independent
 > readers* of the same selection file. Each takes its snapshot when it starts. Switching the facade never

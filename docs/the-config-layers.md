@@ -48,6 +48,12 @@ Your one deliberate lever for *who's live*: `character`, `model`, `voice` — pl
 `persona = "<variant>"` that picks `persona.<variant>.md` beside the character's `persona.md`.
 It's read **once at startup** — nothing hot-swaps. Edit, then restart.
 
+With the **supervisor daemon** enabled (`[serve.supervisor]` in `serve.toml`), that ritual is
+one action: the control panel's **COMPANION** switcher — or `POST /admin/switch` at the facade —
+validates your selection against the settings registry, writes this file (previous copy kept
+beside it as `active.toml.prev`), and warm-restarts the bot for you. Same file, same semantics,
+one button; hand-edit + restart keeps working unchanged (comments don't survive a daemon write).
+
 ## `overrides.toml` — the panel's layer (hands off)
 
 This is where the **control panel** writes the live knobs you turn while a session is running
@@ -114,7 +120,7 @@ exposing the live file:
 
 ## The one-line takeaways
 
-- **Want to change who's live?** `active.toml` + restart.
+- **Want to change who's live?** `active.toml` + restart — or the panel's **COMPANION** switcher (supervisor daemon on).
 - **Want your companions outside the checkout?** Set `HEARTH_DATA`; the layout is identical there.
 - **A setting won't stick?** The **panel's** `overrides.toml` is probably winning — clear it
   via the panel, don't hand-edit.

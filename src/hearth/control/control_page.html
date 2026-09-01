@@ -176,6 +176,24 @@
   </details>
   <div class="kbtns"><button id="k-reset-all" title="clear ALL live overrides (incl. listening) → shipped baseline">Restore ALL to defaults</button></div>
 </div>
+
+<!-- Companion switcher — hidden unless features/companion answers GET /companion
+     (i.e. the supervisor daemon is configured, the panel binds loopback, and the
+     standalone facade is up). The switch itself runs in the DAEMON (one door):
+     a validated active.toml write + a supervised bot restart — this page dies
+     with the bot and comes back on its own. -->
+<div id="switcher" class="hidden">
+  <div class="kpanel" id="kp-switch">
+    <div class="khead">COMPANION — <span id="sw-current">…</span></div>
+    <div class="klegend">Pick who's live. <b>Switch &amp; restart</b> writes <code>active.toml</code> (previous file kept as <code>.prev</code>) and warm-restarts the voice bot — the LLM server is never touched. Same ritual as edit-then-restart, one button.</div>
+    <div class="krow"><span class="kname">Character</span><select id="sw-char"></select></div>
+    <div class="krow"><span class="kname">Voice</span><select id="sw-voice"></select></div>
+    <div class="krow"><span class="kname">Persona</span><select id="sw-persona"></select></div>
+    <div class="krow"><span class="kname">Model</span><select id="sw-model"></select></div>
+    <label class="krow" id="sw-holdrow" title="drop a hold marker before stopping, so the current session is kept (named) instead of discarded"><input type="checkbox" id="sw-hold"> keep this session (hold)</label>
+    <div class="kbtns"><button id="sw-go">Switch &amp; restart</button> <span id="sw-state"></span></div>
+  </div>
+</div>
 </div><!-- /dest-controls -->
 
 <!-- Manual destination: rendered fragments fetched into the live
@@ -699,6 +717,70 @@ async function initManual() {
   $('dest-b-manual').addEventListener('click', () => showDest('manual'));
 }
 initManual();
+
+// ── Companion switcher (self-gating: hidden unless GET /companion answers) ────
+// The POST is relayed by features/companion.py to the supervisor daemon, which
+// validates + writes active.toml and restarts the bot in the background. This
+// page goes down with the bot; we watch for the down→up edge, then reload.
+async function initSwitcher() {
+  let d = null;
+  try { const r = await fetch('/companion'); if (!r.ok) return; d = await r.json(); }
+  catch (e) { return; }
+  if (!d || !d.choices) return;
+  const chars = d.choices.characters || [];
+  const cur = d.current || {};
+  function fill(el, names, want) {
+    el.innerHTML = '';
+    for (const n of names) { const o = document.createElement('option'); o.value = n; o.textContent = n; el.appendChild(o); }
+    if (want && names.includes(want)) el.value = want;
+  }
+  fill($('sw-char'), chars.map(c => c.name), cur.character);
+  fill($('sw-model'), d.choices.models || [], cur.model);
+  function charInfo() { return chars.find(c => c.name === $('sw-char').value) || {voices: [], personas: ['default']}; }
+  function refreshDependents(keepCurrent) {
+    const c = charInfo();
+    fill($('sw-voice'), c.voices, keepCurrent ? cur.voice : c.voices[0]);
+    fill($('sw-persona'), c.personas, keepCurrent ? (cur.persona || 'default') : 'default');
+  }
+  refreshDependents(true);
+  $('sw-char').addEventListener('change', () => refreshDependents(false));
+  $('sw-current').textContent = cur.character
+    ? cur.character + ' · ' + (cur.voice || '?') + ' · ' + (cur.model || '?')
+    : '(no active.toml yet)';
+  $('switcher').classList.remove('hidden');
+  $('sw-go').addEventListener('click', async () => {
+    const body = { character: $('sw-char').value, voice: $('sw-voice').value,
+                   model: $('sw-model').value, persona: $('sw-persona').value,
+                   hold: $('sw-hold').checked, start: true };
+    $('sw-go').disabled = true;
+    $('sw-state').textContent = 'switching…';
+    try {
+      const r = await fetch('/companion/switch', {method: 'POST',
+        headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+      const j = await r.json();
+      if (!r.ok || !j.ok) {
+        $('sw-state').textContent = 'refused: ' + ((j.errors || [j.error || r.status]).join(' · '));
+        $('sw-go').disabled = false;
+        return;
+      }
+    } catch (e) { /* bot may already be going down mid-reply — treat as underway */ }
+    $('sw-state').textContent = 'restarting — this page comes back on its own (≈10–30 s)…';
+    const t0 = Date.now();
+    let wentDown = false;   // wait for the down→up edge, never reload into the dying bot
+    const poll = setInterval(async () => {
+      try {
+        const r = await fetch('/engine');
+        if (r.ok && wentDown) { clearInterval(poll); location.reload(); }
+      } catch (e) { wentDown = true; }
+      if (Date.now() - t0 > 120000) {
+        clearInterval(poll);
+        $('sw-state').textContent = 'still down after 120 s — check the terminal / logs/bot.log';
+        $('sw-go').disabled = false;
+      }
+    }, 2000);
+  });
+}
+initSwitcher();
 
 renderMic();  // show baseline on load
 </script>
