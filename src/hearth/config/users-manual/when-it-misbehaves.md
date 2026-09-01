@@ -20,31 +20,35 @@ overview → `docs/runbook/README.md`. Those are the single sources of truth —
 | Set a voice in `active.toml` but a **different** voice plays | `docs/runbook/05-fast-recovery.md` (sticky `[voice]` in the panel's `overrides.toml`) → also [The config layers](the-config-layers.md) |
 | Cut off mid-word / garbled render / cue tag spoken aloud | `docs/debugging/tts-audio-cases.md` |
 | Resume "not found" / persona-model mismatch after resume | `docs/debugging/session-continuity-faults.md` |
-| Phone won't connect / mic dead on the walk | [The phone lane — away mode](the-phone-lane-away-mode.md) (TURN up? insecure-origin flag re-added? trio relaunched after reboot?) |
-| Facade won't answer / `unauthorized` | the two new cases below |
+| A hand-edited config file that may be wrong | `python -m hearth.config.check` — validates every config file present, names bad keys, prints no values |
+| The panel has no **COMPANION** box | [The one-button switch](the-one-button-switch.md) (daemon gate off? facade not running standalone? panel LAN-exposed?) |
+| A switch answered `409` and nothing changed | [The one-button switch](the-one-button-switch.md) (a switch already in flight, or a refused live arm — the selection is already written; repost on the restart path) |
+| Phone won't connect / mic dead on the walk | [The phone lane — away mode](the-phone-lane-away-mode.md) (TURN up? insecure-origin flag re-added? relaunched after reboot?) |
+| Facade won't answer / `unauthorized` | the two cases below |
 
 ---
 
-## The new facade cases — not yet in the older docs
+## The two facade cases — not in the older docs
 
-These landed with the launchd facade and aren't in `docs/runbook/05-fast-recovery.md` or `docs/debugging/` yet, so they're
-written out here until those docs absorb them.
+These are the facade's own signatures, and both are the design working rather than a fault, so they're
+written out here.
 
-### Connection refused after a `kickstart`, and the log says nothing ran
+### Connection refused after a restart, and nothing ran
 
-**Symptom:** you bounced the facade (`launchctl kickstart -k gui/$(id -u)/com.hearth.facade`), and now
-`:65001` gives **connection refused**; the facade log shows it loaded nothing rather than an error/traceback.
+**Symptom:** you restarted the facade and now `:65001` gives **connection refused**; it printed no error and
+no traceback.
 
 **Cause: the `serve.toml` gate, not a fault.** When `config/serve.toml` has `enabled = false` (or the file
 is absent), the facade **loads nothing and opens no socket** — byte-identical-appliance behavior, by design
 (confirmed in `config/serve.toml.example`). A refused port here means *disabled*, not *broken*.
 
-**[UNVERIFIED]** the exact "nothing to run" wording in the log — the mechanism (gate → no socket) is
-verified from `serve.toml.example`, but the literal log string couldn't be confirmed (the facade is
-currently enabled, and broad log reads are out of scope). Treat "refused + no error in the log after a
-kickstart" as the gate signature regardless of the exact phrasing.
+Run standalone, it says exactly this on stderr and exits 2:
 
-**Fix:** if you *want* the facade up, set `enabled = true` in `config/serve.toml` and kickstart again.
+```
+[serve] config/serve.toml absent or enabled=false — nothing to run
+```
+
+**Fix:** if you *want* the facade up, set `enabled = true` in `config/serve.toml` and start it again.
 (Manage that file, never print it — [The config layers](the-config-layers.md).)
 
 ### `{"error": "unauthorized"}` back from the facade

@@ -10,15 +10,19 @@ How Hearth turns your words into *the companion's* words has two families of set
 A common trap is reaching for a dial to fix something the prompt owns. Length and "takes their time" are the
 prompt's job; the dials can't buy them. Keep that split in mind and the rest is easy.
 
-> **What you can touch today:** `temperature` is owned by Hearth now (live via `config/overrides.toml`). The
-> word-net knobs (`top_p/top_k/min_p`, `repeat_penalty`) and `max_tokens` are currently left to **your LLM
-> server's** defaults — set them where that server takes them (`llama-server` command-line flags; LM Studio's
-> GUI, if that's what you run) — and are **proposed** to become owned, per-character Hearth settings.
-> The length rule is prompt-side and live now.
+> **What you can touch today:** `temperature` is owned by Hearth — it starts in
+> `config/models/<model>/model.toml` and the panel can move it live (that's what it writes into
+> `config/overrides.toml`). The word-net knobs (`top_p/top_k/min_p`, `repeat_penalty`) and `max_tokens` are
+> left to **your LLM server's** defaults — set them where that server takes them (`llama-server`
+> command-line flags; LM Studio's GUI, if that's what you run). The length rule is prompt-side and live now.
+
+> **Don't confuse this temperature with the voice's.** The one on this page decides *which words*.
+> There's a second, unrelated temperature in `config/tts/<engine>/tts.toml` that decides *how the words are
+> spoken* — see [The config layers](the-config-layers.md).
 
 ---
 
-## temperature — the aliveness dial  · *live today (0.7)*
+## temperature — the aliveness dial  · *live today (ships at 0.7)*
 
 **What it is:** how willing the companion is to pick a less-obvious next word.
 
@@ -33,7 +37,7 @@ words that don't quite fit.
 **Net:** the spontaneity-vs-reliability dial. 0.7 is a sane middle; nudging toward ~0.9 is the first thing to
 try when the companion feels lifeless.
 
-## top_p / top_k / min_p — the word-net  · *proposed to own; your server's default today*
+## top_p / top_k / min_p — the word-net  · *your LLM server's, not Hearth's*
 
 **What they are:** three ways of drawing the pool of words the companion is *allowed* to consider before temperature
 rolls the dice among them. Tighter net = only the common, likely words. Looser net = rare and colorful words
@@ -51,7 +55,7 @@ feels plain even after you've raised temperature.
 **Net:** the safety rails on spontaneity. If temperature is the dice, this is how many faces they have. Reach
 for **min_p** first.
 
-## repeat_penalty — the "circle back or loop?" dial  · *proposed to own; your server's default today*
+## repeat_penalty — the "circle back or loop?" dial  · *your LLM server's, not Hearth's*
 
 **What it is:** how strongly the companion avoids reusing words and phrases they just said.
 
@@ -67,7 +71,7 @@ loops.
 **Net:** for a companion, err **gentle** — the warmth of returning to something usually beats the tidiness of
 never repeating.
 
-## max_tokens — the emergency brake, NOT a volume knob  · *unlimited today; proposed as a guard*
+## max_tokens — the emergency brake, NOT a volume knob  · *your LLM server's, unset by Hearth*
 
 **What it is:** a hard ceiling on how many words a single reply can be.
 
@@ -83,12 +87,14 @@ it to make replies shorter or longer.
 
 **What it is:** a single instruction in the shared model prompt: *"default to economy — a sentence or three."*
 
-**In your ear:** **this is why the companion keeps it short and doesn't take their time.** It's not a number you can turn
-— it's a sentence the companion has been told. It applies to every character equally right now.
+**In your ear:** **this is why the companion keeps it short and doesn't take their time.** It's not a number
+you can turn — it's a sentence the companion has been told. It lives in the *model* layer
+(`config/models/<model>/system-prompt-template.md`), so it applies to every character on that model equally.
 
 **This is the real lever for the comportment you're missing.** If you want a character who *takes their time,
-volunteers, expands when there's depth*, softening or rewriting this line does what no dial can. (Proposed: let
-each character override it, so one character can breathe while another stays crisp — the "prompt half.")
+volunteers, expands when there's depth*, softening or rewriting this line does what no dial can. To let one
+companion breathe while another stays crisp, give them their own model directory — the template is per model
+dir, and `active.toml` picks which one is live.
 
 **Net:** want the companion to take their time? Change this sentence — not the temperature.
 

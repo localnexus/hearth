@@ -1,80 +1,84 @@
 # The map of doors — every port on one page
 
-*Every network door Hearth opens, what's behind it, and the one read-only command that tells you it's
-alive. This is the orientation map — when you're lost about "which thing is on which port," start here.*
+*Every network door Hearth opens or talks to, what's behind it, and the one read-only command that tells
+you it's alive. This is the orientation map — when you're lost about "which thing is on which port," start
+here.*
 
-**Authoritative sources:** control panel → `docs/runbook/02.5-control-panel.md`; facade + Open WebUI as
-services → `config/launchd/*.plist`; the OpenClaw TTS lane → [The OpenClaw voice lane](the-openclaw-voice-lane.md).
-This page only *maps* them.
+**Authoritative sources:** the control panel → `docs/runbook/02.5-control-panel.md`; the facade gate →
+`config/serve.toml.example`; the supervisor's `/admin` surface →
+[The one-button switch](the-one-button-switch.md). This page only *maps* them.
 
 ---
 
 ## The two questions each door answers
 
-For any port, you really want to know two things: **can something reach it** (is it loopback-private or
-open on the tailnet?) and **what stops an intruder** (loopback bind, a bearer token, tailnet identity, or
-nothing). The table carries both, plus who owns the process and how to check it's up — all **read-only**.
+For any port, you really want to know two things: **can something reach it** (is it loopback-private, or
+open to a network?) and **what stops an intruder** (a loopback bind, a bearer token, nothing at all). The
+table carries both, plus who owns the process and how to check it's up — all **read-only**.
 
-| Door | What's behind it | Owner process | launchd label | Bind | What gates it |
-|---|---|---|---|---|---|
-| **:65000** | Desk **control panel** (drive turns without speaking) | `bot.py` (session-launched) | *(none)* | **loopback** `127.0.0.1` by default | Nothing — the loopback bind *is* the gate. `WEB_HOST=0.0.0.0` opts it onto the LAN (owner opt-in) |
-| **:65001** | The **serve facade** — one OpenAI-compatible `/v1` door (chat, voice-out, STT-in) | `python -m hearth.serve` | **`com.hearth.facade`** | **loopback** `127.0.0.1` | **Bearer token, always on** (no unauthenticated mode) |
-| **:65002** | **Open WebUI** — the phone chat client (installed as a PWA) | `clients/open-webui/run.sh` | **`com.hearth.openwebui`** | **tailnet** (the Mac's `100.x` IP) | Open WebUI login + tailnet identity; proxies to :65001 over loopback |
-| **:3001** | The **web voice client** (Next.js) — away-mode's talk page | `next dev` (session-launched) | *(none)* | **tailnet** `100.x` | Rides the tailnet + the facade; the client itself has no login |
-| **:8080** | **The away-mode media server** — carries the audio (WebRTC / WHIP) | `media-server` (session-launched) | *(none)* | **tailnet** `100.x` | Tailnet ACL (gate-only; the fork's JWT is off today) |
-| **:3478** | **TURN / STUN** — NAT traversal for the phone (Pion, embedded in the away-mode media server) | `media-server` (same process) | *(none)* | **tailnet** `100.x` (bound tailnet-IP-only) | Creds handed out at connect via `/turn-credentials`; tailnet is the boundary |
-| **:8555** | **mlx-audio shim** — local voice-clone TTS (+ a Whisper STT leg). The OpenClaw voice lane's engine, *also* what the facade proxies for its voice notes | `mlx_audio.server` | **`ai.openclaw.voice-tts`** | **loopback** `127.0.0.1` | Loopback bind; a dummy API key the server ignores. Personal voices never leave the machine |
+| Door | What's behind it | Owner process | Bind | What gates it |
+|---|---|---|---|---|
+| **:65000** | The **control panel** — drive turns without speaking, live status, and (with the daemon) the COMPANION switcher | the voice bot — it lives *inside* that process and dies with it | **loopback** `127.0.0.1` by default | Nothing — the loopback bind *is* the gate. `WEB_HOST=0.0.0.0` opts it onto the LAN (owner opt-in); `WEB_PORT` moves it |
+| **:8080** | **Your LLM server** — `llama-server`'s default port. Not Hearth's: you run it, Hearth is its client | yours (`llama-server`, or LM Studio on `:1234`) | yours to choose | yours to choose. `LM_BASE_URL` / `LM_API_TOKEN` tell Hearth where and how |
+| **:65001** | The optional **serve facade** — one OpenAI-compatible `/v1` door (chat, voice-out, opt-in STT-in), plus the `/admin` daemon face when that gate is on | `python -m hearth.serve` (or the bot's in-process attach) | **loopback** `127.0.0.1` by default | **Bearer token, always on** — there is no unauthenticated mode. Only `/health` answers without it |
+| **:8555** | A **speech server** (`mlx_audio.server`) — what the *facade* proxies to for voice notes and transcription. The desk loop needs none of this: its TTS and STT run in-process | yours to run | **loopback** `127.0.0.1` | The loopback bind. Personal voices never leave the machine |
 
-> **The tailnet IP.** Where a door binds "the Mac's `100.x` IP," that's its Tailscale address — private
-> to your tailnet, not the open internet. The exact literal lives in `clients/open-webui/README.md`;
-> this page keeps it generic on purpose.
+Memory sidecars, if you enable the richer backend, are **children of Hearth's own process** on loopback
+with ports picked at spawn — nothing for you to open or check.
+
+> **Everything above is loopback by default.** Hearth binds no network interface on its own, and nothing
+> here is ever `0.0.0.0` unless you explicitly ask for it.
 
 ---
 
-## Which doors survive a reboot (and which don't)
+## Doors your deployment may add
 
-Three of these run under **launchd** — they come back on their own after a reboot or a crash. The rest are
-**session-launched**: something (you, or `start.sh`) started them by hand this session, and a reboot leaves
-them down until they're started again.
+Hearth ships the doors above. A particular installation often puts more around them — a chat client, a
+phone-facing voice page, a media server for away mode, a launchd or systemd unit that keeps a service
+alive. Those are **not part of the shipped install**, so their ports, labels, and reboot behavior are
+whatever *you* set up. Two chapters here describe such a deployment, and both say so at the top:
 
-```
-launchd-managed (reboot-durable)          session-launched (down after reboot)
-────────────────────────────────          ────────────────────────────────────
-:65001  com.hearth.facade                 :65000  desk control panel (bot.py)
-:65002  com.hearth.openwebui              :3001   web voice client (next dev)
-:8555   ai.openclaw.voice-tts             :8080 / :3478  away-mode media server + TURN
-```
+- [The phone lane — away mode](the-phone-lane-away-mode.md) — a phone-facing voice client, a media server,
+  and a TURN relay, all on a private overlay network.
+- [The OpenClaw voice lane](the-openclaw-voice-lane.md) — the `:8555` speech server serving a second
+  consumer.
 
-> **This split is a known open gap.** The away-voice trio (:3001 / :8080 / :3478) is *not*
-> reboot-durable yet. A reboot silently takes the phone-voice lane offline until it's relaunched. Don't assume it's
-> up after the Mac restarts — **check**.
+> **The rule that carries across all of them:** a door that isn't managed by a service manager is
+> **session-launched** — a reboot leaves it down until something starts it again. Don't assume a lane is up
+> after the machine restarts; **check**.
 
 ---
 
 ## The read-only health checks
 
-None of these change anything — they only look. Two families cover every door:
+None of these change anything — they only look.
 
 **Is the listener up?** — `lsof` for the port:
 ```bash
-lsof -nP -iTCP:65001 -sTCP:LISTEN     # swap in any port above
+lsof -nP -iTCP:65000 -sTCP:LISTEN     # swap in any port above
 ```
-A line back = something is listening; the `NAME` column shows the bind (`127.0.0.1:…` loopback vs
-`100.x:…` tailnet).
+A line back = something is listening; the `NAME` column shows the bind (`127.0.0.1:…` loopback vs a
+network address).
 
-**Is the launchd service loaded?** — `launchctl list` (for the three managed labels):
+**Is the facade alive at all?** — the one unauthenticated route, which leaks no identity:
 ```bash
-launchctl list | grep -E 'com\.hearth|ai\.openclaw'
+curl -s http://127.0.0.1:65001/health          # {"ok": true}
 ```
-A numeric PID in the first column = running; a `-` = loaded but not currently up.
 
-**Is the facade actually answering (and as whom)?** — the one door worth probing deeper, using the
-**inline-token idiom** (it authenticates without ever printing the token):
+**Is the facade answering, and as whom?** — the **inline-token idiom** (it authenticates without ever
+printing the token):
 ```bash
 curl -s -H "Authorization: Bearer $(cat config/serve-token)" http://127.0.0.1:65001/v1/models
 ```
 A healthy facade returns a one-model list whose `id` is the **active character**. (No header → `401
 {"error": "unauthorized"}` — that's the bearer gate doing its job, not a fault.)
+
+**Is the whole desk lane ready?** — the preflight, which touches nothing:
+```bash
+./start.sh --check
+```
+It prints the engine tree and the data root, resolves the model id the bot will request, checks your LLM
+server advertises it, and confirms a valid default mic **and** speaker.
 
 > **Never** print `config/serve-token`, `cat` it on its own, or dump env to "check the token." The
 > `$(cat …)` *inside* the curl argument is the whole trick — it feeds the token to the header and nowhere
@@ -84,8 +88,9 @@ A healthy facade returns a one-model list whose `id` is the **active character**
 
 ## The shape of it, in one breath
 
-- **Loopback doors** (:65000, :65001, :8555) are private to the Mac. The facade adds a bearer token on top.
-- **Tailnet doors** (:65002, :3001, :8080, :3478) are reachable from your phone anywhere on the tailnet —
-  and *only* from your tailnet. None is ever bound to `0.0.0.0` by design.
-- **Everything the phone touches funnels through the facade** (:65001) as the single authed door — the chat
-  client, the voice client's LLM leg, all of it. That's the point of the design: one door to secure.
+- **The desk loop is self-contained.** Mic → VAD → STT → your LLM server → TTS → speaker, with one
+  loopback panel to watch it. That's the whole appliance.
+- **The facade is the optional door out**, and it is authed from birth — one bearer, one port, no
+  unauthenticated mode to forget about.
+- **Anything a phone touches should funnel through that one authed door**, over a private network you
+  control. That's the design: one door to secure.

@@ -4,6 +4,12 @@
 shapes the whole setup, and the recovery moves when the phone stops connecting. This is the **server-side**
 operator view — not the phone-tapping how-to.*
 
+> **Scope — this is a deployment, not the shipped install.** Hearth ships the desk voice loop, its panel,
+> and the optional facade ([The map of doors](the-map-of-doors.md)). The three pieces below — a media
+> server, a TURN relay, a phone-facing voice page — are things *you* add around it, so their ports, their
+> supervision, and their reboot behavior are yours. Read this chapter as the shape of a working away lane
+> and the traps it taught, not as a description of what's already on your machine.
+
 **Scope:** the operator process only. The privacy posture it rests on is simple — the phone lane
 rides your own network to your own machine; nothing leaves the box.
 
@@ -19,7 +25,7 @@ session-launched pieces make it work:
 - **TURN / STUN** (:3478) — NAT traversal, embedded in the away-mode media server.
 - **The web voice client** (:3001) — the page you open on the phone to talk.
 
-All three bind the Mac's **tailnet `100.x` IP**, never `0.0.0.0`. The facade (:65001) and the voice engine
+All three bind the Mac's **overlay-network IP** (a tailnet `100.x` address), never `0.0.0.0`. The facade (:65001) and the voice engine
 (:8555) stay on loopback behind them. (Full port map: [The map of doors](the-map-of-doors.md).)
 
 > **Tailnet only — never funnel.** Exposure is `tailscale serve` / a tailnet-IP bind, reachable only from

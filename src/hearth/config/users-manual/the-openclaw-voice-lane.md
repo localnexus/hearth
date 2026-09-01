@@ -9,6 +9,12 @@
 *What lets OpenClaw (the coding/agent harness) reply in one of Hearth's cloned voices — the small local
 shim it speaks through, and what's known vs. still open.*
 
+> **Not the OpenClaw bridge.** Hearth also ships an unrelated, gated feature with a confusingly similar
+> name: `config/openclaw.toml` gives the *companion* two narrow tools for dispatching work to an OpenClaw
+> agent — the companion's hands, not its voice. That one is part of the product and documented in
+> `docs/config-manual/settings-reference-gates.md`. This page is the other direction: OpenClaw borrowing
+> Hearth's voice, assembled outside the shipped install.
+
 **Authoritative source (the ops record):** the OpenClaw voice-lane operating record
 — the single operating record for this lane, including version pins, config, and rollback. This page is
 a short, honest orientation; that record governs.
