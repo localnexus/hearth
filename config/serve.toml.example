@@ -53,3 +53,10 @@ transcript_dir = "transcripts"
 #term_grace_s = 5.0         # SIGTERM → SIGKILL wait
 #[serve.supervisor.env]     # extra env for the spawned bot (values never printed)
 #LM_PROVIDER = "lmstudio"
+#[serve.supervisor.watch.streamcore]  # extra watched externals on /admin/state (reachability only)
+#url = "http://127.0.0.1:8080"
+#[serve.supervisor.actuators.lm-unload]  # declared actuator: fixed argv, no shell, no runtime args;
+#command = ["/path/to/lms", "unload", "--all"]  # output → DATA/logs/actuators/<name>.log (0600)
+#timeout_s = 120.0            # overrun kills the command itself (never what it detached)
+#note = "free the LLM server's models (explicit cold stop — warm stays the default)"
+#probe_url = ""               # optional: reachability shown beside the actuator

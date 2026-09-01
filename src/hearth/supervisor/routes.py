@@ -23,6 +23,14 @@ then says applied: "live" and the bot swaps at its next turn boundary —
 falling back to the supervised restart otherwise. The optional body key
 "apply" steers it: "auto" (default) | "live" (live or 409, never restarts) |
 "restart" (force the stroke-2 path).
+
+Stroke 4 (ADR 007 §Execution 4) enriches the watched externals and adds the
+declared actuators: [serve.supervisor.watch.<name>] URLs join /admin/state's
+externals, and [serve.supervisor.actuators.<name>] commands — operator-fixed
+argv, bounded, output to log files, never children — run via
+POST /admin/actuators/<name>/run (GET /admin/actuators lists them). Warm stop
+stays the default everywhere; a cold model stop happens only as a declared,
+deliberately pressed actuator (§4).
 """
 
 from __future__ import annotations
@@ -36,6 +44,7 @@ from aiohttp import web
 from loguru import logger
 
 from .child import STOP_GRACE_S, TERM_GRACE_S, BotChild, _now_iso
+from . import actuators as actuators_mod
 from . import switch as switch_mod
 
 PANEL_URL = "http://127.0.0.1:65000"
@@ -76,6 +85,13 @@ def build_mount(sup_cfg: dict):
         )
         app["bot_child"] = child
         app["panel_url"] = str(sup_cfg.get("panel_url") or PANEL_URL).rstrip("/")
+        # Stroke 4: watched externals + declared actuators (never children).
+        app["watches"] = {str(n): str(dict(w or {}).get("url") or "")
+                          for n, w in dict(sup_cfg.get("watch") or {}).items()}
+        app["actuators"] = actuators_mod.ActuatorSet(
+            dict(sup_cfg.get("actuators") or {}),
+            log_dir=config_loader.DATA_DIR / "logs" / "actuators",
+        )
         app.router.add_get("/admin/state", _state)
         app.router.add_post("/admin/bot/start", _bot_start)
         app.router.add_post("/admin/bot/stop", _bot_stop)
@@ -86,6 +102,8 @@ def build_mount(sup_cfg: dict):
         app["switch_state"] = {"last": None, "task": None}
         app.router.add_get("/admin/switch", _switch_get)
         app.router.add_post("/admin/switch", _switch_post)
+        app.router.add_get("/admin/actuators", _actuators_get)
+        app.router.add_post("/admin/actuators/{name}/run", _actuator_run)
         # LAST on purpose: registered facade routes always win over the proxy.
         app.router.add_route("*", "/{tail:.*}", _panel_proxy)
         app.on_startup.append(_adopt_on_start)
@@ -125,17 +143,56 @@ async def _http_alive(session, url: str, headers: Optional[dict] = None):
 async def _state(request: web.Request) -> web.Response:
     app = request.app
     deps = app["deps"]
-    llm = await _http_alive(deps.session, deps.lm_base_url.rstrip("/") + "/models",
-                            headers={"Authorization": f"Bearer {deps.lm_token}"})
-    audio = await _http_alive(deps.session, str(deps.cfg.get("audio_base_url") or ""))
-    panel = await _http_alive(deps.session, app["panel_url"] + "/engine")
+    # Watched, never owned (ADR 007 §3): the built-ins plus every declared
+    # [serve.supervisor.watch.<name>] URL, probed concurrently. A declared
+    # name never shadows a built-in.
+    probes = {
+        "llm": _http_alive(deps.session, deps.lm_base_url.rstrip("/") + "/models",
+                           headers={"Authorization": f"Bearer {deps.lm_token}"}),
+        "audio": _http_alive(deps.session, str(deps.cfg.get("audio_base_url") or "")),
+        "panel": _http_alive(deps.session, app["panel_url"] + "/engine"),
+    }
+    for name, url in app.get("watches", {}).items():
+        probes.setdefault(name, _http_alive(deps.session, url))
+    results = dict(zip(probes, await asyncio.gather(*probes.values())))
+    panel = results.pop("panel")
     return web.json_response({
         "supervisor": True,
         "bot": app["bot_child"].status(),
         "panel": {"url": app["panel_url"], "reachable": panel},
-        "externals": {"llm": llm, "audio": audio},  # watched, never owned (ADR 007 §3)
+        "externals": results,
         "switch": app["switch_state"]["last"],
+        "actuators": app["actuators"].names(),  # names only; details on /admin/actuators
     })
+
+
+async def _actuators_get(request: web.Request) -> web.Response:
+    """The declared actuators: note/running/last record, plus a reachability
+    probe for those that declare one. Never commands, never output."""
+    app = request.app
+    acts = app["actuators"]
+    out = acts.status()
+    urls = acts.probe_urls()
+    if urls:
+        alive = await asyncio.gather(*(
+            _http_alive(app["deps"].session, url) for url in urls.values()))
+        for name, up in zip(urls, alive):
+            out[name]["probe"] = up
+    return web.json_response({"actuators": out})
+
+
+async def _actuator_run(request: web.Request) -> web.Response:
+    """Run one declared actuator, bounded; the honest record comes back when
+    it finishes (a slow bring-up holds the request — that IS the spinner)."""
+    name = request.match_info["name"]
+    acts = request.app["actuators"]
+    if name not in acts:
+        return web.json_response({"error": f"unknown actuator {name!r}"}, status=404)
+    try:
+        record = await acts.run(name)
+    except actuators_mod.ActuatorBusy:
+        return web.json_response({"error": f"{name} is already running"}, status=409)
+    return web.json_response({"name": name, **record})
 
 
 async def _bot_start(request: web.Request) -> web.Response:

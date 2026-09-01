@@ -12,6 +12,10 @@ Proves, on real subprocesses and a real aiohttp app:
   3. PARITY    — registry [serve.supervisor] defaults equal the supervisor
                  module constants; the nested block validates (unknown keys
                  warn, never crash).
+  4. ACTUATORS — declared commands run bounded (ok / non-zero / timeout-kill),
+                 log to 0600 files in a 0700 dir, refuse concurrent runs and
+                 unknown names; declared watch names join /admin/state's
+                 externals (stroke 4).
 
 No test here spawns the real bot — every child is a stdlib fake with an
 injected argv/pattern, so the suite never touches the mic, models, or a
@@ -24,9 +28,12 @@ from __future__ import annotations
 
 import asyncio
 import os
+import stat
 import subprocess
 import sys
+import tempfile
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 
 import aiohttp
@@ -35,6 +42,7 @@ from aiohttp.test_utils import AioHTTPTestCase
 
 from hearth import supervisor
 from hearth.config import settings_registry as sr
+from hearth.supervisor import actuators as actuators_mod
 from hearth.supervisor import child as child_mod
 from hearth.supervisor import routes as routes_mod
 from hearth.supervisor.child import BotChild
@@ -165,7 +173,10 @@ class AdminRoutes(AioHTTPTestCase):
             lm_token="none",
             session=None,
         )
-        mount = supervisor.build_mount({"enabled": True, "panel_url": "http://127.0.0.1:1"})
+        mount = supervisor.build_mount({
+            "enabled": True, "panel_url": "http://127.0.0.1:1",
+            "watch": {"streamcore": {"url": "http://127.0.0.1:1/"}},
+        })
         mount(app)
 
         async def _open(app_):
@@ -183,6 +194,13 @@ class AdminRoutes(AioHTTPTestCase):
         # Deterministic: never adopt a real desk bot into a test.
         self.app["bot_child"].close()
         self.app["bot_child"] = _fake(GRACEFUL)
+        # Actuator logs land in a scratch dir, never the real DATA tree.
+        self._acts_tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._acts_tmp.cleanup)
+        self.app["actuators"] = actuators_mod.ActuatorSet(
+            {"echo-ok": {"command": [_PY, "-c", "print('actuated')"],
+                         "note": "test echo"}},
+            log_dir=Path(self._acts_tmp.name) / "actuators")
 
     async def asyncTearDown(self):
         await self.app["bot_child"].stop()
@@ -225,6 +243,28 @@ class AdminRoutes(AioHTTPTestCase):
         self.assertIn("offline", text.lower())
         self.assertIn("/admin/bot/start", text)
 
+    async def test_actuator_list_run_unknown(self):
+        resp = await self.client.get("/admin/actuators", headers=self.BEARER)
+        self.assertEqual(resp.status, 200)
+        data = (await resp.json())["actuators"]
+        self.assertEqual(data["echo-ok"]["note"], "test echo")
+        self.assertFalse(data["echo-ok"]["running"])
+        self.assertIsNone(data["echo-ok"]["last"])
+        resp = await self.client.post("/admin/actuators/echo-ok/run", headers=self.BEARER)
+        self.assertEqual(resp.status, 200)
+        rec = await resp.json()
+        self.assertTrue(rec["ok"])
+        self.assertEqual(rec["exit"], 0)
+        resp = await self.client.post("/admin/actuators/nope/run", headers=self.BEARER)
+        self.assertEqual(resp.status, 404)
+
+    async def test_state_carries_declared_watches_and_actuator_names(self):
+        resp = await self.client.get("/admin/state", headers=self.BEARER)
+        data = await resp.json()
+        self.assertIn("streamcore", data["externals"])
+        self.assertIs(data["externals"]["streamcore"], False)  # dead test port
+        self.assertEqual(data["actuators"], ["echo-ok"])
+
     async def test_offline_other_paths_503(self):
         resp = await self.client.post("/say", headers=self.BEARER, json={"text": "hi"})
         self.assertEqual(resp.status, 503)
@@ -254,6 +294,84 @@ class RegistryParity(unittest.TestCase):
     def test_type_violation_fails_loader(self):
         with self.assertRaises(sr.SchemaError):
             sr.loader_check("serve", {"enabled": True, "supervisor": {"enabled": "yes-please"}})
+
+    def test_actuator_defaults_and_validation(self):
+        act = sr._SupActuator
+        self.assertEqual(act.model_fields["timeout_s"].default,
+                         actuators_mod.DEFAULT_TIMEOUT_S)
+        errors, warnings = sr.strict_check(
+            "serve",
+            {"enabled": True,
+             "supervisor": {"enabled": True,
+                            "watch": {"streamcore": {"url": "http://127.0.0.1:8080"}},
+                            "actuators": {"lm-unload": {
+                                "command": ["/x/lms", "unload", "--all"],
+                                "note": "cold stop"}}}},
+        )
+        self.assertEqual([e for e in errors if "supervisor" in e], [], errors)
+        # an empty command is a config error, not a runtime surprise
+        errors, _ = sr.strict_check(
+            "serve",
+            {"enabled": True,
+             "supervisor": {"enabled": True,
+                            "actuators": {"bad": {"command": []}}}},
+        )
+        self.assertTrue(any("command" in e for e in errors), errors)
+
+
+class ActuatorEngine(unittest.IsolatedAsyncioTestCase):
+    """The bounded-run engine, on real subprocesses in a scratch tree."""
+
+    def _set(self, acts: dict, tmp: str) -> actuators_mod.ActuatorSet:
+        return actuators_mod.ActuatorSet(acts, log_dir=Path(tmp) / "logs")
+
+    async def test_ok_run_logs_at_0600(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            acts = self._set({"ok": {"command": [_PY, "-c", "print('actuated-marker')"]}}, tmp)
+            rec = await acts.run("ok")
+            self.assertTrue(rec["ok"])
+            self.assertEqual(rec["exit"], 0)
+            self.assertFalse(rec["timed_out"])
+            log = Path(rec["log"])
+            self.assertIn("actuated-marker", log.read_text(encoding="utf-8"))
+            self.assertEqual(stat.S_IMODE(log.stat().st_mode), 0o600)
+            self.assertEqual(stat.S_IMODE(log.parent.stat().st_mode), 0o700)
+            self.assertEqual(acts.status()["ok"]["last"]["exit"], 0)
+
+    async def test_nonzero_exit_reported_honestly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            acts = self._set({"no": {"command": [_PY, "-c", "import sys; sys.exit(3)"]}}, tmp)
+            rec = await acts.run("no")
+            self.assertFalse(rec["ok"])
+            self.assertEqual(rec["exit"], 3)
+
+    async def test_timeout_kills_the_command_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            acts = self._set({"slow": {"command": [_PY, "-c", "import time; time.sleep(30)"],
+                                       "timeout_s": 0.4}}, tmp)
+            rec = await acts.run("slow")
+            self.assertFalse(rec["ok"])
+            self.assertTrue(rec["timed_out"])
+            self.assertLess(rec["duration_s"], 10.0)
+
+    async def test_busy_refused_and_unknown_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            acts = self._set({"hold": {"command": [_PY, "-c", "import time; time.sleep(1.5)"],
+                                       "timeout_s": 10.0}}, tmp)
+            task = asyncio.ensure_future(acts.run("hold"))
+            await asyncio.sleep(0.3)
+            with self.assertRaises(actuators_mod.ActuatorBusy):
+                await acts.run("hold")
+            rec = await task
+            self.assertTrue(rec["ok"])
+            with self.assertRaises(KeyError):
+                await acts.run("nope")
+
+    def test_commandless_block_skipped_never_fatal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            acts = self._set({"bad": {}, "good": {"command": ["/bin/true"]}}, tmp)
+            self.assertNotIn("bad", acts)
+            self.assertEqual(acts.names(), ["good"])
 
 
 if __name__ == "__main__":

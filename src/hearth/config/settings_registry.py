@@ -208,12 +208,26 @@ class _ServeIdentity(_Cfg):
     tts: Optional[_ServeIdentityTts] = Field(None, description="pinned synth knobs; win over client body and live layer")
 
 
+class _SupWatch(_Cfg):
+    url: str = Field(description="health-probe URL, reported on /admin/state externals (reachability boolean only)")
+
+
+class _SupActuator(_Cfg):
+    command: list[str] = Field(min_length=1, description="fixed argv, exec'd directly — no shell, no runtime arguments")
+    timeout_s: float = Field(120.0, gt=0.0, description="bounded wait, seconds; overrun kills the command itself (never what it detached)")
+    cwd: str = Field("", description="working directory for the command (empty = the daemon's)")
+    note: str = Field("", description="human description shown on /admin/actuators")
+    probe_url: str = Field("", description="optional reachability probe shown beside the actuator (any HTTP answer = up)")
+
+
 class _ServeSupervisor(_Cfg):
     enabled: bool = Field(False, description="mount the daemon face (/admin routes + panel proxy) in the STANDALONE facade")
     panel_url: str = Field("http://127.0.0.1:65000", description="the bot's control panel — proxy target + reachability probe")
     stop_grace_s: float = Field(15.0, gt=0.0, description="seconds after SIGINT before escalating (memory-consolidation headroom)")
     term_grace_s: float = Field(5.0, gt=0.0, description="seconds after SIGTERM before SIGKILL")
     env: dict[str, str] = Field(default_factory=dict, description="extra child env for the spawned bot (e.g. LM_PROVIDER) — values never printed")
+    watch: dict[str, _SupWatch] = Field(default_factory=dict, description="extra watched externals probed on /admin/state (ADR 007 §3 — watched, never owned)")
+    actuators: dict[str, _SupActuator] = Field(default_factory=dict, description="declared external actuators (stroke 4): operator-fixed commands behind the door, never children")
 
 
 class ServeTable(_Cfg):

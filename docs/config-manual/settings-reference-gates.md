@@ -52,6 +52,8 @@ All keys below live under the `[serve]` table.
 | `supervisor.stop_grace_s` | float | `15.0` | 0.0– | — | seconds after SIGINT before escalating (memory-consolidation headroom) |
 | `supervisor.term_grace_s` | float | `5.0` | 0.0– | — | seconds after SIGTERM before SIGKILL |
 | `supervisor.env` | map(str → str) | — |  | — | extra child env for the spawned bot (e.g. LM_PROVIDER) — values never printed |
+| `supervisor.watch` | tables | — |  | — | extra watched externals probed on /admin/state (ADR 007 §3 — watched, never owned) |
+| `supervisor.actuators` | tables | — |  | — | declared external actuators (stroke 4): operator-fixed commands behind the door, never children |
 
 ## `config/memory.toml` — The memory-seam gate
 

@@ -114,11 +114,29 @@ The rest of the surface, all behind the same bearer:
 | `POST /admin/bot/stop` | Graceful stop — `{"hold":true}` keeps the session |
 | `POST /admin/daemon/restart` | Restart the facade itself (the one restart it can't do in place) |
 | `GET`/`POST /admin/switch` | Read the picker / perform the switch |
+| `GET /admin/actuators` | List your declared actuators (state + last run) |
+| `POST /admin/actuators/<name>/run` | Run one — the reply waits for the honest result |
 
 Two response details worth knowing when you script it: `"apply"` steers the routing — `"auto"` (default),
 `"live"` (live or refuse, never restart), `"restart"` (force the restart path) — and a refused **live** arm
 answers 409 while telling you the selection **is already written**, so a repost with `"apply":"auto"` takes
 the restart path. A second switch while one is in flight is refused, not queued.
+
+---
+
+## Watching — and nudging — the rest of the stack
+
+The daemon owns only the voice bot. Everything else it *watches*: `GET /admin/state` reports
+reachability for your model server and the voice server, plus anything you declare under
+`[serve.supervisor.watch.<name>]` (a name and a URL — any HTTP answer counts as up).
+
+For the moments watching isn't enough, declare an **actuator** — your own fixed command under
+`[serve.supervisor.actuators.<name>]` (see `config/serve.toml.example`): bring a companion
+service back after a reboot, or free your model server's memory. Each run is bounded by its
+timeout, and output goes to `logs/actuators/<name>.log` rather than the response. Two rules
+keep this honest: the config file alone decides what can run — there are no arguments at
+request time — and stopping the bot never touches your model server. Freeing the model is
+always a deliberate press of an actuator *you* declared, never a side effect.
 
 ---
 
@@ -130,7 +148,7 @@ the restart path. A second switch while one is in flight is refused, not queued.
 - **It doesn't replace the file.** `active.toml` is still the durable record and the cold-boot truth. Hand
   edit + restart works exactly as before.
 - **It doesn’t touch your model server, or any other service you run.** Those are watched and
-  reported, never owned.
+  reported, never owned — an actuator acts only when you declare it *and* press it.
 
 **Net:** one gate in `serve.toml`, one standalone facade, and switching becomes a press — live at your next
 words when the pieces allow, a warm bot restart when they don't, with `active.toml.prev` behind you either
