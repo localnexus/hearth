@@ -248,6 +248,12 @@ class _MemIntent(_Cfg):
     companions: dict[str, bool] = Field(default_factory=dict, description="per-companion enable override")
 
 
+class _MemPerTurn(_Cfg):
+    enabled: bool = Field(False, description="per-turn targeted recall (chat lane): re-query the bank with the user's own words each request")
+    limit: int = Field(3, ge=0, description="targeted extras appended under their own labeled line (deduped against the open block)")
+    min_cue_chars: int = Field(12, ge=0, description="skip cues shorter than this (bare greetings and closes)")
+
+
 class _MemServe(_Cfg):
     enabled: bool = Field(False, description="facade-lane sessions (idle-gap boundaries, records, recall)")
     idle_close_voice: int = Field(5, ge=1, description="voice-lane idle close, MINUTES (grace + margin over the voice server's reaper)")
@@ -279,6 +285,7 @@ class MemoryTable(_Cfg):
                               description="what recall asks the backend for (semantic backends only)")
     companions: dict[str, str] = Field(default_factory=dict, description="per-companion backend override (the continuity dial)")
     intent: Optional[_MemIntent] = Field(None, description="intent-primed boot recall")
+    per_turn: Optional[_MemPerTurn] = Field(None, description="per-turn targeted recall (chat lane; ships OFF)")
     serve: Optional[_MemServe] = Field(None, description="facade-lane session glue")
     hindsight: Optional[_MemHindsight] = Field(None, description="Hindsight backend settings")
 

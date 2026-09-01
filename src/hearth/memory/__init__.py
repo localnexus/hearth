@@ -7,6 +7,11 @@ the engine is byte-identical. Enabled, the seam:
   * at session start, recalls ≤ N provenance-tagged items from the companion's
     backend and appends them to the composed system instruction (the persona
     render and PROMPT_FINGERPRINT are untouched — drift detection stays stable);
+  * per turn where the host lane opts in ([memory.per_turn] — the chat facade;
+    design lane (b), signed 2026-09-01), re-queries the backend with the user's
+    own words and appends what surfaced under a labeled line — the open-time
+    block is never recomputed, and a guard-tripped or failing turn recall
+    serves the open composition unchanged;
   * at graceful session end, writes the CANONICAL memory record (decider 7)
     and then lets the backend index it (``store``) and tidy (``consolidate``);
   * optionally (off by default, [memory.intent]) asks the extraction model at
@@ -40,6 +45,11 @@ _HEADER = (
     "Each line is dated where known; memories may be incomplete — it is always\n"
     "better to say you don't recall than to invent a memory:\n"
 )
+
+# Framing for per-turn targeted extras ([memory.per_turn]): they ride the same
+# MEMORY block, under their own label, so provenance stays legible (design
+# lane (b), decision 4 — labeled, never silently merged).
+_TURN_HEADER = "Also surfaced by what the user just said (may bear on this turn):"
 
 
 def _now_iso() -> str:
@@ -79,6 +89,14 @@ class MemorySeam:
             cfg.get("recall_query", "the user's life, preferences, and recent conversations")
         )
         self._floor = backend if isinstance(backend, FloorBackend) else FloorBackend()
+        per_turn = dict(cfg.get("per_turn") or {})
+        self.per_turn_enabled = bool(per_turn.get("enabled", False))
+        self.per_turn_limit = int(per_turn.get("limit", 3))
+        self.per_turn_min_chars = int(per_turn.get("min_cue_chars", 12))
+        # augment() fills these; augment_turn() re-frames them per request
+        # without re-recalling the open set or re-touching the intent slot.
+        self._session_lines: list[str] = []
+        self._session_texts: set[str] = set()
         intent_cfg = dict(cfg.get("intent") or {})
         self._intent_cfg = intent_cfg
         self.intent_enabled = bool(
@@ -117,21 +135,83 @@ class MemorySeam:
         backend's own temporal phrasing inside the text). A captured intent
         rides the same block as a dated last line — she opens aware of the
         plan, not merely better-briefed about it — and is consumed here,
-        because "used" means injected, not merely read."""
+        because "used" means injected, not merely read. The composed lines are
+        cached for augment_turn() — the per-turn path re-frames them, never
+        re-recalls the open set."""
         items = self.recall()
         intent_line = self._consume_intent_line()
-        if not items and not intent_line:
-            return system_instruction
         lines = []
         for item in items:
             prefix = f"({item.when}) " if item.when else ""
             lines.append(f"- {prefix}{item.text}")
         if intent_line:
             lines.append(intent_line)
-        block = _HEADER + "\n".join(lines)
+        self._session_lines = lines
+        self._session_texts = {item.text for item in items}
         if items:  # an intent-only block logs its own line, in _consume_intent_line
             logger.info("[memory] recalled {} item(s) via {}", len(items), self.backend.name)
+        return self._compose(system_instruction, [])
+
+    def _compose(self, system_instruction: str, extras: list[MemoryItem]) -> str:
+        """base + the framed block: the cached open lines, then targeted extras
+        under their own label. Nothing at all ⇒ byte-identical passthrough."""
+        lines = list(self._session_lines)
+        if extras:
+            lines.append(_TURN_HEADER)
+            for item in extras:
+                prefix = f"({item.when}) " if item.when else ""
+                lines.append(f"- {prefix}{item.text}")
+        if not lines:
+            return system_instruction
+        block = _HEADER + "\n".join(lines)
         return f"{system_instruction}\n\n{block}\n"
+
+    # ── per-turn targeted recall (design lane (b), signed 2026-09-01) ────────
+
+    def recall_turn(self, cue: str) -> list[MemoryItem]:
+        """Contained targeted recall — the user's own words as the query.
+
+        Same containment ladder as recall() (backend → floor → empty); the
+        floor ignores queries by design, so its answer simply dedupes away
+        against the open-time lines. Asks for headroom above the per-turn cap
+        because dedupe happens seam-side, in augment_turn()."""
+        want = self.per_turn_limit + self.recall_limit
+        try:
+            return self.backend.recall(self.companion, cue, want)
+        except Exception as exc:  # noqa: BLE001 — an extra must never cost the turn
+            logger.warning("[memory] {} turn recall failed ({}) — no extras",
+                           self.backend.name, type(exc).__name__)
+        if self._floor is not self.backend:
+            try:
+                return self._floor.recall(self.companion, cue, want)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("[memory] floor turn recall failed ({}) — no extras",
+                               type(exc).__name__)
+        return []
+
+    def augment_turn(self, system_instruction: str, cue: str) -> str:
+        """The per-request instruction: the open-time block + targeted extras.
+
+        Every guard falls back to the open composition, byte-identical to what
+        augment() returned: gate off, cue below min_cue_chars, nothing new
+        surfaced. The intent slot is untouched here — consumed once, at
+        augment(); its cached line rides every composition."""
+        cue = " ".join(str(cue or "").split())
+        extras: list[MemoryItem] = []
+        if (self.per_turn_enabled and self.per_turn_limit > 0
+                and len(cue) >= self.per_turn_min_chars):
+            seen = set(self._session_texts)
+            for item in self.recall_turn(cue):
+                if not item.text or item.text in seen:
+                    continue
+                seen.add(item.text)
+                extras.append(item)
+                if len(extras) >= self.per_turn_limit:
+                    break
+            if extras:
+                logger.info("[memory] turn recall surfaced {} extra(s) via {}",
+                            len(extras), self.backend.name)
+        return self._compose(system_instruction, extras)
 
     # ── the intent slot (boot side; capture side lives in on_session_end) ─────
 

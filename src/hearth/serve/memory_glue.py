@@ -18,6 +18,13 @@ seam with ZERO API changes (signed design, the facade-lane memory seam):
   * the augmented instruction computed once at session open and cached on the
     entry, so recall costs one call per conversation and every later turn costs
     a dict lookup;
+  * with [memory.per_turn] enabled, a CHAT request whose cue (the user's
+    newest words) passes the seam's guards gets a PER-REQUEST instruction
+    instead: the cached open block plus one targeted recall on the worker
+    thread, deadline-guarded, identical cues served from a one-slot cache, any
+    failure serving the cached open string (design lane (b), signed
+    2026-09-01; the voice lane is untouched — its prefetch-behind variant is
+    its own stroke);
   * turns accumulated FACADE-SIDE, verbatim: the last request's message list is
     not a faithful transcript, because a voice client windows its own history;
   * three close paths, so a record exists no matter how a conversation ends —
@@ -62,6 +69,7 @@ from hearth.memory import records as records_mod
 CHANNELS = ("chat", "voice")   # whitelist — the value keys a session AND names a file
 DEFAULT_CHANNEL = "chat"
 SWEEP_INTERVAL_S = 60.0        # reaper cadence; the thresholds themselves are minutes
+PER_TURN_DEADLINE_S = 5.0      # targeted-recall budget; overrun ⇒ the cached open instruction
 CHECKPOINT_SCHEMA = 1
 CHECKPOINT_KIND = "memory-checkpoint"
 
@@ -181,6 +189,7 @@ class _Session:
     hint: str
     seam: Any
     instruction: str          # the augmented system instruction, computed at open
+    base_instruction: str     # what augment() received — the per-turn re-compose base
     started: str              # ISO, local — the record's `started`
     session_id: str           # serve-<channel>[-<hint>]-<startedYYYYMMDDTHHMMSS>
     stem: str                 # serve-<channel>[-<hint>] — the checkpoint's name
@@ -188,6 +197,8 @@ class _Session:
     turns: list = field(default_factory=list)
     exchanges: int = 0
     seq: int = 0              # bumped per exchange; the closure check's staleness guard
+    last_cue: str = ""        # per-turn recall: one-slot cache (same words, same answer)
+    last_cue_instruction: str = ""
 
 
 # ── the glue ─────────────────────────────────────────────────────────────────
@@ -275,12 +286,14 @@ class ServeMemory:
     # ── session open (first request of a conversation) ───────────────────────
 
     async def instruction(self, companion: str, persona: str, channel: Any,
-                          hint: Any, base_instruction: str) -> str:
+                          hint: Any, base_instruction: str, cue: str = "") -> str:
         """The system instruction this request should send.
 
         Opens the session on its first request (paying recall once) and returns
         the AUGMENTED instruction; every later turn of the same conversation
-        gets the cached string. A companion mapped to "none", or any failure at
+        gets the cached string. With [memory.per_turn] enabled, ``cue`` (the
+        user's newest words) may upgrade that to a per-request instruction —
+        see _turn_instruction. A companion mapped to "none", or any failure at
         all, returns ``base_instruction`` unchanged — the conversation proceeds
         without memory rather than not proceeding.
         """
@@ -288,14 +301,16 @@ class ServeMemory:
         session = self._sessions.get(key)
         if session is not None:
             session.touched = self._clock()
-            return session.instruction
+            return await self._turn_instruction(session, cue)
         pending = self._opening.get(key)
         if pending is not None:
             # A second request arrived while the first was still recalling.
             with contextlib.suppress(Exception):
                 await pending
             session = self._sessions.get(key)
-            return session.instruction if session is not None else base_instruction
+            if session is None:
+                return base_instruction
+            return await self._turn_instruction(session, cue)
         opened_future = asyncio.get_running_loop().create_future()
         self._opening[key] = opened_future
         try:
@@ -304,7 +319,40 @@ class ServeMemory:
             self._opening.pop(key, None)
             if not opened_future.done():
                 opened_future.set_result(True)
-        return session.instruction if session is not None else base_instruction
+        if session is None:
+            return base_instruction
+        return await self._turn_instruction(session, cue)
+
+    async def _turn_instruction(self, session: _Session, cue: str) -> str:
+        """Per-turn targeted recall (design lane (b)) — or the cached string.
+
+        Guards are decided here cheaply (gate, chat lane only, cue length,
+        one-slot cue cache); the recall itself runs on the worker thread under
+        a deadline. Every failure path serves the OPEN instruction: an extra
+        must never cost the turn (decider 6)."""
+        seam = session.seam
+        if not getattr(seam, "per_turn_enabled", False):
+            return session.instruction
+        if session.channel != "chat":
+            # Design lane (b) scope: chat only — a synchronous recall would
+            # tax every voice turn (latency doctrine); the voice lane's
+            # prefetch-behind variant is its own stroke.
+            return session.instruction
+        cue = " ".join(str(cue or "").split())
+        if len(cue) < int(getattr(seam, "per_turn_min_chars", 12)):
+            return session.instruction
+        if cue == session.last_cue and session.last_cue_instruction:
+            return session.last_cue_instruction
+        try:
+            result = await asyncio.wait_for(
+                self._run(seam.augment_turn, session.base_instruction, cue),
+                timeout=PER_TURN_DEADLINE_S)
+        except Exception as exc:  # noqa: BLE001 — contained: the open string serves
+            logger.warning("[serve-memory] turn recall failed ({}) — "
+                           "open-time instruction", type(exc).__name__)
+            return session.instruction
+        session.last_cue, session.last_cue_instruction = cue, str(result)
+        return session.last_cue_instruction
 
     async def _open(self, key: tuple, companion: str, persona: str,
                     base_instruction: str) -> Optional[_Session]:
@@ -322,7 +370,7 @@ class ServeMemory:
         stem = _stem(key[1], key[2])
         session = _Session(
             companion=companion, persona=persona, channel=key[1], hint=key[2],
-            seam=seam, instruction=instruction,
+            seam=seam, instruction=instruction, base_instruction=base_instruction,
             started=now.isoformat(timespec="seconds"),
             session_id=f"{stem}-{now:%Y%m%dT%H%M%S}",
             stem=stem, touched=self._clock(),
@@ -554,6 +602,7 @@ class ServeMemory:
             seam=MemorySeam(companion, str(data.get("persona") or "default"),
                             backend, self._cfg),
             instruction="",
+            base_instruction="",
             started=str(data.get("started") or ""),
             session_id=str(data.get("session_id") or path.stem),
             stem=path.stem,

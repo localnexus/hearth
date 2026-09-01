@@ -280,18 +280,21 @@ async def _chat(request: web.Request) -> web.StreamResponse:
         declared = _declared_identity(deps, str(body.get("model") or "").strip())
         if declared is not None:
             character, persona, instruction = declared
-        if deps.memory is not None:
-            # Opens the conversation on its first turn (recall paid once) and
-            # returns the AUGMENTED instruction; later turns are a dict lookup.
-            instruction = await deps.memory.instruction(
-                character, persona, tap_channel, hint, instruction)
-        messages = [{"role": "system", "content": instruction}]
+        client_turns = []
         for m in body.get("messages") or []:
             if not isinstance(m, dict) or m.get("role") == "system":
                 continue  # persona integrity: the facade owns the system layer
-            messages.append(m)
+            client_turns.append(m)
             if m.get("role") == "user":
                 last_user = _text_of(m.get("content"))
+        if deps.memory is not None:
+            # Opens the conversation on its first turn (recall paid once) and
+            # returns the AUGMENTED instruction; later turns are a dict lookup —
+            # unless [memory.per_turn] is enabled, where the user's own words
+            # (the cue) can add a targeted recall to THIS request's instruction.
+            instruction = await deps.memory.instruction(
+                character, persona, tap_channel, hint, instruction, cue=last_user)
+        messages = [{"role": "system", "content": instruction}, *client_turns]
 
     out = {
         "model": deps.model_id,

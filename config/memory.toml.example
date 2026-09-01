@@ -36,6 +36,17 @@ recall_query = "the user's life, preferences, and recent conversations"
 # ani = "hindsight"
 # guest = "none"
 
+# Per-turn targeted recall (design lane (b), 2026-09-01) — chat lane only:
+# each request re-queries the bank with the user's own words and appends what
+# surfaced under a labeled line inside the MEMORY block. The open-time block
+# stays; a guard-tripped or failing recall serves it unchanged. Voice lanes
+# are untouched (latency doctrine — a prefetch-behind variant is its own
+# stroke). Costs one embedding-search recall per chat turn (~0.3 s, no LLM).
+[memory.per_turn]
+# enabled = false
+# limit = 3                        # extras appended past the open-time block
+# min_cue_chars = 12               # skip bare greetings/closes
+
 # Intent-primed boot recall: "next time, let's talk about X" survives the gap.
 # Off by default. Enabled, at session close the seam asks the local extraction
 # model ONE question — did the user explicitly state what to discuss next
