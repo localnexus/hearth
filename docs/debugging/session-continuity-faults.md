@@ -5,10 +5,10 @@
 **Symptom:** no-flag `./start.sh` shows a numbered **menu**, or **exits 2** without loading the model.
 
 **By design:**
-- **Interactive terminal:** a metadata-only chooser — `0. new session` (discard ephemeral orphans, keep held) + each resumable session (held too). Number = resume · `0` = fresh · **Enter/Ctrl-C = cancel** (nothing started or discarded).
-- **Non-interactive** (launchd / web / piped stdin): the hard **guard** exits 2 so automation never blocks or silently discards — re-run with `--resume <name>` or `--new`.
+- **Interactive terminal:** a metadata-only chooser — `0. new session` + each saved session (named ones tagged `[HELD]`). Number = resume · `0` = fresh · **Enter/Ctrl-C = cancel** (nothing started or discarded).
+- **Non-interactive** (launchd / web / piped stdin): starts fresh without discarding anything; the hard **guard** exits 2 only when a **recall-only leftover** (a crashed `--memory recall-only` sitting's file) is present, so automation never silently deletes the privacy tier's one recovery chance — re-run with `--resume <name>` or `--new`.
 
-> Held sessions appear in the chooser but are **never** removed by `0` / `--new`; only `./stop.sh --discard-held` deletes them.
+> Sessions save by default; `0` / `--new` sweep only recall-only leftovers. Saved and held sessions are never removed by a fresh start — only `./stop.sh --discard-held` (or deleting the file) removes them.
 
 ### Fault S2 — `--resume <name>` shows nothing / "session not found"
 
@@ -42,8 +42,7 @@
 **Transcript path:** `characters/<character>/sessions/<id>.json` under the data root — plaintext message list, `0600`, gitignored. The persona prompt is NOT stored.
 
 **Purge options:**
-- `./stop.sh` — deletes the ephemeral session on graceful stop (default).
 - `./stop.sh --discard-held [name|--all]` — true-delete a held session.
-- Manual: `rm characters/<character>/sessions/<file>.json` for an orphan you've confirmed you don't need.
+- Manual: `rm characters/<character>/sessions/<file>.json` for a session you've confirmed you don't need (sessions save by default — a graceful stop no longer deletes anything except a recall-only sitting's transcript).
 
 Each companion's `sessions/` is `0700`, gitignored, never exposed over the `:65000` web endpoint. If it ever gets accidentally un-ignored, re-add `sessions/` to `.gitignore` immediately.

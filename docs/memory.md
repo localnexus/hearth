@@ -53,8 +53,9 @@ delete the record file, rebuild, and the session is gone from every layer.
 ## Privacy — read this before enabling
 
 Enabling memory **is** the choice to keep a trace. Canonical records contain the
-conversation's messages, and they persist even though the session file itself is
-ephemeral-by-default and deletes on graceful stop. They are 0600 files in a 0700
+conversation's messages, and they persist independently of the session
+transcript's own lifecycle (deleting a saved session does not touch the bank,
+and vice versa). They are 0600 files in a 0700
 directory under your data root, gitignored, local-only — the same sensitivity
 class as held sessions. Per-companion opt-out: map that companion to `"none"`.
 
@@ -83,10 +84,13 @@ postures:
   extras, nothing written. Like mapping the companion to `"none"`, but for one
   sitting instead of forever.
 
-**The mode governs the memory bank only.** The session transcript keeps its own
-lifecycle (ephemeral-by-default, `--hold` to keep — see the
-[runbook](runbook/03.5-session-continuity.md)). `--memory recall-only` plus
-`./stop.sh --hold` is coherent: transcript kept, bank untouched.
+**The mode governs the memory bank.** The session transcript keeps its own
+lifecycle (saved-by-default — see the
+[runbook](runbook/03.5-session-continuity.md)), with ONE default keyed off the
+mode: a `recall-only` sitting's transcript is deleted on graceful stop unless
+held, so the privacy tier truly leaves no durable record by default.
+`--memory recall-only` plus `./stop.sh --hold` is still coherent: transcript
+kept, bank untouched.
 
 **Crash safety — the stamp.** A non-full sitting stamps its mode into the
 session file. If the sitting dies uncleanly, the orphan carries the stamp and a
