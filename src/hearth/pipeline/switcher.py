@@ -112,6 +112,7 @@ class LiveSwitcher:
     """
 
     def __init__(self, *, active, reloader, tts, context, store, seam,
+                 memory_mode: str = "full",
                  lm_provider: str, lm_base_url: str, lm_token: str,
                  engine_info: Optional[dict] = None, recorder=None,
                  seam_factory=None, resident_probe=None) -> None:
@@ -141,6 +142,10 @@ class LiveSwitcher:
         self.engine_info = engine_info      # late-bound by bot.py main()
         self.recorder = recorder            # late-bound by bot.py main()
         self._seam_factory = seam_factory or _default_seam_factory
+        # The sitting's memory posture (--memory): stamps every store this
+        # switcher creates, so a mid-run switch keeps the posture visible to
+        # crash-orphan resume. The seam side of the mode rides the factory.
+        self._memory_mode = str(memory_mode)
         self._resident_probe = resident_probe or (
             lambda: fetch_resident_ids(self._lm_provider, self._lm_base_url, self._lm_token))
         self.lm_model = str(active.model_id)  # the engine re-poll's live target
@@ -275,6 +280,12 @@ class LiveSwitcher:
                                         and data["prompt_sha256"] != psha):
                                     warnings.append(
                                         "persona prompt changed since save (resuming anyway)")
+                                saved_mode = str(data.get("memory_mode") or "full")
+                                if saved_mode != self._memory_mode:
+                                    warnings.append(
+                                        f"session was saved under memory mode "
+                                        f"'{saved_mode}' — this sitting is "
+                                        f"'{self._memory_mode}' (the sitting's mode wins)")
                                 new_store = session_store.SessionStore(
                                     session_id=path.stem, model=new_model_id,
                                     voice=str(voice["tag"]), prompt_sha256=psha,
@@ -282,7 +293,8 @@ class LiveSwitcher:
                                     persona=target["persona"],
                                     started=data.get("started") or session_store._now_iso(),
                                     name=data.get("name"),
-                                    held=bool(data.get("held", False)))
+                                    held=bool(data.get("held", False)),
+                                    memory_mode=self._memory_mode)
                                 descriptor = ((new_store.name or new_store.session_id or "Held")
                                               if new_store.held else "Restored")
                     if new_store is None:
@@ -290,7 +302,8 @@ class LiveSwitcher:
                             session_id=session_store.new_session_id(),
                             model=new_model_id, voice=str(voice["tag"]),
                             prompt_sha256=psha, sessions_dir=sdir,
-                            character=target["character"], persona=target["persona"])
+                            character=target["character"], persona=target["persona"],
+                            memory_mode=self._memory_mode)
                     return seam, system_aug, new_store, resume_messages, descriptor, warnings
                 except BaseException:
                     if seam is not None:

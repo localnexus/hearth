@@ -143,7 +143,7 @@ class _Base(unittest.IsolatedAsyncioTestCase):
         self.resident = ["model-one"]
         self.seams = []
 
-    def _mk(self) -> switcher_mod.LiveSwitcher:
+    def _mk(self, memory_mode: str = "full") -> switcher_mod.LiveSwitcher:
         def seam_factory(char, persona):
             s = _FakeSeam(char)
             self.seams.append(s)
@@ -160,6 +160,7 @@ class _Base(unittest.IsolatedAsyncioTestCase):
         return switcher_mod.LiveSwitcher(
             active=active, reloader=self.reloader, tts=self.tts,
             context=self.ctx, store=self.boot_store, seam=self.boot_seam,
+            memory_mode=memory_mode,
             lm_provider="llama-server", lm_base_url="http://127.0.0.1:1/v1",
             lm_token="", engine_info=self.ei, recorder=self.rec,
             seam_factory=seam_factory, resident_probe=probe)
@@ -292,6 +293,29 @@ class SwitcherApply(_Base):
         ])
         self.assertEqual(self.ei["session"], "topic")
         self.assertTrue(sw.current_store.held)
+
+    async def test_switch_store_carries_sitting_memory_mode(self):
+        # The sitting's posture stamps every store the switcher creates, so a
+        # crash orphan born of a mid-run switch still resumes unretained.
+        sw = self._mk(memory_mode="recall-only")
+        res = await sw.prepare({"character": "beta"})
+        self.assertTrue(res["ok"], res)
+        self.assertIsNotNone(await sw.apply_pending())
+        self.assertEqual(sw.current_store.memory_mode, "recall-only")
+
+    async def test_switch_resume_warns_on_memory_mode_drift(self):
+        held = session_store.SessionStore(
+            session_id="offtopic", model="model-one", voice="beta-v1",
+            prompt_sha256="y" * 64, character="beta", persona="default",
+            name="offtopic", held=True, memory_mode="recall-only")
+        held.snapshot([{"role": "user", "content": "old"},
+                       {"role": "assistant", "content": "old-reply"}])
+        sw = self._mk()  # a full sitting
+        res = await sw.prepare({"character": "beta", "mode": "resume", "name": "offtopic"})
+        self.assertTrue(res["ok"], res)
+        self.assertTrue(any("memory mode" in w for w in res["warnings"]), res)
+        self.assertIsNotNone(await sw.apply_pending())
+        self.assertEqual(sw.current_store.memory_mode, "full")  # the sitting's mode wins
 
     async def test_apply_nothing_pending(self):
         sw = self._mk()

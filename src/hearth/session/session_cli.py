@@ -193,6 +193,9 @@ def resolve_session(args, lm_model: str, voice_tag: str, prompt_fingerprint: str
             started=resume_data.get("started") or session_store._now_iso(),
             name=resume_data.get("name"),
             held=bool(resume_data.get("held", False)),
+            # The saved sitting's memory posture rides along; the caller
+            # resolves it against an explicit --memory (inherit_memory_mode).
+            memory_mode=str(resume_data.get("memory_mode") or "full"),
         )
         held_tag = " [HELD]" if store.held else ""
         print(f"[session] resumed {store.path.name} · {len(resume_messages)} messages{held_tag}")

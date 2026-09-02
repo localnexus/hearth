@@ -195,6 +195,35 @@ def test_malformed(tmp):
     check(raised, "load() raises ValueError on malformed shape (caller falls back to fresh)")
 
 
+def test_memory_mode_stamp(tmp):
+    print("\n[7] memory-mode stamp: non-default persisted, resume inherits, flag wins")
+    d = Path(tmp) / "modes"
+    st = ss.SessionStore(session_id="s-ro", model="m", voice="v",
+                         prompt_sha256="d", sessions_dir=d, memory_mode="recall-only")
+    st.snapshot([{"role": "user", "content": "hi"}])
+    data = ss.load(st.path)
+    check(data.get("memory_mode") == "recall-only", "non-default mode persisted in the snapshot")
+
+    full = ss.SessionStore(session_id="s-full", model="m", voice="v",
+                           prompt_sha256="d", sessions_dir=d)
+    full.snapshot([{"role": "user", "content": "hi"}])
+    check("memory_mode" not in ss.load(full.path),
+          "full sitting writes no stamp — its files stay byte-stable")
+
+    resumed = ss.SessionStore(session_id="s-r2", model="m", voice="v",
+                              prompt_sha256="d", sessions_dir=d,
+                              memory_mode=str(data.get("memory_mode") or "full"))
+    check(ss.inherit_memory_mode(None, resumed) == "recall-only",
+          "flag absent — the resumed session's stamp is inherited")
+    check(ss.inherit_memory_mode("full", resumed) == "full"
+          and resumed.memory_mode == "full",
+          "explicit flag wins and re-stamps the store")
+    fresh = ss.SessionStore(session_id="s-f", model="m", voice="v",
+                            prompt_sha256="d", sessions_dir=d)
+    check(ss.inherit_memory_mode(None, fresh) == "full",
+          "fresh sitting defaults to full")
+
+
 def main():
     with tempfile.TemporaryDirectory() as tmp:
         test_round_trip(tmp)
@@ -206,6 +235,7 @@ def main():
         test_guard_and_discard(tmp)
         test_atomic_and_perms(tmp)
         test_malformed(tmp)
+        test_memory_mode_stamp(tmp)
     print(f"\n{'='*52}\n  RESULT: {_PASS} passed, {_FAIL} failed\n{'='*52}")
     return 1 if _FAIL else 0
 

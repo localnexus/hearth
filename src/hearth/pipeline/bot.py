@@ -433,7 +433,7 @@ async def build_pipeline(
     # the reloader onto the new companion's baselines).
     live_switcher = switcher_mod.LiveSwitcher(
         active=_CFG, reloader=_reloader, tts=tts, context=context,
-        store=store, seam=memory_seam,
+        store=store, seam=memory_seam, memory_mode=memory_mode,
         lm_provider=LM_PROVIDER, lm_base_url=LM_BASE_URL, lm_token=LM_API_TOKEN,
         # The sitting's memory mode rides a live switch: the incoming
         # companion attaches under the SAME mode (off ⇒ no seam), and the
@@ -686,13 +686,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "--memory",
         choices=("full", "recall-only", "off"),
-        default="full",
+        default=None,  # absent ⇒ a resumed session's own stamp, else "full"
         metavar="MODE",
         help="this session's memory posture: full (default — recall and retain, "
         "unchanged), recall-only (she recalls her real memories but this "
         "session leaves no memory record — nothing is retained), off (no "
         "recall, no retention — a fresh meeting). Governs the memory bank "
-        "only; the session transcript keeps its own lifecycle (--hold).",
+        "only; the session transcript keeps its own lifecycle (--hold). "
+        "Flag absent, a resumed session keeps the mode it was saved under.",
     )
     args = parser.parse_args()
 
@@ -701,10 +702,18 @@ if __name__ == "__main__":
         character=_CFG.character, persona=_CFG.persona_name,
     )
 
+    # The sitting's memory mode: explicit --memory wins; flag absent, a resumed
+    # session's stamp is inherited (a crashed recall-only sitting must not get
+    # banked by a default resume). Stamps the store for this run's snapshots.
+    _memory_mode = session_store.inherit_memory_mode(args.memory, _store)
+    if args.memory is None and _memory_mode != "full":
+        print(f"[memory] resumed session carries memory mode '{_memory_mode}' — "
+              "inheriting it (pass --memory full to override)", flush=True)
+
     asyncio.run(main(
         dump_dir=args.dump_dir if args.dump_tts else None,
         store=_store,
         resume_messages=_resume_messages,
         session_descriptor=_session_desc,
-        memory_mode=args.memory,
+        memory_mode=_memory_mode,
     ))

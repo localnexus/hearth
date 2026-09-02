@@ -160,6 +160,9 @@ class SessionStore:
     held: bool = False
     character: Optional[str] = None
     persona: str = "default"              # which persona file was live ("default" = persona.md)
+    memory_mode: str = "full"             # the sitting's memory posture (--memory); stamped into
+                                          # snapshots when not "full" so a crash orphan resumed
+                                          # later inherits it instead of getting banked by default
 
     def __post_init__(self) -> None:
         if self.sessions_dir is None:
@@ -186,6 +189,10 @@ class SessionStore:
             payload["character"] = self.character
         if self.name:
             payload["name"] = self.name
+        if self.memory_mode != "full":
+            # Written only when non-default: a full sitting's files stay
+            # byte-identical to before the stamp existed.
+            payload["memory_mode"] = self.memory_mode
         payload["messages"] = _persistable_messages(messages)
         _atomic_write_json(self.path, payload)
 
@@ -216,6 +223,20 @@ def load(path) -> dict:
     if not isinstance(data, dict) or not isinstance(data.get("messages"), list):
         raise ValueError(f"malformed session file: {path}")
     return data
+
+
+def inherit_memory_mode(flag_value: Optional[str], store: "SessionStore") -> str:
+    """Resolve the sitting's memory mode and stamp the store with it.
+
+    An explicit --memory value wins; with the flag absent, a resumed session's
+    own stamp is inherited — a crashed recall-only sitting must not get banked
+    just because the resume forgot the flag — and a fresh session is "full".
+    The store is stamped either way, so every later snapshot carries the
+    sitting's CURRENT posture."""
+    mode = flag_value if flag_value is not None else (
+        getattr(store, "memory_mode", None) or "full")
+    store.memory_mode = str(mode)
+    return store.memory_mode
 
 
 @dataclass
