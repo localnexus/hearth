@@ -23,6 +23,17 @@ the engine is byte-identical. Enabled, the seam:
 
 Backend selection is per companion: [memory].backend is the default,
 [memory.companions] overrides it by name, "none" opts a companion out.
+
+Per-session memory mode (``maybe_attach(mode=...)``): recall-in and record-out
+are independent operations, so one sitting can choose
+  * "full" (default)        — everything above, unchanged;
+  * "recall-only"           — recall runs as normal (open-time, per-turn, the
+    injected intent line) but the seam RETAINS nothing: on_session_end writes
+    no record, indexes nothing, captures no intent, and the intent slot it
+    injected is preserved for the next retaining session instead of consumed;
+  * "off"                   — no seam at all (None), same as unenrolled.
+The mode governs the memory BANK only — transcript persistence is the session
+store's own, separate decision.
 """
 
 from __future__ import annotations
@@ -80,10 +91,15 @@ def _build_backend(backend_name: str, cfg: dict):
 class MemorySeam:
     """The engine-facing wrapper: containment + prompt framing + record writing."""
 
-    def __init__(self, companion: str, persona: str, backend, cfg: dict) -> None:
+    def __init__(self, companion: str, persona: str, backend, cfg: dict,
+                 retain: bool = True) -> None:
         self.companion = companion
         self.persona = persona
         self.backend = backend
+        # Per-session mode, recall-only ⇒ False: recall stays live, but
+        # on_session_end retains nothing and the intent slot is peeked, never
+        # consumed. Default True keeps every existing construction unchanged.
+        self.retain = bool(retain)
         self.recall_limit = int(cfg.get("recall_limit", 6))
         self.recall_query = str(
             cfg.get("recall_query", "the user's life, preferences, and recent conversations")
@@ -237,7 +253,11 @@ class MemorySeam:
         return self.recall_query
 
     def _consume_intent_line(self) -> str:
-        """The dated intent line, and the slot's end: one boot, one use."""
+        """The dated intent line, and the slot's end: one boot, one use.
+
+        "One use" means one RETAINING boot: a recall-only session still opens
+        aware of the plan (the line is injected) but must not destroy it — the
+        slot is peeked, not popped, and survives for the next full session."""
         if not self._intent:
             return ""
         slot, self._intent = self._intent, None
@@ -245,8 +265,12 @@ class MemorySeam:
             when = str(slot.get("stated_at", ""))[:10]
             dated = f"On {when} " if when else ""
             line = f"- {dated}you agreed to pick up {slot['text']} next time."
-            intent_mod.clear_slot(slot["path"])
-            logger.info("[memory] intent slot consumed (stated {})", when or "unknown")
+            if self.retain:
+                intent_mod.clear_slot(slot["path"])
+                logger.info("[memory] intent slot consumed (stated {})", when or "unknown")
+            else:
+                logger.info("[memory] intent slot injected, preserved (stated {}) — "
+                            "recall-only session", when or "unknown")
             return line
         except Exception as exc:  # noqa: BLE001
             logger.warning("[memory] intent injection failed ({}) — skipped",
@@ -258,7 +282,14 @@ class MemorySeam:
     def on_session_end(self, messages, store=None) -> str:
         """Write the canonical record, then index + consolidate. Fully contained
         — returns a short status string for the shutdown log, never raises.
-        MUST run before session_store.finalize (which deletes ephemeral files)."""
+        MUST run before session_store.finalize (which deletes ephemeral files).
+
+        A recall-only session (retain=False) suppresses ALL of it — record,
+        index, consolidate, intent capture — and says so in the status, so the
+        shutdown log can never be misread as a memory failure."""
+        if not self.retain:
+            logger.info("[memory] recall-only session — nothing retained")
+            return "recall-only session — nothing retained"
         try:
             record = self._make_record(messages, store)
         except Exception as exc:  # noqa: BLE001
@@ -331,18 +362,30 @@ class MemorySeam:
             logger.warning("[memory] backend close failed ({})", type(exc).__name__)
 
 
-def maybe_attach(companion: str, persona: str = "default") -> Optional[MemorySeam]:
+def maybe_attach(companion: str, persona: str = "default",
+                 mode: str = "full") -> Optional[MemorySeam]:
     """The activation gate. None when config/memory.toml is absent, disabled,
     or maps this companion to "none" — engine byte-identical, nothing loaded.
-    Malformed config ⇒ ConfigError naming the file (fail-fast, config tier)."""
+    Malformed config ⇒ ConfigError naming the file (fail-fast, config tier).
+
+    ``mode`` is the per-session memory mode (module docstring): "full"
+    (default), "recall-only" (attach with retain=False), "off" (None even for
+    an enrolled companion — this sitting runs without the seam)."""
+    if mode not in ("full", "recall-only", "off"):
+        raise ValueError(f"unknown memory mode {mode!r} (full | recall-only | off)")
     from hearth.config import config_loader
 
     cfg = config_loader.load_memory_config()
     if cfg is None:
         return None
+    if mode == "off":
+        logger.info("[memory] session memory OFF — seam not attached for {}", companion)
+        return None
     backend_name = str(dict(cfg.get("companions") or {}).get(companion, cfg.get("backend", "floor")))
     if backend_name == "none":
         return None
     backend = _build_backend(backend_name, cfg)
-    logger.info("[memory] seam attached: companion={} backend={}", companion, backend_name)
-    return MemorySeam(companion, persona, backend, cfg)
+    logger.info("[memory] seam attached: companion={} backend={}{}",
+                companion, backend_name,
+                " mode=recall-only (nothing will be retained)" if mode == "recall-only" else "")
+    return MemorySeam(companion, persona, backend, cfg, retain=(mode != "recall-only"))
