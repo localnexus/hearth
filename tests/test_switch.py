@@ -368,10 +368,12 @@ class SwitchRoutes(_SwitchHarness):
         self.assertEqual(resp.status, 409)
         self.assertEqual(self.child.calls, [])
 
-    async def test_offline_page_mentions_switch(self):
+    async def test_offline_page_points_at_launch(self):
+        # The offline page's discovery job moved to the launch surface —
+        # switching companions (and everything else) happens there now.
         self.child.state = "down"
         resp = await self.client.get("/", headers=self.BEARER)
-        self.assertIn("/admin/switch", await resp.text())
+        self.assertIn("/admin/launch", await resp.text())
 
 
 class _FakePanel:

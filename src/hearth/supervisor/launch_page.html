@@ -1,0 +1,262 @@
+<!doctype html>
+<!-- launch_page.html — the standing launch surface (served at /admin/launch).
+
+     SECURITY CONTRACT: this file is served WITHOUT auth (the one static-chrome
+     exemption beside /health), so it must stay pure chrome — no names, no
+     state, no tokens baked in. Every fact on screen arrives via an authed
+     fetch; the bearer is entered once, kept in this browser's localStorage,
+     and sent only as an Authorization header. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hearth — launch</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; max-width: 36em; margin: 3em auto;
+         padding: 0 1em; line-height: 1.5; }
+  h1 { font-size: 1.4em; }
+  .card { border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+          border-radius: 8px; padding: 1em 1.2em; margin: 1em 0; }
+  .row { margin: 0.5em 0; display: flex; gap: 0.6em; align-items: center;
+         flex-wrap: wrap; }
+  .row label { min-width: 7em; }
+  select, input[type=text], input[type=password] { flex: 1; min-width: 12em;
+         padding: 0.3em 0.4em; font: inherit; }
+  button { font: inherit; padding: 0.4em 1.2em; cursor: pointer; }
+  button.primary { font-weight: 600; }
+  #statusline { font-family: ui-monospace, monospace; font-size: 0.9em;
+                opacity: 0.85; }
+  #msg { min-height: 1.5em; font-size: 0.9em; white-space: pre-wrap; }
+  .err { color: #c33; }
+  .hidden { display: none; }
+  a { color: inherit; }
+</style>
+</head>
+<body>
+<h1>Hearth</h1>
+<div id="statusline">connecting…</div>
+
+<div id="tokencard" class="card hidden">
+  <p>This surface needs the serve bearer token (asked once; kept only in this
+     browser).</p>
+  <div class="row">
+    <input type="password" id="token" autocomplete="off" placeholder="bearer token">
+    <button id="tokenbtn" class="primary">Unlock</button>
+  </div>
+</div>
+
+<div id="startcard" class="card hidden">
+  <h2>Start</h2>
+  <div class="row"><label for="pick-char">Companion</label>
+    <select id="pick-char"></select></div>
+  <div class="row"><label for="pick-voice">Voice</label>
+    <select id="pick-voice"></select></div>
+  <div class="row"><label for="pick-session">Session</label>
+    <select id="pick-session"></select></div>
+  <div class="row"><label for="pick-memory">Memory</label>
+    <select id="pick-memory">
+      <option value="">default (full · a resumed session keeps its own mode)</option>
+      <option value="full">full — recall and retain</option>
+      <option value="recall-only">recall-only — she remembers, this sitting leaves no record</option>
+      <option value="off">off — a fresh meeting</option>
+    </select></div>
+  <div class="row"><button id="startbtn" class="primary">Start</button></div>
+</div>
+
+<div id="stopcard" class="card hidden">
+  <h2>Running</h2>
+  <p id="runline"></p>
+  <p><a href="/">Open the control panel</a></p>
+  <div class="row">
+    <input type="text" id="stopname" autocomplete="off"
+           placeholder="name this session (optional — it saves either way)">
+    <button id="stopbtn">Stop</button>
+  </div>
+</div>
+
+<div id="msg"></div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const TOKEN_KEY = "hearth_admin_token";
+let choices = null;      // /admin/switch payload (current + choices)
+let lastBotState = null; // collapse repeated renders
+let busy = false;        // a start/stop is in flight — freeze the cards
+
+function token() { try { return localStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; } }
+
+async function api(path, opts) {
+  const o = Object.assign({ headers: {} }, opts || {});
+  o.headers["Authorization"] = "Bearer " + token();
+  if (o.json !== undefined) {
+    o.method = o.method || "POST";
+    o.headers["Content-Type"] = "application/json";
+    o.body = JSON.stringify(o.json);
+    delete o.json;
+  }
+  const r = await fetch(path, o);
+  if (r.status === 401) throw new Error("401");
+  let data = null;
+  try { data = await r.json(); } catch { /* non-JSON answer */ }
+  return { status: r.status, data };
+}
+
+function say(text, isErr) {
+  $("msg").textContent = text || "";
+  $("msg").className = isErr ? "err" : "";
+}
+
+function show(id, on) { $(id).classList.toggle("hidden", !on); }
+
+function needToken(prompt) {
+  show("tokencard", true); show("startcard", false); show("stopcard", false);
+  $("statusline").textContent = prompt || "locked — enter the bearer token";
+}
+
+// ── state poll ──────────────────────────────────────────────────────────────
+
+async function refresh() {
+  if (!token()) { needToken(); return; }
+  let st;
+  try { st = await api("/admin/state"); }
+  catch (e) {
+    if (e.message === "401") { needToken("that token was refused — try again"); return; }
+    $("statusline").textContent = "facade unreachable — retrying…";
+    return;
+  }
+  show("tokencard", false);
+  const bot = (st.data && st.data.bot) || {};
+  const sw = st.data && st.data.switch;
+  const ext = (st.data && st.data.externals) || {};
+  const bits = ["bot: " + (bot.state || "?")];
+  if (bot.pid) bits.push("pid " + bot.pid);
+  if (bot.uptime_s != null) bits.push("up " + Math.round(bot.uptime_s) + "s");
+  for (const k of Object.keys(ext))
+    bits.push(k + (ext[k] === true ? " ✓" : ext[k] === false ? " ✗" : " ?"));
+  if (sw && sw.phase) bits.push("switch: " + sw.phase + (sw.error ? " (" + sw.error + ")" : ""));
+  $("statusline").textContent = bits.join("  ·  ");
+
+  if (busy) return; // don't flip cards under an in-flight action
+  const up = bot.state === "running" || bot.state === "starting";
+  show("stopcard", up);
+  show("startcard", !up);
+  if (up) {
+    $("runline").textContent = "The voice bot is up" +
+      (bot.managed === false ? " (started at the desk — adopted)" : "") + ".";
+  } else if (bot.state !== lastBotState || choices === null) {
+    await loadStartForm(); // (re)populate on each transition into "down"
+  }
+  lastBotState = bot.state;
+}
+
+// ── start form ──────────────────────────────────────────────────────────────
+
+async function loadStartForm() {
+  let sw;
+  try { sw = await api("/admin/switch"); }
+  catch { return; }
+  if (sw.status !== 200 || !sw.data) return;
+  choices = sw.data;
+  const cur = choices.current || {};
+  const chars = (choices.choices && choices.choices.characters) || [];
+  const sel = $("pick-char");
+  sel.innerHTML = "";
+  for (const c of chars) {
+    const o = document.createElement("option");
+    o.value = c.name; o.textContent = c.name;
+    if (c.name === cur.character) o.selected = true;
+    sel.appendChild(o);
+  }
+  await charPicked();
+}
+
+function charInfo(name) {
+  const chars = (choices.choices && choices.choices.characters) || [];
+  return chars.find((c) => c.name === name) || { voices: [], personas: [] };
+}
+
+async function charPicked() {
+  const name = $("pick-char").value;
+  const cur = (choices && choices.current) || {};
+  const vs = $("pick-voice");
+  vs.innerHTML = "";
+  for (const v of charInfo(name).voices) {
+    const o = document.createElement("option");
+    o.value = v; o.textContent = v;
+    if (name === cur.character && v === cur.voice) o.selected = true;
+    vs.appendChild(o);
+  }
+  const ss = $("pick-session");
+  ss.innerHTML = "<option value=''>— new session —</option>";
+  try {
+    const r = await api("/admin/sessions?character=" + encodeURIComponent(name));
+    for (const m of (r.data && r.data.sessions) || []) {
+      const o = document.createElement("option");
+      o.value = m.session_id;
+      const tags = (m.held ? " [named]" : "") +
+        (m.memory_mode === "recall-only" ? " [recall-only]" : "");
+      o.textContent = (m.name || m.session_id) + " · " +
+        (m.updated || m.started || "?") + " · " + m.turns + " turns" + tags;
+      ss.appendChild(o);
+    }
+  } catch { /* listing is a convenience; Start still works without it */ }
+}
+
+async function doStart() {
+  const character = $("pick-char").value;
+  const voice = $("pick-voice").value;
+  const sessionId = $("pick-session").value;
+  const memory = $("pick-memory").value;
+  const cur = (choices && choices.current) || {};
+  const body = {};
+  if (sessionId) { body.mode = "resume"; body.name = sessionId; }
+  else body.mode = "new";
+  if (memory) body.memory = memory;
+  busy = true; say("starting…");
+  try {
+    let r;
+    if (character && (character !== cur.character || voice !== cur.voice)) {
+      r = await api("/admin/switch", { json: Object.assign(
+        { character, voice, start: true }, body) });
+    } else {
+      r = await api("/admin/bot/start", { json: body });
+    }
+    if (r.data && r.data.ok) say("start requested — watch the state line");
+    else say("refused: " + JSON.stringify((r.data && (r.data.errors || r.data.error)) || r.status), true);
+  } catch (e) {
+    say(e.message === "401" ? "token refused" : "start failed: " + e.message, true);
+  } finally { busy = false; refresh(); }
+}
+
+async function doStop() {
+  const name = $("stopname").value.trim();
+  const body = name ? { hold: true, name } : {};
+  busy = true; say("stopping…");
+  try {
+    const r = await api("/admin/bot/stop", { json: body });
+    if (r.data && r.data.ok) { say("stopped" + (name ? " — session named " + name : "")); $("stopname").value = ""; }
+    else say("stop failed: " + JSON.stringify((r.data && r.data.error) || r.status), true);
+  } catch (e) {
+    say(e.message === "401" ? "token refused" : "stop failed: " + e.message, true);
+  } finally { busy = false; refresh(); }
+}
+
+// ── wiring ──────────────────────────────────────────────────────────────────
+
+$("tokenbtn").addEventListener("click", () => {
+  try { localStorage.setItem(TOKEN_KEY, $("token").value.trim()); } catch {}
+  $("token").value = "";
+  refresh();
+});
+$("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("tokenbtn").click(); });
+$("pick-char").addEventListener("change", charPicked);
+$("startbtn").addEventListener("click", doStart);
+$("stopbtn").addEventListener("click", doStop);
+
+refresh();
+setInterval(refresh, 4000);
+</script>
+</body>
+</html>

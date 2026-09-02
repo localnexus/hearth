@@ -3,9 +3,12 @@
 Mounted into the standalone facade app by serve/__main__.py iff
 [serve.supervisor] enabled = true. Every route rides the facade's existing
 bearer middleware (one door; header auth only for now — browser-friendly auth
-is a named later refinement). Responses carry names, states, and booleans
-only — never tokens, env values, or file contents (the same posture as
-`hearth.config.check`, which prints keys and not values).
+is a named later refinement). The ONE exception: GET /admin/launch serves a
+static, contentless launch shell the middleware exempts (like /health) so a
+plain browser can load it; the page asks for the bearer once, keeps it in
+localStorage, and reaches every other route by authed fetch. Responses carry
+names, states, and booleans only — never tokens, env values, or file contents
+(the same posture as `hearth.config.check`, which prints keys and not values).
 
 The catch-all proxy is registered LAST so every real facade route wins; any
 other path forwards to the bot's control panel when the bot is up, and answers
@@ -43,6 +46,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from pathlib import Path
 from typing import Optional
 
 import aiohttp
@@ -65,10 +69,15 @@ _OFFLINE_PAGE = """<!doctype html><meta charset="utf-8">
 <title>Hearth — offline</title>
 <body style="font-family: system-ui; max-width: 34em; margin: 4em auto; line-height: 1.5">
 <h1>Hearth is resting</h1>
-<p>The voice bot is not running. Start it (bearer required):</p>
-<pre>POST /admin/bot/start   {"mode": "new"}   # or "resume"
-POST /admin/switch      {"character": "…"}  # switch companion: writes active.toml + restarts</pre>
-<p>State: <code>GET /admin/state</code></p></body>"""
+<p>The voice bot is not running.
+<a href="/admin/launch">Open the launch page</a> to start it.</p>
+<p>API: <code>POST /admin/bot/start {"mode": "new"}</code> · state:
+<code>GET /admin/state</code></p></body>"""
+
+# The standing launch surface: pure static chrome (no names, no state, no
+# tokens baked in — the serve middleware exempts this ONE page from auth, so
+# it must stay contentless; every fact it shows arrives via authed fetch).
+_LAUNCH_PAGE = (Path(__file__).parent / "launch_page.html").read_text(encoding="utf-8")
 
 
 def build_mount(sup_cfg: dict):
@@ -98,6 +107,7 @@ def build_mount(sup_cfg: dict):
             dict(sup_cfg.get("actuators") or {}),
             log_dir=config_loader.DATA_DIR / "logs" / "actuators",
         )
+        app.router.add_get("/admin/launch", _launch)
         app.router.add_get("/admin/state", _state)
         app.router.add_get("/admin/sessions", _sessions)
         app.router.add_post("/admin/bot/start", _bot_start)
@@ -200,6 +210,12 @@ async def _actuator_run(request: web.Request) -> web.Response:
     except actuators_mod.ActuatorBusy:
         return web.json_response({"error": f"{name} is already running"}, status=409)
     return web.json_response({"name": name, **record})
+
+
+async def _launch(request: web.Request) -> web.Response:
+    """The standing launch surface — reachable bot-up AND bot-down (a
+    registered route always beats the catch-all proxy). Static chrome only."""
+    return web.Response(text=_LAUNCH_PAGE, content_type="text/html")
 
 
 async def _sessions(request: web.Request) -> web.Response:

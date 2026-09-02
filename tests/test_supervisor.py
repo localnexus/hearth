@@ -300,6 +300,21 @@ class AdminRoutes(AioHTTPTestCase):
         text = await resp.text()
         self.assertIn("offline", text.lower())
         self.assertIn("/admin/bot/start", text)
+        self.assertIn("/admin/launch", text, "offline page points at the launch surface")
+
+    async def test_launch_page_is_static_chrome(self):
+        # Reachable WITHOUT the bearer (the one static-chrome exemption) …
+        resp = await self.client.get("/admin/launch")
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(resp.content_type, "text/html")
+        text = await resp.text()
+        self.assertIn("Hearth", text)
+        self.assertIn("/admin/state", text)  # it drives the authed API
+        # … and therefore must carry ZERO state: no bearer, no names.
+        self.assertNotIn("test-bearer", text, "the shell must never embed the token")
+        # Also fine with the bearer (same page either way).
+        resp = await self.client.get("/admin/launch", headers=self.BEARER)
+        self.assertEqual(resp.status, 200)
 
     async def test_actuator_list_run_unknown(self):
         resp = await self.client.get("/admin/actuators", headers=self.BEARER)

@@ -1,6 +1,6 @@
 """serve/app.py — the /v1 facade application (a thin adapter).
 
-Routes (bearer-authed except /health):
+Routes (bearer-authed except /health and the /admin/launch static shell):
     GET  /health                  liveness — {"ok": true}, no identity leaked
     GET  /v1/models               one entry: the active character (clients pick it)
     POST /v1/chat/completions     persona-composed chat → LM Studio, SSE passthrough
@@ -130,9 +130,16 @@ def _resolve_lm_token(passed: str, cfg: dict) -> str:
 
 # ── auth middleware ───────────────────────────────────────────────────────────
 
+# Unauthed paths: liveness, plus the supervisor's launch SHELL — a static,
+# contentless page (no names, no state, no tokens baked in) whose every data
+# call comes back through this middleware with the bearer. Nothing else is
+# ever exempted; when the supervisor isn't mounted, /admin/launch is a 404.
+_AUTH_EXEMPT = frozenset({"/health", "/admin/launch"})
+
+
 @web.middleware
 async def _auth(request: web.Request, handler):
-    if request.path == "/health":
+    if request.path in _AUTH_EXEMPT:
         return await handler(request)
     supplied = request.headers.get("Authorization", "")
     expected = "Bearer " + request.app["deps"].bearer
