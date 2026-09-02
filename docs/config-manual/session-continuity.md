@@ -8,6 +8,7 @@ Per-turn transcript saved to `characters/<character>/sessions/<id>.json` under t
 |---|---|---|
 | `--resume [file\|name]` | `start.sh` | Reload a prior session. Bare = metadata-only picker if >1 candidate. |
 | `--new` | `start.sh` | Discard ephemeral orphans + start fresh (held files never touched). |
+| `--memory <mode>` | `start.sh` | This sitting's memory posture: `full` (default) · `recall-only` (recalls, retains nothing) · `off` (no seam). Memory **bank** only — the transcript flags above are unchanged. Non-full sittings stamp the session file; `--resume` without the flag inherits the stamp. See [memory.md](../memory.md). |
 | `--hold [name]` | `stop.sh` | Promote to held class — sticky, purge-exempt, optionally named. |
 | `--discard-held <name>` | `stop.sh` | True-delete ONE held session (immediate). Bare/`--all` wipe of **all** held is irreversible → requires typing **`HEARTH`** to confirm (refused non-interactively). |
 

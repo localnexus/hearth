@@ -2,7 +2,9 @@
 # start.sh — bring the Hearth voice loop online (preflight + launch).
 #   ./start.sh          run preflight, then launch the bot in the FOREGROUND (Ctrl-C or ./stop.sh to stop)
 #   ./start.sh --check  run preflight ONLY and exit (are we ready to launch?) — does not touch the mic
-#   ./start.sh --resume [file|name] · --new    session continuity (forwarded to the bot)
+#   ./start.sh --resume [file|name] · --new · --memory <mode>    session flags (forwarded to the bot)
+#                                              --memory: full | recall-only | off — this sitting's
+#                                              memory posture (bank only; see docs/memory.md)
 #
 # Run it in a terminal window — mic permission (macOS TCC) is granted to the terminal app, not to python.
 #
@@ -42,7 +44,11 @@ while [ $# -gt 0 ]; do
       # optional value: a following token that is NOT itself a flag
       if [ $# -ge 2 ] && [ "${2#-}" = "$2" ]; then BOT_ARGS+=("$2"); shift 2; else shift; fi
       ;;
-    *) fail "unknown arg '${1}'. Usage: ./start.sh [--check] [--resume [file|name]] [--new]" ;;
+    --memory)
+      [ $# -ge 2 ] || fail "--memory needs a value: full | recall-only | off"
+      BOT_ARGS+=("--memory" "$2"); shift 2
+      ;;
+    *) fail "unknown arg '${1}'. Usage: ./start.sh [--check] [--resume [file|name]] [--new] [--memory full|recall-only|off]" ;;
   esac
 done
 

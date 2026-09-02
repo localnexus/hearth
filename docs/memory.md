@@ -58,6 +58,52 @@ ephemeral-by-default and deletes on graceful stop. They are 0600 files in a 0700
 directory under your data root, gitignored, local-only — the same sensitivity
 class as held sessions. Per-companion opt-out: map that companion to `"none"`.
 
+## Per-session memory mode (`--memory`)
+
+Enrollment says whether a companion *has* memory; the per-session mode says
+what **this sitting** does with it. Recall (reading the bank) and retention
+(writing it) are independent operations, so the launch flag offers three
+postures:
+
+```bash
+./start.sh                         # full (default): recall + retain, as configured
+./start.sh --memory recall-only    # she remembers everything — this sitting adds nothing to the bank
+./start.sh --memory off            # no recall, no retention: a fresh meeting
+```
+
+* **full** — today's behavior, unchanged. Flag absent means full (or a resumed
+  session's own saved mode — see the stamp below).
+* **recall-only** — recall runs exactly as configured (the open-time block,
+  per-turn targeted recall, an intent line), but at session end **nothing is
+  retained**: no canonical record, no backend index or consolidate, no intent
+  capture. The shutdown log says `recall-only session — nothing retained`, so
+  suppression is never mistakable for a memory failure. An injected intent
+  line is *peeked, not consumed* — the plan survives for the next full session.
+* **off** — the seam is not attached at all: no recall block, no per-turn
+  extras, nothing written. Like mapping the companion to `"none"`, but for one
+  sitting instead of forever.
+
+**The mode governs the memory bank only.** The session transcript keeps its own
+lifecycle (ephemeral-by-default, `--hold` to keep — see the
+[runbook](runbook/03.5-session-continuity.md)). `--memory recall-only` plus
+`./stop.sh --hold` is coherent: transcript kept, bank untouched.
+
+**Crash safety — the stamp.** A non-full sitting stamps its mode into the
+session file. If the sitting dies uncleanly, the orphan carries the stamp and a
+later `--resume` *without* the flag inherits it (announced at startup) — a
+recall-only conversation cannot get banked just because the resume forgot the
+flag. An explicit `--memory` always wins and re-stamps.
+
+**Live companion switch.** The mode is the sitting's posture, not the
+companion's: a live switch attaches the incoming companion under the same mode,
+and the outgoing companion's session-end honors its own. Resuming a session
+(via the switch) that was saved under a different mode warns — the sitting's
+mode wins.
+
+**Boundaries.** A restart-path switch spawns a new bot process — that is a new
+sitting, back to the default (or to the resumed session's stamp). The serve
+facade's conversations are separate sittings; this flag does not govern them.
+
 ## Intent-primed boot recall
 
 Off by default. Enabled, it makes *"next time, let's talk about X"* actually
@@ -77,7 +123,9 @@ land next time:
   agreed to pick up the tea ceremony next time."* She opens aware of the plan.
 * **Consume-once** — the slot is deleted the moment it has been injected. A
   plan that re-asserts itself for weeks is worse than no plan. An expiry
-  backstop (`expiry_days`, default 14) clears one that was never used.
+  backstop (`expiry_days`, default 14) clears one that was never used. (One
+  exception: a `--memory recall-only` sitting injects the line but leaves the
+  slot in place — "one use" means one *retaining* use.)
 
 This works on **every** backend, the floor included: the capture call goes to
 the extraction model directly from the seam, and the injected line doesn't
