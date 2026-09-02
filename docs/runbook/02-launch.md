@@ -8,6 +8,13 @@ cd <the Hearth tree>          # no absolute path is assumed
 ```
 (The bot talks to `llama-server` at `http://127.0.0.1:8080/v1` by default — `LM_BASE_URL` / `LM_API_TOKEN` / `LM_PROVIDER` override it, see `start.sh`. Run it in an **iTerm** window — the app that holds the mic grant. Prepend `T4_METRICS=1` to print per-turn STT latency to stderr.)
 
+> ⚠ **Ambient env overrides silently win.** Those same variables — plus `HEARTH_ROOT` / `HEARTH_DATA` —
+> are read from the *environment*, so a stray `export` in your shell profile (or an inherited shell)
+> re-routes a "default" launch to a different server or data root with no warning; the only visible
+> symptom may be a dashed Engine line or a wrong-model reply. If Hearth isn't talking to the server
+> you expect, check first: `env | grep -e '^LM_' -e '^HEARTH_'`. Keep machine-specific pins in a
+> launch wrapper script, not in your shell profile.
+
 **Healthy startup** prints, in order: `Pipecat 1.4.0` → `Loaded Silero VAD` → `Loaded Local Smart Turn v3.x` → in-process model loads (Whisper warm-up + Chatterbox load + voice conditionals, **~10–20 s warm**) → the `Linking … VADProcessor → MLXWhisperSTTService → … → MLXAudioTTSService → …` chain → **`StartFrame#0 reached the end of the pipeline, pipeline is now ready.`**
 
 **Cosmetic log lines (ignore):**
