@@ -175,7 +175,7 @@ class AdminRoutes(AioHTTPTestCase):
         )
         mount = supervisor.build_mount({
             "enabled": True, "panel_url": "http://127.0.0.1:1",
-            "watch": {"streamcore": {"url": "http://127.0.0.1:1/"}},
+            "watch": {"myservice": {"url": "http://127.0.0.1:1/"}},
         })
         mount(app)
 
@@ -261,8 +261,8 @@ class AdminRoutes(AioHTTPTestCase):
     async def test_state_carries_declared_watches_and_actuator_names(self):
         resp = await self.client.get("/admin/state", headers=self.BEARER)
         data = await resp.json()
-        self.assertIn("streamcore", data["externals"])
-        self.assertIs(data["externals"]["streamcore"], False)  # dead test port
+        self.assertIn("myservice", data["externals"])
+        self.assertIs(data["externals"]["myservice"], False)  # dead test port
         self.assertEqual(data["actuators"], ["echo-ok"])
 
     async def test_offline_other_paths_503(self):
@@ -303,7 +303,7 @@ class RegistryParity(unittest.TestCase):
             "serve",
             {"enabled": True,
              "supervisor": {"enabled": True,
-                            "watch": {"streamcore": {"url": "http://127.0.0.1:8080"}},
+                            "watch": {"myservice": {"url": "http://127.0.0.1:8080"}},
                             "actuators": {"lm-unload": {
                                 "command": ["/x/lms", "unload", "--all"],
                                 "note": "cold stop"}}}},

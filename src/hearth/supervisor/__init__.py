@@ -9,7 +9,7 @@ bot attach never mounts this — a bot cannot supervise itself.
 One door: every /admin route and the panel reverse-proxy ride the facade's
 existing bearer middleware; the admin surface never exposes secret values.
 Ownership: the voice bot is the ONE owned child; the LLM server, Open
-WebUI, StreamCore, and the audio server are watched externals (reachability
+WebUI, and the audio server are watched externals (reachability
 booleans on /admin/state — never owned, though the operator may declare
 actuators for them); memory sidecars stay owned by the glue that spawns
 them. Deleting this directory (and the one mount call in serve/__main__.py)

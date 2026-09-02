@@ -1177,9 +1177,9 @@ from hearth import memory
 cfg = config_loader.load_memory_config()
 out = {"cfg": cfg}
 if cfg is not None:
-    seam_ani = memory.maybe_attach("ani")
+    seam_ex = memory.maybe_attach("example")
     seam_off = memory.maybe_attach("guest")
-    out["ani_backend"] = seam_ani.backend.name if seam_ani else None
+    out["example_backend"] = seam_ex.backend.name if seam_ex else None
     out["guest_attached"] = seam_off is not None
 print(json.dumps(out))
 """
@@ -1213,7 +1213,7 @@ class TestConfigGate(unittest.TestCase):
         out = json.loads(res.stdout)
         self.assertEqual(out["cfg"]["backend"], "floor")
         self.assertEqual(out["cfg"]["recall_limit"], 6)
-        self.assertEqual(out["ani_backend"], "floor")
+        self.assertEqual(out["example_backend"], "floor")
         self.assertFalse(out["guest_attached"])
 
     def test_intent_defaults_off_and_inherit_hindsight_llm(self):

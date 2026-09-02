@@ -4,8 +4,8 @@ The supervisor OWNS the voice bot and nothing else: every other process
 is a watched external. An actuator is the operator's own declared command —
 ``[serve.supervisor.actuators.<name>]`` in serve.toml — for the moments
 watching is not enough: free the LLM server's models (an explicit cold stop;
-warm stays the default everywhere), bring StreamCore back after a reboot,
-kick a stalled roster.
+warm stays the default everywhere), bring a streaming client back after a
+reboot, kick a stalled service.
 
 Containment shape:
   * fixed argv, exec'd directly — no shell, and no runtime arguments: the

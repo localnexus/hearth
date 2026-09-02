@@ -33,7 +33,7 @@ recall_query = "the user's life, preferences, and recent conversations"
 # Per-companion overrides — the continuity dial. Unlisted companions use
 # `backend` above.
 [memory.companions]
-# ani = "hindsight"
+# example = "hindsight"
 # guest = "none"
 
 # Per-turn targeted recall (design lane (b), 2026-09-01) — chat lane only:
@@ -78,7 +78,7 @@ recall_query = "the user's life, preferences, and recent conversations"
 
 # Per-companion override of `enabled` above (the [memory.companions] pattern).
 [memory.intent.companions]
-# ani = true
+# example = true
 # guest = false
 
 # Hindsight backend settings (only read when some companion selects it).

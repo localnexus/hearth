@@ -92,7 +92,7 @@ expiry_days = 14        # skip + clear a slot older than this (0 = no expiry)
 # llm_url = "http://127.0.0.1:11434"
 
 [memory.intent.companions]
-# ani = true            # per-companion override of `enabled`, the house pattern
+# example = true            # per-companion override of `enabled`, the house pattern
 # guest = false
 ```
 
