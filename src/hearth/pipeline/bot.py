@@ -205,6 +205,7 @@ async def build_pipeline(
     dump_dir: Optional[str] = None,
     resume_messages: Optional[list] = None,
     store: Optional["session_store.SessionStore"] = None,
+    memory_mode: str = "full",
 ):
     """
     Construct the fully-local v2 voice pipeline.
@@ -259,7 +260,15 @@ async def build_pipeline(
     # (never on the per-turn path) and appends a dated, provenance-framed block
     # AFTER the persona render — PROMPT_FINGERPRINT is computed memory-free in
     # config_loader, so drift detection and resume warnings stay stable.
-    memory_seam = hearth_memory.maybe_attach(_CFG.character, persona=_CFG.persona_name)
+    # memory_mode is this SITTING's posture (--memory): full / recall-only
+    # (recall as normal, nothing retained) / off (no seam even when enrolled).
+    if memory_mode != "full":
+        print(f"[memory] session memory mode: {memory_mode}", flush=True)
+        if config_loader.load_memory_config() is None:
+            print(f"[memory] --memory {memory_mode}: memory is not enabled "
+                  "(config/memory.toml) — the flag has no effect", flush=True)
+    memory_seam = hearth_memory.maybe_attach(
+        _CFG.character, persona=_CFG.persona_name, mode=memory_mode)
     system_instruction = (
         memory_seam.augment(SYSTEM_INSTRUCTION) if memory_seam else SYSTEM_INSTRUCTION
     )
@@ -426,6 +435,11 @@ async def build_pipeline(
         active=_CFG, reloader=_reloader, tts=tts, context=context,
         store=store, seam=memory_seam,
         lm_provider=LM_PROVIDER, lm_base_url=LM_BASE_URL, lm_token=LM_API_TOKEN,
+        # The sitting's memory mode rides a live switch: the incoming
+        # companion attaches under the SAME mode (off ⇒ no seam), and the
+        # outgoing side's finalize suppresses itself via its own retain flag.
+        seam_factory=lambda character, persona: hearth_memory.maybe_attach(
+            character, persona=persona, mode=memory_mode),
     )
     config_reload_proc = config_reload.ConfigReloadProcessor(
         _reloader, tts, vad_analyzer=vad_analyzer, switcher=live_switcher)
@@ -470,6 +484,7 @@ async def main(
     store: Optional["session_store.SessionStore"] = None,
     resume_messages: Optional[list] = None,
     session_descriptor: Optional[str] = None,
+    memory_mode: str = "full",
 ):
     """Entry point for the live-mic voice loop."""
     # Heal any LEAKED output mirror BEFORE the pipeline is constructed.
@@ -481,7 +496,8 @@ async def main(
 
     (pipeline, transport, context, mute_gate, speaking_tap, measure_observer,
      recorder, memory_seam, live_switcher, system_instruction) = await build_pipeline(
-        dump_dir, resume_messages=resume_messages, store=store
+        dump_dir, resume_messages=resume_messages, store=store,
+        memory_mode=memory_mode,
     )
 
     # TokenMeter captures LM Studio's own per-turn usage block (ground truth).
@@ -667,6 +683,17 @@ if __name__ == "__main__":
         help="start fresh, discarding any ephemeral orphan session files (held "
         "sessions are never touched). Skips the bare-start chooser.",
     )
+    parser.add_argument(
+        "--memory",
+        choices=("full", "recall-only", "off"),
+        default="full",
+        metavar="MODE",
+        help="this session's memory posture: full (default — recall and retain, "
+        "unchanged), recall-only (she recalls her real memories but this "
+        "session leaves no memory record — nothing is retained), off (no "
+        "recall, no retention — a fresh meeting). Governs the memory bank "
+        "only; the session transcript keeps its own lifecycle (--hold).",
+    )
     args = parser.parse_args()
 
     _store, _resume_messages, _session_desc = resolve_session(
@@ -679,4 +706,5 @@ if __name__ == "__main__":
         store=_store,
         resume_messages=_resume_messages,
         session_descriptor=_session_desc,
+        memory_mode=args.memory,
     ))
