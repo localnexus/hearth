@@ -26,6 +26,7 @@ from uuid import uuid4
 from loguru import logger
 
 from hearth.config import config_loader
+from hearth.config import settings_registry
 from hearth.tts import paralinguistics
 from hearth.tts import tag_profiles
 
@@ -35,7 +36,7 @@ TTS_ENGINE = "chatterbox-turbo"  # bot.py's hardcoded engine this pass
 
 # What the mlx-audio SpeechRequest accepts AND the engine honors live — the
 # facade forwards only this intersection ([inert] keys can never leak through).
-_SPEECH_KNOBS = frozenset({"temperature", "top_p", "top_k", "repetition_penalty", "speed"})
+_SPEECH_KNOBS = settings_registry.SERVE_SPEECH_KNOBS  # derived: turbo live knobs + speed
 
 _last_logged: dict = {"knobs": None, "llm_temp": object()}
 

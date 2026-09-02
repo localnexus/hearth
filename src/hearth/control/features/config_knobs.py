@@ -63,6 +63,8 @@ from pathlib import Path
 from aiohttp import web
 from loguru import logger
 
+from hearth.config import settings_registry
+
 from hearth.config import config_loader
 from hearth.config import config_reload
 from hearth.control.control_routes import PanelContext, register
@@ -78,31 +80,23 @@ _WRITE_LOCK = asyncio.Lock()
 # mirror here, so the live companion's directory always carries its current knobs.
 _AFTER_WRITE: list = []
 
-# ── honored surface (keep in step with config_reload._ENGINE_LIVE_KEYS for the active engine) ──
-_REASONING = {"none", "low", "medium", "high"}
-_PERSONA_MAX = 16_000
+# ── honored surface — derived from the settings registry (derive-knobs 2026-09-01) ──
+_LLM_FACTS = settings_registry.llm_knob_facts()
+_REASONING = _LLM_FACTS["reasoning_effort"]
+_PERSONA_MAX = _LLM_FACTS["persona_max_len"]
+_LLM_TEMP_LO, _LLM_TEMP_HI = _LLM_FACTS["temperature"]
 # chatterbox-turbo honored synth knobs; widens to +{exaggeration,cfg_weight} under a proper-
 # Chatterbox engine swap (EXPENSIVE tier — not wired). Ranges are sane guardrails, adjustable.
-_TTS_RANGES = {
-    "temperature": (0.0, 2.0, False),
-    "top_p": (0.0, 1.0, False),
-    "top_k": (1, 10_000, True),
-    "repetition_penalty": (0.5, 5.0, False),
-}
+_TTS_RANGES = settings_registry.live_knob_ranges("tts")
 # [vad] — the CALIBRATION tier. Ranges are sane guardrails; the panel's
 # warn thresholds live in control_page.html KNOB_HELP; ear sessions own the final words.
-_VAD_RANGES = {
-    "confidence": (0.0, 1.0, False),
-    "start_secs": (0.05, 1.0, False),
-    "stop_secs": (0.2, 3.0, False),
-    "min_volume": (0.0, 1.0, False),
-}
+_VAD_RANGES = settings_registry.live_knob_ranges("vad")
 _WRITABLE_SECTIONS = ("llm", "tts", "voice", "vad")
 
 # Static schema surfaced on GET so the UI can render controls without hardcoding.
 _SCHEMA = {
     "llm": {
-        "temperature": {"type": "float", "min": 0.0, "max": 2.0},
+        "temperature": {"type": "float", "min": _LLM_TEMP_LO, "max": _LLM_TEMP_HI},
         "reasoning_effort": {"type": "enum", "values": sorted(_REASONING)},
         "persona": {"type": "str", "max_len": _PERSONA_MAX},
     },
@@ -153,7 +147,7 @@ def _validate(section: str, key: str, value) -> object:
         return _num(value, lo, hi, integer=integer)
     if section == "llm":
         if key == "temperature":
-            return _num(value, 0.0, 2.0, integer=False)
+            return _num(value, _LLM_TEMP_LO, _LLM_TEMP_HI, integer=False)
         if key == "reasoning_effort":
             if value not in _REASONING:
                 raise KnobError(f"reasoning_effort must be one of {sorted(_REASONING)}")

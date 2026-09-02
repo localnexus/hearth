@@ -14,13 +14,16 @@ consumers derive from it so they cannot drift:
   3. (step 2, unbuilt) the panel's generated settings forms — json_schema()
      is that contract, carrying an `x-hearth` extra per live-tunable field.
 
-Anti-drift posture: the honored-surface constants that already live where the
-work happens (config_knobs._SCHEMA, config_reload._ENGINE_LIVE_KEYS,
-tag_profiles.TEMP_CEILING, paralinguistics._CANONICAL, tts_prep._SPEECH_KNOBS)
-stay authoritative for their own code paths THIS stroke; tests/
-test_settings_registry.py asserts this registry agrees with every one of
-them, so any divergence turns the suite red instead of shipping silently.
-Deriving those modules FROM the registry is the follow-on stroke.
+Derived surfaces (derive-knobs stroke, 2026-09-01): the honored-surface
+constants now DERIVE from this registry — config_knobs' schema/ranges,
+config_reload._ENGINE_LIVE_KEYS/_VAD_FALLBACK, tag_profiles._ALLOWED_KNOBS/
+TEMP_CEILING, and tts_prep._SPEECH_KNOBS all import from here; the step-1
+hand-sync parity pins retired. One deliberate exception runs the other way:
+the paralinguistic tag VOCABULARY lives with its stem-behavior table
+(paralinguistics._STEMS — a name list cannot generate behavior), so
+CANONICAL_TAGS derives FROM paralinguistics. The ear-verified content values
+are pinned in tests/test_settings_registry.py, so an accidental edit here
+still turns the suite red.
 
 Dependency note: pydantic v2 is guaranteed present transitively — pipecat-ai,
 a base dependency, pins pydantic>=2.10.6,<3 — and is deliberately NOT added to
@@ -39,17 +42,24 @@ from typing import Any, Literal, Optional, Union, get_args, get_origin
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from hearth.tts import paralinguistics as _paralinguistics  # leaf module (stdlib-only)
+
 _NAME = r"^[A-Za-z0-9._-]+$"  # dir-name safe (config_loader._NAME_RE)
 
-# ── parity constants (tests assert these equal the live modules' own copies) ──
-TEMP_CEILING = 1.4  # tag_profiles.TEMP_CEILING — highest ear-verified-clean temp
-TURBO_LIVE_KNOBS = frozenset({"temperature", "top_p", "top_k", "repetition_penalty"})
-SERVE_SPEECH_KNOBS = TURBO_LIVE_KNOBS | {"speed"}  # tts_prep._SPEECH_KNOBS
-CANONICAL_TAGS = frozenset({
-    "laugh", "chuckle", "sigh", "gasp", "groan", "sniff", "cough", "shush",
-    "clear throat", "whispering", "angry", "happy", "sarcastic", "crying",
-    "surprised", "fear", "dramatic", "narration", "advertisement",
-})  # paralinguistics._CANONICAL, bracketless
+# ── single-source knob surfaces (the live modules import these) ───────────────
+TEMP_CEILING = 1.4  # highest ear-verified-clean synth temperature (2026-08-26 ear session)
+ENGINE_LIVE_KNOBS: dict[str, frozenset[str]] = {
+    # Synth knobs each engine HONORS live; proper Chatterbox adds the two
+    # emotion knobs (EXPENSIVE tier — engine swap not wired).
+    "chatterbox-turbo": frozenset({"temperature", "top_p", "top_k", "repetition_penalty"}),
+    "chatterbox": frozenset({"temperature", "top_p", "top_k", "repetition_penalty",
+                             "exaggeration", "cfg_weight"}),
+}
+TURBO_LIVE_KNOBS = ENGINE_LIVE_KNOBS["chatterbox-turbo"]
+SERVE_SPEECH_KNOBS = TURBO_LIVE_KNOBS | {"speed"}  # the facade speech layer adds speed
+# The tag vocabulary derives the OTHER way — it lives with its stem-behavior
+# table (a name list cannot generate behavior); bracketless here.
+CANONICAL_TAGS = frozenset(t[1:-1] for t in _paralinguistics._CANONICAL)
 
 
 def _live(hot_via: str, status: str | None = None) -> dict:
@@ -644,3 +654,50 @@ def _render_page(name: str) -> str:
 def generate_manual_pages() -> dict[str, str]:
     """filename → rendered markdown, for every generated reference page."""
     return {name: _render_page(name) for name in MANUAL_PAGES}
+
+
+# ── derived-surface helpers (derive-knobs stroke) ──────────────────────────────
+# The live modules build their honored surfaces from these at import time; the
+# declared field constraints above are the only place ranges/defaults are stated.
+
+def _field_bounds(model, name):
+    lo = hi = None
+    for m in model.model_fields[name].metadata:
+        lo = getattr(m, "ge", None) if getattr(m, "ge", None) is not None else lo
+        hi = getattr(m, "le", None) if getattr(m, "le", None) is not None else hi
+    return lo, hi
+
+
+def _field_is_int(model, name) -> bool:
+    ann = model.model_fields[name].annotation
+    return ann is int or int in get_args(ann)
+
+
+def vad_fallback() -> dict:
+    """In-code [vad]-tier fallback = _VadLive defaults (bot.py's pre-tier literals)."""
+    return {k: f.default for k, f in _VadLive.model_fields.items()}
+
+
+def live_knob_ranges(section: str) -> dict:
+    """{knob: (lo, hi, is_int)} for the 'tts' / 'vad' override tier, read off the
+    declared field constraints — config_knobs' validation ranges derive here."""
+    model = {"tts": _OvTTS, "vad": _OvVAD}[section]
+    return {k: (*_field_bounds(model, k), _field_is_int(model, k))
+            for k in model.model_fields}
+
+
+def llm_knob_facts() -> dict:
+    """The [llm] override tier's declared facts (panel schema + validation)."""
+    ann = _OvLLM.model_fields["reasoning_effort"].annotation
+    if get_origin(ann) in (types.UnionType, Union):
+        for a in get_args(ann):
+            if get_origin(a) is not None:
+                ann = a
+                break
+    persona_max = next(m.max_length for m in _OvLLM.model_fields["persona"].metadata
+                       if getattr(m, "max_length", None) is not None)
+    return {
+        "temperature": _field_bounds(_OvLLM, "temperature"),
+        "reasoning_effort": frozenset(get_args(ann)),
+        "persona_max_len": persona_max,
+    }

@@ -3,11 +3,12 @@
 Proves, on the real artifacts:
   1. COVERAGE  — every shipped config file/example validates strictly clean
                  (zero errors, zero warnings): a key cannot exist without appearing.
-  2. PARITY    — the registry agrees with every live honored-surface constant it
-                 mirrors (config_knobs._SCHEMA, config_reload._ENGINE_LIVE_KEYS +
-                 _VAD_FALLBACK, tag_profiles.TEMP_CEILING/_ALLOWED_KNOBS,
-                 paralinguistics._CANONICAL, tts_prep._SPEECH_KNOBS, the shipped
-                 tts.toml [live] values). Divergence = red suite, not silent drift.
+  2. DERIVATION — the live honored surfaces DERIVE from the registry (derive-knobs
+                 stroke 2026-09-01: config_knobs schema/ranges, config_reload
+                 _ENGINE_LIVE_KEYS + _VAD_FALLBACK, tag_profiles TEMP_CEILING/
+                 _ALLOWED_KNOBS, tts_prep._SPEECH_KNOBS; the tag vocabulary flows
+                 the other way, paralinguistics → registry). The ear-verified
+                 content values are pinned here — still red on drift, one source.
   3. BEHAVIOR  — lenient vs strict posture: type violations raise SchemaError;
                  unknown keys and out-of-range values warn (lenient) / bind (strict);
                  missing required keys stay the loaders' _require contract.
@@ -92,19 +93,58 @@ class ShippedFilesValidateClean(unittest.TestCase):
                 self.assertEqual(warnings, [], f"{rel}: {warnings}")
 
 
-class ParityWithLiveModules(unittest.TestCase):
-    """The registry mirrors every honored-surface constant it documents."""
+class DerivedSurfaces(unittest.TestCase):
+    """The live modules DERIVE their knob surfaces from the registry (derive-knobs
+    stroke 2026-09-01 — the step-1 hand-sync parity pins retired). The ear-verified
+    content values are pinned HERE, so an accidental registry edit still turns the
+    suite red; the derivation checks prove the modules share the registry's
+    surfaces instead of keeping copies."""
 
-    def test_knob_schema_llm(self):
+    def test_content_pins(self):
+        self.assertEqual(sr.TEMP_CEILING, 1.4)
+        self.assertEqual(sr.ENGINE_LIVE_KNOBS["chatterbox-turbo"],
+                         {"temperature", "top_p", "top_k", "repetition_penalty"})
+        self.assertEqual(sr.ENGINE_LIVE_KNOBS["chatterbox"],
+                         {"temperature", "top_p", "top_k", "repetition_penalty",
+                          "exaggeration", "cfg_weight"})
+        self.assertEqual(sr.SERVE_SPEECH_KNOBS,
+                         {"temperature", "top_p", "top_k", "repetition_penalty", "speed"})
+        self.assertEqual(sr.vad_fallback(),
+                         {"confidence": 0.7, "start_secs": 0.2, "stop_secs": 0.5,
+                          "min_volume": 0.6})
+        self.assertEqual(sr.CANONICAL_TAGS, {
+            "laugh", "chuckle", "sigh", "gasp", "groan", "sniff", "cough", "shush",
+            "clear throat", "whispering", "angry", "happy", "sarcastic", "crying",
+            "surprised", "fear", "dramatic", "narration", "advertisement"})
+        self.assertEqual(sr.live_knob_ranges("tts"), {
+            "temperature": (0.0, 2.0, False), "top_p": (0.0, 1.0, False),
+            "top_k": (1, 10_000, True), "repetition_penalty": (0.5, 5.0, False)})
+        self.assertEqual(sr.live_knob_ranges("vad"), {
+            "confidence": (0.0, 1.0, False), "start_secs": (0.05, 1.0, False),
+            "stop_secs": (0.2, 3.0, False), "min_volume": (0.0, 1.0, False)})
+        facts = sr.llm_knob_facts()
+        self.assertEqual(facts["temperature"], (0.0, 2.0))
+        self.assertEqual(facts["reasoning_effort"], {"none", "low", "medium", "high"})
+        self.assertEqual(facts["persona_max_len"], 16_000)
+
+    def test_modules_derive_from_registry(self):
+        self.assertEqual(cr._ENGINE_LIVE_KEYS, sr.ENGINE_LIVE_KNOBS)
+        self.assertEqual(cr._VAD_FALLBACK, sr.vad_fallback())
+        self.assertEqual(tag_profiles._ALLOWED_KNOBS, sr.ENGINE_LIVE_KNOBS)
+        self.assertEqual(tag_profiles.TEMP_CEILING, sr.TEMP_CEILING)
+        self.assertIs(tts_prep._SPEECH_KNOBS, sr.SERVE_SPEECH_KNOBS)
+        self.assertEqual(ck._TTS_RANGES, sr.live_knob_ranges("tts"))
+        self.assertEqual(ck._VAD_RANGES, sr.live_knob_ranges("vad"))
+        # The one reversed derivation: vocabulary flows paralinguistics → registry.
+        self.assertEqual({f"[{t}]" for t in sr.CANONICAL_TAGS}, paralinguistics._CANONICAL)
+
+    def test_knob_schema_reflects_registry(self):
         s = ck._SCHEMA["llm"]
-        self.assertEqual((_bounds(sr._OvLLM, "temperature")),
+        self.assertEqual(_bounds(sr._OvLLM, "temperature"),
                          (s["temperature"]["min"], s["temperature"]["max"]))
         self.assertEqual(_literal_values(sr._OvLLM, "reasoning_effort"),
                          set(s["reasoning_effort"]["values"]))
-        self.assertEqual(sr._OvLLM.model_fields["persona"].metadata[0].max_length,
-                         s["persona"]["max_len"])
-
-    def test_knob_schema_tts_vad(self):
+        self.assertEqual(s["persona"]["max_len"], 16_000)
         for section, model in (("tts", sr._OvTTS), ("vad", sr._OvVAD)):
             ranges = ck._TTS_RANGES if section == "tts" else ck._VAD_RANGES
             self.assertEqual(set(model.model_fields), set(ranges), section)
@@ -112,28 +152,10 @@ class ParityWithLiveModules(unittest.TestCase):
                 self.assertEqual(_bounds(model, key), (lo, hi), f"{section}.{key}")
                 self.assertEqual(_is_int(model, key), integer, f"{section}.{key}")
 
-    def test_engine_live_keys(self):
-        self.assertEqual(sr.TURBO_LIVE_KNOBS, cr._ENGINE_LIVE_KEYS["chatterbox-turbo"])
-        self.assertEqual(sr.TURBO_LIVE_KNOBS, set(sr._OvTTS.model_fields))
-        self.assertEqual(sr.TURBO_LIVE_KNOBS, tag_profiles._ALLOWED_KNOBS["chatterbox-turbo"])
-
-    def test_vad_fallback(self):
-        defaults = {k: sr._VadLive.model_fields[k].default for k in sr._VadLive.model_fields}
-        self.assertEqual(defaults, cr._VAD_FALLBACK)
-
     def test_tts_baseline_defaults_match_shipped_file(self):
         live = cr.load_tts_baseline("chatterbox-turbo")
         defaults = {k: sr._TtsLive.model_fields[k].default for k in sr._TtsLive.model_fields}
         self.assertEqual(defaults, live)
-
-    def test_tag_ceiling_and_canonical_tags(self):
-        self.assertEqual(sr.TEMP_CEILING, tag_profiles.TEMP_CEILING)
-        self.assertEqual({f"[{t}]" for t in sr.CANONICAL_TAGS}, paralinguistics._CANONICAL)
-
-    def test_serve_speech_knobs(self):
-        self.assertEqual(sr.SERVE_SPEECH_KNOBS, tts_prep._SPEECH_KNOBS)
-        self.assertEqual(set(sr._ServeIdentityTts.model_fields),
-                         sr.SERVE_SPEECH_KNOBS | {"allow_tag_profiles"})
 
     def test_gate_defaults_spot_checks(self):
         self.assertEqual(sr.ServeTable.model_fields["port"].default, 65001)
@@ -142,7 +164,6 @@ class ParityWithLiveModules(unittest.TestCase):
         self.assertEqual(sr._MemServe.model_fields["idle_close_chat"].default, 480)
         self.assertEqual(sr.MemoryTable.model_fields["recall_limit"].default, 6)
         self.assertEqual(sr.OpenclawTable.model_fields["quick_wait_s"].default, 8.0)
-
 
 class ValidationBehavior(unittest.TestCase):
     def test_type_violation_raises(self):

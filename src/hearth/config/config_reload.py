@@ -53,6 +53,7 @@ from pipecat.processors.frame_processor import FrameDirection, FrameProcessor
 from pipecat.services.settings import LLMSettings
 
 from hearth.config import config_loader
+from hearth.config import settings_registry
 
 # Live layer = the operator's (data root); the persisted baselines ship with the engine
 # tree and are looked up via config_loader.baseline_path (a data-root copy wins).
@@ -64,12 +65,8 @@ VAD_TOML = config_loader.ROOT_CONFIG_DIR / "vad.toml"
 # from [tts]; anything else (e.g. Turbo's inert exaggeration/cfg_weight/min_p) is
 # dropped with a warning. proper-chatterbox keys are added
 # when that EXPENSIVE engine lands.
-_ENGINE_LIVE_KEYS: dict[str, frozenset[str]] = {
-    "chatterbox-turbo": frozenset({"temperature", "top_p", "top_k", "repetition_penalty"}),
-    "chatterbox": frozenset(
-        {"temperature", "top_p", "top_k", "repetition_penalty", "exaggeration", "cfg_weight"}
-    ),
-}
+# Derived from the settings registry (derive-knobs 2026-09-01) — one source.
+_ENGINE_LIVE_KEYS: dict[str, frozenset[str]] = dict(settings_registry.ENGINE_LIVE_KNOBS)
 
 
 def load_tts_baseline(engine: str) -> dict:
@@ -96,7 +93,7 @@ def load_tts_baseline(engine: str) -> dict:
 
 # In-code fallback for the [vad] tier = the params bot.py shipped with before the tier
 # existed (its former inline VADParams literals). config/vad.toml [live] overlays this.
-_VAD_FALLBACK: dict = {"confidence": 0.7, "start_secs": 0.2, "stop_secs": 0.5, "min_volume": 0.6}
+_VAD_FALLBACK: dict = settings_registry.vad_fallback()  # derived: _VadLive defaults
 _VAD_KEYS = frozenset(_VAD_FALLBACK)
 
 

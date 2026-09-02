@@ -42,20 +42,16 @@ from pathlib import Path
 from loguru import logger
 
 from hearth.config import config_loader
+from hearth.config import settings_registry
 from hearth.tts import paralinguistics
 
 TTS_DIR = config_loader.ROOT_CONFIG_DIR / "tts"  # shipped baselines; a data-root copy wins (baseline_path)
 
-# Engine-honored live knobs — duplicated small contract (config_reload owns the
-# authoritative copy but imports pipecat; keep in sync with _ENGINE_LIVE_KEYS).
-_ALLOWED_KNOBS: dict[str, frozenset[str]] = {
-    "chatterbox-turbo": frozenset({"temperature", "top_p", "top_k", "repetition_penalty"}),
-    "chatterbox": frozenset(
-        {"temperature", "top_p", "top_k", "repetition_penalty", "exaggeration", "cfg_weight"}
-    ),
-}
+# Engine-honored live knobs — derived from the settings registry (derive-knobs
+# 2026-09-01; the registry is pydantic-only, so this module stays pipecat-free).
+_ALLOWED_KNOBS: dict[str, frozenset[str]] = dict(settings_registry.ENGINE_LIVE_KNOBS)
 
-TEMP_CEILING = 1.4  # highest ear-verified-clean temperature
+TEMP_CEILING = settings_registry.TEMP_CEILING  # highest ear-verified-clean temperature
 
 # Canonical tag names (bracketless), derived from the one source of truth.
 _CANONICAL_NAMES = frozenset(t.strip("[]") for t in paralinguistics._CANONICAL)
