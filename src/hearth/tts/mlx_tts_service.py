@@ -65,10 +65,11 @@ from hearth.tts.params import SAMPLE_RATE  # re-export: engine rate, backend-neu
 logger = logging.getLogger(__name__)
 
 # ── Paralinguistic strip log ──────────────────────────────────────────────────
-# `logs/` is the runtime-data home (gitignored). Append-only JSONL, reviewed after
-# a conversation rather than watched during one (you're talking to the companion, not reading
-# a scrollback).
-_STRIP_LOG_DIR: Path = Path(__file__).resolve().parent / "logs"
+# `DATA/logs/` is the runtime-data home — the code tree never receives runtime writes
+# (same anchor as serve/tts_prep.py's copy of this log). Append-only JSONL, reviewed
+# after a conversation rather than watched during one (you're talking to the companion,
+# not reading a scrollback).
+_STRIP_LOG_DIR: Path = config_loader.DATA_DIR / "logs"
 _STRIP_LOG: Path = _STRIP_LOG_DIR / "paralinguistic-strips.jsonl"
 
 
@@ -88,7 +89,7 @@ def _log_strips(strips: list[dict], context_id) -> None:
                 s["token"], context_id,
             )
     try:
-        _STRIP_LOG_DIR.mkdir(exist_ok=True)
+        _STRIP_LOG_DIR.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now(timezone.utc).isoformat()
         with _STRIP_LOG.open("a") as fh:
             for s in strips:

@@ -15,7 +15,13 @@ env/
 sessions/
 captures/
 transcripts/
+logs/
 characters/**/memory/
+
+# Runtime droppings that can land inside the code tree — content-bearing, never committed
+# (src/hearth/tts/logs/ covers strip logs written by pre-2026-09-02 builds)
+src/hearth/tts/logs/
+tests/step1_unit_out.wav
 
 # Local config — copied from the .example templates, holds your selections/secrets
 config/active.toml
