@@ -276,6 +276,7 @@ class _MemPerTurn(_Cfg):
     enabled: bool = Field(False, description="per-turn targeted recall (chat lane): re-query the bank with the user's own words each request")
     limit: int = Field(3, ge=0, description="targeted extras appended under their own labeled line (deduped against the open block)")
     min_cue_chars: int = Field(12, ge=0, description="skip cues shorter than this (bare greetings and closes)")
+    voice: bool = Field(False, description="ALSO run the voice lane (prefetch-behind: recall after turn N, injected before turn N+1); needs enabled=true; ships OFF")
 
 
 class _MemServe(_Cfg):
@@ -309,7 +310,7 @@ class MemoryTable(_Cfg):
                               description="what recall asks the backend for (semantic backends only)")
     companions: dict[str, str] = Field(default_factory=dict, description="per-companion backend override (the continuity dial)")
     intent: Optional[_MemIntent] = Field(None, description="intent-primed boot recall")
-    per_turn: Optional[_MemPerTurn] = Field(None, description="per-turn targeted recall (chat lane; ships OFF)")
+    per_turn: Optional[_MemPerTurn] = Field(None, description="per-turn targeted recall (chat lane synchronous; voice lane prefetch-behind; ships OFF)")
     serve: Optional[_MemServe] = Field(None, description="facade-lane session glue")
     hindsight: Optional[_MemHindsight] = Field(None, description="Hindsight backend settings")
 

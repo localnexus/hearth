@@ -93,6 +93,9 @@ class MemorySeam:
         self.per_turn_enabled = bool(per_turn.get("enabled", False))
         self.per_turn_limit = int(per_turn.get("limit", 3))
         self.per_turn_min_chars = int(per_turn.get("min_cue_chars", 12))
+        # Voice lane opt-in (prefetch-behind, own gate): the chat gate does
+        # not light the voice loop; both must be on. Ships OFF.
+        self.per_turn_voice = bool(per_turn.get("voice", False))
         # augment() fills these; augment_turn() re-frames them per request
         # without re-recalling the open set or re-touching the intent slot.
         self._session_lines: list[str] = []

@@ -96,6 +96,7 @@ from hearth.bridges import openclaw_bridge
 from hearth import serve
 from hearth import memory as hearth_memory
 from hearth.pipeline import switcher as switcher_mod
+from hearth.pipeline import memory_prefetch as memory_prefetch_mod
 
 # ── L2 panel features (activation = import; registers routes on control_routes) ──
 # Each import runs the module's @register side effect, adding its routes to the web
@@ -429,6 +430,17 @@ async def build_pipeline(
     config_reload_proc = config_reload.ConfigReloadProcessor(
         _reloader, tts, vad_analyzer=vad_analyzer, switcher=live_switcher)
 
+    # Voice-lane per-turn recall (lane (b) voice stroke, prefetch-behind). Wired
+    # ONLY when the seam is present and BOTH [memory.per_turn].enabled and .voice
+    # are on — the chat gate alone never lights the voice loop. Placed after the
+    # reload/switch processor so it reads the switcher's CURRENT seam + base and
+    # rebases on a live switch. Absent ⇒ the pipeline is byte-identical to before.
+    memory_prefetch_proc = None
+    if (memory_seam is not None and getattr(memory_seam, "per_turn_enabled", False)
+            and getattr(memory_seam, "per_turn_voice", False)):
+        memory_prefetch_proc = memory_prefetch_mod.MemoryPrefetch(
+            switcher=live_switcher, context=context)
+
     # Assemble pipeline
     pipeline = Pipeline([
         transport.input(),
@@ -440,6 +452,7 @@ async def build_pipeline(
         user_agg,
         measure_b,           # MEASURE (log-only, gated): finalized turn text
         config_reload_proc,  # LIVE-CONFIG: poll overrides.toml at the turn boundary
+        *( [memory_prefetch_proc] if memory_prefetch_proc is not None else [] ),  # voice per-turn recall (gated)
         llm,
         tts,
         tts_record_tap,      # M7 RECORD (passive, armed via panel): the companion's voice, native 24 kHz

@@ -46,6 +46,8 @@ recall_query = "the user's life, preferences, and recent conversations"
 # enabled = false
 # limit = 3                        # extras appended past the open-time block
 # min_cue_chars = 12               # skip bare greetings/closes
+# voice = false                    # ALSO the voice loop (prefetch-behind, one-turn lag);
+#                                  # needs enabled=true — the chat gate alone stays chat-only
 
 # Intent-primed boot recall: "next time, let's talk about X" survives the gap.
 # Off by default. Enabled, at session close the seam asks the local extraction

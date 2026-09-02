@@ -71,7 +71,7 @@ All keys below live under the `[memory]` table.
 | `recall_query` | str | `the user's life, preferences, and recent conversations` |  | — | what recall asks the backend for (semantic backends only) |
 | `companions` | map(str → str) | — |  | — | per-companion backend override (the continuity dial) |
 | `intent` | table | — |  | — | intent-primed boot recall |
-| `per_turn` | table | — |  | — | per-turn targeted recall (chat lane; ships OFF) |
+| `per_turn` | table | — |  | — | per-turn targeted recall (chat lane synchronous; voice lane prefetch-behind; ships OFF) |
 | `serve` | table | — |  | — | facade-lane session glue |
 | `hindsight` | table | — |  | — | Hindsight backend settings |
 | `intent.enabled` | bool | `false` |  | — | intent-primed boot recall: a stated next-topic survives the gap |
@@ -83,6 +83,7 @@ All keys below live under the `[memory]` table.
 | `per_turn.enabled` | bool | `false` |  | — | per-turn targeted recall (chat lane): re-query the bank with the user's own words each request |
 | `per_turn.limit` | int | `3` | 0– | — | targeted extras appended under their own labeled line (deduped against the open block) |
 | `per_turn.min_cue_chars` | int | `12` | 0– | — | skip cues shorter than this (bare greetings and closes) |
+| `per_turn.voice` | bool | `false` |  | — | ALSO run the voice lane (prefetch-behind: recall after turn N, injected before turn N+1); needs enabled=true; ships OFF |
 | `serve.enabled` | bool | `false` |  | — | facade-lane sessions (idle-gap boundaries, records, recall) |
 | `serve.idle_close_voice` | int | `5` | 1– | — | voice-lane idle close, MINUTES (grace + margin over the voice server's reaper) |
 | `serve.idle_close_chat` | int | `480` | 1– | — | chat-lane idle FALLBACK close, MINUTES (behind deliberate closure) |

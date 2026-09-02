@@ -130,6 +130,10 @@ class LiveSwitcher:
         self._context = context
         self._store = store
         self._seam = seam
+        # Raw system instruction (pre-augment) of the CURRENT companion —
+        # the base the voice prefetch lane re-composes per turn (swaps on
+        # a live switch, below). Never the augmented one (that double-blocks).
+        self._current_base = getattr(active, "system_instruction", "")
         self._meter = None  # TokenMeter, attached late by bot.py (created after us)
         self._lm_provider = lm_provider
         self._lm_base_url = lm_base_url
@@ -154,6 +158,11 @@ class LiveSwitcher:
     @property
     def current_seam(self):
         return self._seam
+
+    @property
+    def current_base_instruction(self) -> str:
+        """The CURRENT companion's RAW system instruction (voice prefetch base)."""
+        return self._current_base
 
     def attach_meter(self, meter) -> None:
         """Late-bind the TokenMeter (duck-typed; this module stays pipecat-free)."""
@@ -305,6 +314,7 @@ class LiveSwitcher:
                 "reliable_context": model.get("reliable_context"),
                 "voice_tag": str(voice["tag"]), "ref_wav": str(voice["ref_wav"]),
                 "persona_slot": persona_slot, "system_instruction": system_aug,
+                "system_raw": system,
                 "seam": seam, "store": new_store, "resume_messages": resume_messages,
                 "descriptor": descriptor,
                 "hold": bool(body.get("hold")),
@@ -396,6 +406,7 @@ class LiveSwitcher:
         old_store, old_seam = self._store, self._seam
         old_sel = dict(self._current["selection"])
         self._store, self._seam = p["store"], p["seam"]
+        self._current_base = p["system_raw"]  # voice prefetch rebases here
         self._current = {
             "selection": dict(sel), "model_id": p["model_id"],
             "temperature": p["temperature"],
