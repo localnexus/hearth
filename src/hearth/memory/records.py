@@ -3,11 +3,15 @@
 One JSON file per ended session under DATA/characters/<c>/memory/records/,
 written atomically at 0600 in a 0700 tree (session_store's contract, restated
 here rather than imported — its writer is module-private and the coupling
-isn't worth 25 lines). These records persist even though the session file
-itself is ephemeral-by-default and deletes on graceful stop: enabling memory
-IS the choice to keep a trace (documented in docs/memory.md). Deleting a
-record is the explicit act, and it removes that session from every backend on
-the next rebuild (backends are derived indexes).
+isn't worth 25 lines). Records persist independently of the transcript
+lifecycle: sessions save by default, and even where a transcript is deleted
+(a recall-only sitting) no record was written in the first place — the seam
+retains nothing there. Enabling memory IS the choice to keep a trace
+(documented in docs/memory.md). Forgetting is the explicit act:
+``python -m hearth.memory forget --session <id>`` deletes the record and, on
+a session-keyed backend, cascade-deletes that session's indexed facts; a bare
+record deletion falls out of every backend at its next rebuild (backends are
+derived indexes).
 """
 
 from __future__ import annotations

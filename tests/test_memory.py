@@ -55,6 +55,7 @@ from hearth.memory import MemorySeam, maybe_attach  # noqa: E402
 from hearth.memory.backend import MemoryItem, SessionRecord, digest_record  # noqa: E402
 from hearth.memory import intent as intent_mod  # noqa: E402
 from hearth.memory import records as records_mod  # noqa: E402
+from hearth.memory import __main__ as memory_cli  # noqa: E402
 from hearth.memory.floor import FloorBackend  # noqa: E402
 from hearth.serve import app as serve_app  # noqa: E402
 from hearth.serve import memory_glue as glue_mod  # noqa: E402
@@ -682,6 +683,132 @@ class TestHindsightCuration(unittest.TestCase):
         f = FloorBackend()
         self.assertTrue(f.forget("testchar", "anything"))
         f.clear("testchar")  # no-op, must not raise
+
+
+class _CLIBackend:
+    """Seam-backend stand-in for the curation CLI: records every call."""
+
+    name = "fakebackend"
+
+    def __init__(self, forget_result: bool = True,
+                 forget_raises: Exception | None = None,
+                 clear_raises: Exception | None = None) -> None:
+        self.forgets: list[tuple[str, str]] = []
+        self.clears: list[str] = []
+        self.stored: list[str] = []
+        self._forget_result = forget_result
+        self._forget_raises = forget_raises
+        self._clear_raises = clear_raises
+
+    def forget(self, companion: str, session_id: str) -> bool:
+        self.forgets.append((companion, session_id))
+        if self._forget_raises is not None:
+            raise self._forget_raises
+        return self._forget_result
+
+    def clear(self, companion: str) -> None:
+        self.clears.append(companion)
+        if self._clear_raises is not None:
+            raise self._clear_raises
+
+    def store(self, companion: str, record: SessionRecord) -> None:  # noqa: ARG002
+        self.stored.append(record.session_id)
+
+
+class TestCurationCLI(unittest.TestCase):
+    """forget --session / rebuild --clean (record-level curation, D2/D3/D4):
+    the confirm gate previews without deleting, backend-first ordering keeps a
+    failed forget re-runnable, and --clean wipes exactly once before replay."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+        for sid, ended in (("session-1", "2026-08-30T10:00:00"),
+                           ("session-2", "2026-08-31T10:00:00")):
+            records_mod.write_record(_record(sid, ended), directory=self.dir)
+        patcher = mock.patch.object(records_mod, "records_dir", lambda c: self.dir)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _with_seam(self, backend):
+        import types
+        seam = types.SimpleNamespace(backend=backend, close=lambda: None) \
+            if backend is not None else None
+        return mock.patch.object(seam_mod, "maybe_attach", lambda c: seam)
+
+    def test_forget_without_yes_previews_and_deletes_nothing(self):
+        def _boom(c):  # the seam must not even attach pre-confirm
+            raise AssertionError("maybe_attach called before --yes")
+        with mock.patch.object(seam_mod, "maybe_attach", _boom):
+            rc = memory_cli._cmd_forget("testchar", "session-1", yes=False)
+        self.assertEqual(rc, 1)
+        self.assertTrue((self.dir / "session-1.json").is_file())
+
+    def test_forget_yes_excises_and_deletes(self):
+        backend = _CLIBackend(forget_result=True)
+        with self._with_seam(backend):
+            rc = memory_cli._cmd_forget("testchar", "session-1", yes=True)
+        self.assertEqual(rc, 0)
+        self.assertEqual(backend.forgets, [("testchar", "session-1")])
+        self.assertFalse((self.dir / "session-1.json").exists())
+        self.assertTrue((self.dir / "session-2.json").is_file())  # only the named one
+
+    def test_forget_unkeyed_deletes_record_but_signals_rebuild(self):
+        backend = _CLIBackend(forget_result=False)
+        with self._with_seam(backend):
+            rc = memory_cli._cmd_forget("testchar", "session-1", yes=True)
+        self.assertEqual(rc, 1)  # not fully excised — the operator must know
+        self.assertFalse((self.dir / "session-1.json").exists())
+
+    def test_forget_backend_failure_keeps_the_record(self):
+        backend = _CLIBackend(forget_raises=RuntimeError("bank down"))
+        with self._with_seam(backend):
+            rc = memory_cli._cmd_forget("testchar", "session-1", yes=True)
+        self.assertEqual(rc, 1)
+        self.assertTrue((self.dir / "session-1.json").is_file())  # re-runnable
+
+    def test_forget_memory_disabled_still_deletes_the_record(self):
+        with self._with_seam(None):
+            rc = memory_cli._cmd_forget("testchar", "session-1", yes=True)
+        self.assertEqual(rc, 0)
+        self.assertFalse((self.dir / "session-1.json").exists())
+
+    def test_forget_unknown_session_is_an_error(self):
+        with self._with_seam(_CLIBackend()):
+            rc = memory_cli._cmd_forget("testchar", "no-such-session", yes=True)
+        self.assertEqual(rc, 1)
+
+    def test_rebuild_clean_without_yes_wipes_nothing(self):
+        backend = _CLIBackend()
+        with self._with_seam(backend):
+            rc = memory_cli._cmd_rebuild("testchar", clean=True, yes=False)
+        self.assertEqual(rc, 1)
+        self.assertEqual(backend.clears, [])
+        self.assertEqual(backend.stored, [])
+
+    def test_rebuild_clean_yes_wipes_once_then_replays_oldest_first(self):
+        backend = _CLIBackend()
+        with self._with_seam(backend):
+            rc = memory_cli._cmd_rebuild("testchar", clean=True, yes=True)
+        self.assertEqual(rc, 0)
+        self.assertEqual(backend.clears, ["testchar"])
+        self.assertEqual(backend.stored, ["session-1", "session-2"])
+
+    def test_rebuild_plain_is_unchanged_additive_replay(self):
+        backend = _CLIBackend()
+        with self._with_seam(backend):
+            rc = memory_cli._cmd_rebuild("testchar")
+        self.assertEqual(rc, 0)
+        self.assertEqual(backend.clears, [])
+        self.assertEqual(backend.stored, ["session-1", "session-2"])
+
+    def test_rebuild_clean_failed_wipe_replays_nothing(self):
+        backend = _CLIBackend(clear_raises=RuntimeError("bank down"))
+        with self._with_seam(backend):
+            rc = memory_cli._cmd_rebuild("testchar", clean=True, yes=True)
+        self.assertEqual(rc, 1)
+        self.assertEqual(backend.stored, [])
 
 
 class TestClosureDetection(unittest.TestCase):
