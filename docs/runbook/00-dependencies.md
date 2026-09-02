@@ -38,7 +38,6 @@ pre/post-update test before advancing any of them — the live voice loop rides 
 | llama.cpp runtime pack (LM Studio's) | 2.24.0 | soft — cleared → 2.28.1 | No Metal-relevant regressions found in 2.26→2.28.1; run the test checklist before advancing. |
 | LM Studio app | 0.4.19+2 | soft — optional → 0.4.21 | 0.4.21 is ergonomics (load errors, mmap/mlock/direct-IO knobs — the knobs need llama.cpp ≥ 2.28.1). Scratch-test first: the live voice loop rides this server. |
 | `transformers` (`.venv`) | 5.5.0 | HARD | Pre-existing pin (dependency table above) — this one applies on **every** path, LM Studio or not. |
-| MTP speculative decode, agent/coding work | OFF | policy | Upstream inter-request draft state → nondeterminism, unfixed at any released version. Not a speed issue — GGUF embedded-head measured +24–26%. |
 
 > ⚠ **LM Studio only:** `lms runtime update` advances ALL packs, including past the MLX hard pin —
 > never run it blindly. Recovery: `lms runtime select mlx-llm-mac-arm64-apple-metal-advsimd@1.10.0`

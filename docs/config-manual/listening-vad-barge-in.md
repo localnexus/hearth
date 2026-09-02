@@ -1,6 +1,6 @@
 # Listening behavior — VAD, turn-taking, barge-in
 
-All four knobs live in one `VADParams(...)` (`bot ~L211`) — the single VAD source (drives both segmentation and barge-in).
+The four listening knobs are the **calibration tier**, and they're config, not code. Their **baseline** lives in `config/vad.toml` under `[live]` — read once at startup by `config_reload.load_vad_baseline()` and used to build the analyzer (`VADParams(**baseline)` in `bot.py`); the numbers in the table below are that file's shipped defaults. The **:65000 panel's LISTENING group** writes a live layer, `config/overrides.toml [vad]`, that overlays the baseline **every turn boundary** — the analyzer is retuned in place (`set_params`), **no restart**. So the everyday path is *turn a knob on the panel*; edit `config/vad.toml` (then restart) only when you're moving the room/mic baseline itself, and a data-root copy of the file replaces the shipped one whole. (If `config/vad.toml` is absent, an in-code fallback — the former inline `VADParams` literals in `bot.py`, ~L246 — supplies the same four numbers, so file-present and file-absent are behaviorally identical until you change something.) It is the single VAD source — it drives both segmentation and barge-in.
 
 | Param | Now | Raise it → | Lower it → |
 |---|---|---|---|

@@ -13,6 +13,12 @@ Model / prompt / voice = **data files** now (edit + restart; `config_loader.load
 | **`config/models/<model>/system-prompt-template.md`** | **the MODEL layer of the prompt**: envelope + output-shaping hard rules + `{{persona}}` slot |
 | **`characters/<character>/persona.md`** | **the CHARACTER layer**: `## IDENTITY` + `## SOUL` → fills `{{persona}}` |
 | **`characters/<character>/voices/<voice>/`** | **a self-contained voice bundle**: `voice.toml` (`tag` + `ref_wav`, + `license`/`source`) and the vendored `sample.wav` reference clip |
+| **`config/overrides.toml`** | **the live override layer** (PANEL-managed): `[llm]` / `[tts]` / `[vad]` / `[voice]` deltas **polled every turn boundary — hot, no restart**. Don't hand-edit; the panel writes it. Per-companion presets mirror to `characters/<c>[/voices/<v>]/profile.toml` |
+| **`config/vad.toml`** `[live]` | **listening-calibration baseline**: `confidence` / `start_secs` / `stop_secs` / `min_volume` (overlaid live by `overrides.toml [vad]`) — see [listening](listening-vad-barge-in.md) |
+| **`config/tts/<engine>/tts.toml`** | **TTS synth baseline + per-tag profiles**: `[live]` knobs (`temperature` / `top_p` / `top_k` / `repetition_penalty`) and `[tag_profiles.*]` (overlaid live by `overrides.toml [tts]`) — see [voice & TTS](voice-tts.md) |
+| **`config/serve.toml`** `[serve]` | **the :65001 facade gate** — off by default; holds a bearer-token **PATH** (manage, never print). See [gates](settings-reference-gates.md) |
+| **`config/memory.toml`** `[memory]` | **the cross-session memory gate** — off by default; backend per companion. See [memory](../memory.md) |
+| **`config/openclaw.toml`** `[openclaw]` | **the OpenClaw dispatch-bridge gate** — off by default. See [gates](settings-reference-gates.md) |
 | `bot.py` **Configuration block** (`~L120–L166`) | LLM endpoint/token/provider — module-level constants `LM_BASE_URL` / `LM_API_TOKEN` / `LM_PROVIDER` (model id now `_CFG.model_id` from config) |
 | `bot.py` **`build_pipeline()`** (`~L172–L377`) | VAD knobs, audio params, pipeline order (LLM persona/temperature/reasoning_effort/model/voice `ref_wav` now sourced from `_CFG`) |
 | `bot.py` **`main()`** (`~L380–L486`) | metrics, idle-timeout |
@@ -22,7 +28,7 @@ Model / prompt / voice = **data files** now (edit + restart; `config_loader.load
 | **env** `transformers==5.5.0` (the `.venv` pin) | **mandatory** — see [voice & TTS](voice-tts.md) and the runbook dependencies step |
 
 > **For code knobs, line numbers drift — the CONSTANT/PARAM NAME is the stable anchor.** Grep the name. For config, the FILE + KEY is the anchor.
-> **No hot reload.** Every change needs a stop + relaunch (see the [runbook](../runbook/README.md)). Changing the **voice** especially requires a restart — conditionals are precomputed once at startup.
+> **Hot vs. restart.** `config/overrides.toml` is **hot** — the panel polls it every turn boundary, so the live knobs it writes (`[llm]` temperature/reasoning, `[tts]`, `[vad]`, a `[voice]` audition) apply **without a restart**. Everything else — the selection pointer, the model/prompt/persona/voice files, the gate files — needs a **stop + relaunch** to take effect. Changing the **voice** especially requires a restart (conditionals are precomputed once at startup). Who writes which file: [the config layers](../the-config-layers.md).
 > **Verify after any change:** relaunch, one live turn, watch the log.
 
 ---
@@ -58,7 +64,7 @@ Model / prompt / voice = **data files** now (edit + restart; `config_loader.load
 
 ## Golden rules
 
-1. **Restart to apply** — no hot reload; relaunch after every edit. Voice changes especially (conditionals precompute once at startup).
+1. **Know hot from restart** — the panel's live layer (`config/overrides.toml`: `[llm]` / `[tts]` / `[vad]` / `[voice]`) applies at the next turn boundary, no relaunch; every other file (the selection pointer, model/prompt/persona/voice, the gate files) needs a stop + relaunch. Voice changes especially (conditionals precompute once at startup). See [the config layers](../the-config-layers.md).
 2. **No emitted chain-of-thought** — pure instruct, or a hybrid with thinking forced off (Hearth sends `reasoning_effort:"none"` from `model.toml` on every request; a template that ignores it needs a server-side switch or a replaced chat template). A model that streams `reasoning_content`/`<think>` with empty `content` silently stalls the loop.
 3. **Keep `transformers==5.5.0`** — the single most fragile dep; an unpinned upgrade breaks TTS import.
 4. **Keep MLX on the executor thread** — never move a TTS-engine MLX call off the service's single-worker executor (thread-local Metal streams).

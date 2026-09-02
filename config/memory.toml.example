@@ -49,6 +49,16 @@ recall_query = "the user's life, preferences, and recent conversations"
 # voice = false                    # ALSO the voice loop (prefetch-behind, one-turn lag);
 #                                  # needs enabled=true — the chat gate alone stays chat-only
 
+# Facade-lane sessions: give the stateless /v1 door a session start and a
+# graceful close so the phone lane and chat clients get the same continuity the
+# voice appliance has. Off by default (absent or disabled ⇒ the facade is
+# byte-identical). See docs/memory.md → "The serve facade lane".
+[memory.serve]
+# enabled = false
+# idle_close_voice = 5             # MINUTES of silence before a voice conversation closes
+# idle_close_chat = 480            # MINUTES — the FALLBACK behind deliberate-closure close
+# checkpoint = true                # snapshot after each exchange so a crash is recoverable
+
 # Intent-primed boot recall: "next time, let's talk about X" survives the gap.
 # Off by default. Enabled, at session close the seam asks the local extraction
 # model ONE question — did the user explicitly state what to discuss next
