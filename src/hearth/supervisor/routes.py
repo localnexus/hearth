@@ -24,6 +24,12 @@ falling back to the supervised restart otherwise. The optional body key
 "apply" steers it: "auto" (default) | "live" (live or 409, never restarts) |
 "restart" (force the supervised-restart path).
 
+GET /admin/sessions lists the resume shelf (SessionMeta only — ids, names,
+counts, stamps; conversation content is never read out). POST /admin/bot/start
+and the switch's restart rider accept "memory": full | recall-only | off (the
+sitting's --memory posture); a live handoff never does — the mode is set at
+boot and rides a live switch unchanged.
+
 The operator can also declare watched externals and actuators:
 [serve.supervisor.watch.<name>] URLs join /admin/state's
 externals, and [serve.supervisor.actuators.<name>] commands — operator-fixed
@@ -43,7 +49,7 @@ import aiohttp
 from aiohttp import web
 from loguru import logger
 
-from .child import STOP_GRACE_S, TERM_GRACE_S, BotChild, _now_iso
+from .child import STOP_GRACE_S, TERM_GRACE_S, _MEMORY_MODES, BotChild, _now_iso
 from . import actuators as actuators_mod
 from . import switch as switch_mod
 
@@ -93,6 +99,7 @@ def build_mount(sup_cfg: dict):
             log_dir=config_loader.DATA_DIR / "logs" / "actuators",
         )
         app.router.add_get("/admin/state", _state)
+        app.router.add_get("/admin/sessions", _sessions)
         app.router.add_post("/admin/bot/start", _bot_start)
         app.router.add_post("/admin/bot/stop", _bot_stop)
         app.router.add_post("/admin/daemon/restart", _daemon_restart)
@@ -195,6 +202,44 @@ async def _actuator_run(request: web.Request) -> web.Response:
     return web.json_response({"name": name, **record})
 
 
+async def _sessions(request: web.Request) -> web.Response:
+    """Resume-picker source: SessionMeta ONLY — ids, names, counts, stamps.
+    Conversation content is never read out (the list_sessions contract), and
+    file paths are not exposed — session_id is the resume key. ?character=<name>
+    lists another companion's shelf (validated against the switch picker's
+    choices); absent, the ACTIVE companion's."""
+    from hearth.session import session_store  # lazy: mirrors the package gate idiom
+
+    character = request.query.get("character") or None
+    if character is not None:
+        known = {c["name"] for c in switch_mod.choices()["characters"]}
+        if character not in known:
+            return web.json_response({"error": f"unknown character {character!r}"},
+                                     status=404)
+    try:
+        sdir = session_store.companion_sessions_dir(character)
+    except Exception as exc:  # noqa: BLE001 — an unreadable active.toml must answer, not raise
+        return web.json_response(
+            {"error": f"cannot resolve the active companion ({type(exc).__name__})"},
+            status=409)
+    metas = session_store.list_sessions(sdir)
+    return web.json_response({
+        "character": character or sdir.parent.name,
+        "sessions": [{
+            "session_id": m.session_id,
+            "name": m.name,
+            "held": m.held,
+            "started": m.started,
+            "updated": m.updated,
+            "turns": m.turns,
+            "persona": m.persona,
+            "memory_mode": m.memory_mode,
+            "model": m.model,
+            "voice": m.voice,
+        } for m in metas],
+    })
+
+
 async def _bot_start(request: web.Request) -> web.Response:
     try:
         body = await request.json()
@@ -203,6 +248,7 @@ async def _bot_start(request: web.Request) -> web.Response:
     result = await request.app["bot_child"].start(
         mode=str(body.get("mode") or "new"),
         name=(str(body["name"]) if body.get("name") else None),
+        memory=(str(body["memory"]) if body.get("memory") else None),
     )
     return web.json_response(result, status=200 if result.get("ok") else 409)
 
@@ -265,6 +311,14 @@ async def _switch_post(request: web.Request) -> web.Response:
     if state["task"] is not None and not state["task"].done():
         return web.json_response({"ok": False, "error": "a switch is already in progress",
                                   "switch": state["last"]}, status=409)
+    # The optional memory-mode rider: validated HERE so a bad value writes
+    # nothing and never stops the bot only to fail the restart.
+    memory = str(body["memory"]) if body.get("memory") else None
+    if memory is not None and memory not in _MEMORY_MODES:
+        return web.json_response(
+            {"ok": False,
+             "errors": [f"unknown memory mode {memory!r} (full | recall-only | off)"]},
+            status=400)
     current, cur_err = switch_mod.read_selection()
     if cur_err:
         return web.json_response({"ok": False, "errors": [cur_err]}, status=409)
@@ -282,9 +336,18 @@ async def _switch_post(request: web.Request) -> web.Response:
     # every CHANGED field declares a live path; "apply" steers ("auto" default).
     apply_mode = str(body.get("apply") or "auto").lower()
     changed = switch_mod.changed_fields(wrote["previous"], merged)
-    live_eligible = bool(changed) and all(
+    # A memory-mode rider forces the restart path: the mode is the SITTING's
+    # posture (set at boot, rides a live switch unchanged) — only a fresh spawn
+    # can honor a different one.
+    live_eligible = bool(changed) and memory is None and all(
         k in switch_mod.live_capable_fields() for k in changed)
     live_result = None
+    if apply_mode == "live" and memory is not None:
+        return web.json_response(
+            {"ok": False,
+             "errors": ["a memory-mode change cannot ride a live switch — "
+                        'it needs a restart (repost with "apply": "auto")'],
+             "wrote": merged}, status=409)
     if apply_mode == "live" and not running:
         return web.json_response(
             {"ok": False, "errors": ['apply "live" needs a running bot'],
@@ -321,6 +384,7 @@ async def _switch_post(request: web.Request) -> web.Response:
             hold_name=(str(body["hold_name"]) if body.get("hold_name") else None),
             mode=str(body.get("mode") or "new"),
             name=(str(body["name"]) if body.get("name") else None),
+            memory=memory,
         ))
     logger.info("[supervisor] switch → {} (restart: {})",
                 {k: merged[k] for k in switch_mod.SELECTION_KEYS}, restart)
@@ -368,7 +432,8 @@ async def _try_live(app: web.Application, merged: dict, body: dict) -> dict:
         return {"ok": False, "errors": [f"live handoff failed ({type(exc).__name__})"]}
 
 
-async def _do_restart(app: web.Application, *, hold, hold_name, mode, name) -> None:
+async def _do_restart(app: web.Application, *, hold, hold_name, mode, name,
+                      memory=None) -> None:
     """stop (graceful ladder — the bot's own finalize/hold path runs) → start."""
     child = app["bot_child"]
     status = app["switch_state"]["last"]
@@ -377,7 +442,7 @@ async def _do_restart(app: web.Application, *, hold, hold_name, mode, name) -> N
         status.update(phase="failed", error=stopped.get("error") or "stop failed",
                       at=_now_iso())
         return
-    started = await child.start(mode=mode, name=name)
+    started = await child.start(mode=mode, name=name, memory=memory)
     if started.get("ok"):
         status.update(phase="done", error=None, at=_now_iso(), pid=started.get("pid"))
     else:

@@ -185,11 +185,16 @@ class _FakeChild:
         self.pid = None
         return {"ok": True, "escalated": False, "held": bool(hold)}
 
-    async def start(self, mode="new", name=None):
-        self.calls.append(("start", mode, name))
+    async def start(self, mode="new", name=None, memory=None):
+        # 3-tuple when no memory rider (keeps existing assertions), 4-tuple with.
+        self.calls.append(("start", mode, name) if memory is None
+                          else ("start", mode, name, memory))
         self.state = "running"
         self.pid = 4243
-        return {"ok": True, "pid": self.pid, "mode": mode}
+        result = {"ok": True, "pid": self.pid, "mode": mode}
+        if memory is not None:
+            result["memory"] = memory
+        return result
 
     def close(self):
         pass
@@ -304,6 +309,29 @@ class SwitchRoutes(_SwitchHarness):
         await self.app["switch_state"]["task"]
         self.assertEqual(self.child.calls,
                          [("stop", True, "keepme"), ("start", "resume", "keepme")])
+
+    async def test_post_memory_rider_forces_restart_and_forwards(self):
+        resp = await self.client.post("/admin/switch", headers=self.BEARER,
+                                      json={**GOOD, "memory": "recall-only"})
+        self.assertEqual(resp.status, 200, await resp.text())
+        self.assertEqual((await resp.json())["applied"], "restart")
+        await self.app["switch_state"]["task"]
+        self.assertEqual(self.child.calls,
+                         [("stop", False, None), ("start", "new", None, "recall-only")])
+
+    async def test_post_bad_memory_writes_nothing(self):
+        resp = await self.client.post("/admin/switch", headers=self.BEARER,
+                                      json={**GOOD, "memory": "bogus"})
+        self.assertEqual(resp.status, 400)
+        self.assertFalse(self.active.exists(), "a refused rider must write nothing")
+        self.assertEqual(self.child.calls, [])
+
+    async def test_post_apply_live_with_memory_refused(self):
+        resp = await self.client.post("/admin/switch", headers=self.BEARER,
+                                      json={**GOOD, "apply": "live", "memory": "off"})
+        self.assertEqual(resp.status, 409)
+        self.assertIn("restart", (await resp.json())["errors"][0])
+        self.assertEqual(self.child.calls, [], "no stop/start on a refused live+memory")
 
     async def test_post_bot_down_writes_without_restart(self):
         self.child.state = "down"

@@ -27,6 +27,7 @@ Run:  .venv/bin/python -m unittest tests.test_supervisor
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import stat
 import subprocess
@@ -151,6 +152,18 @@ class ChildLifecycle(unittest.IsolatedAsyncioTestCase):
             if ext.poll() is None:
                 ext.kill()
 
+    async def test_memory_mode_validated_and_forwarded(self):
+        c = _fake(GRACEFUL)
+        res = await c.start(memory="bogus")
+        self.assertFalse(res["ok"])
+        self.assertIn("memory mode", res["error"])
+        self.assertEqual(c.state, "down", "refused before any spawn")
+        res = await c.start(memory="recall-only")
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(res["memory"], "recall-only")
+        self.assertTrue((await c.stop())["ok"])
+        c.close()
+
     async def test_stop_when_nothing_runs(self):
         c = _fake(GRACEFUL)
         res = await c.stop()
@@ -235,6 +248,51 @@ class AdminRoutes(AioHTTPTestCase):
         self.assertTrue((await resp.json())["ok"])
         resp = await self.client.get("/admin/state", headers=self.BEARER)
         self.assertEqual((await resp.json())["bot"]["state"], "down")
+
+    async def test_start_memory_rider(self):
+        resp = await self.client.post("/admin/bot/start", headers=self.BEARER,
+                                      json={"memory": "bogus"})
+        self.assertEqual(resp.status, 409)
+        self.assertIn("memory mode", (await resp.json())["error"])
+        resp = await self.client.post("/admin/bot/start", headers=self.BEARER,
+                                      json={"memory": "off"})
+        self.assertEqual(resp.status, 200, await resp.text())
+        self.assertEqual((await resp.json())["memory"], "off")
+        await self.client.post("/admin/bot/stop", headers=self.BEARER, json={})
+
+    async def test_sessions_listing_metadata_only(self):
+        from unittest import mock
+
+        from hearth.config import config_loader
+        from hearth.session import session_store
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            char_dir = root / "characters" / "zz-sup-test"
+            char_dir.mkdir(parents=True)
+            (char_dir / "persona.md").write_text("test persona marker")
+            store = session_store.SessionStore(
+                session_id="session-x", model="m1", voice="v1",
+                prompt_sha256="d", sessions_dir=char_dir / "sessions",
+                character="zz-sup-test", memory_mode="recall-only")
+            store.snapshot([{"role": "user", "content": "SENSITIVE-CONTENT"}])
+            with mock.patch.object(config_loader, "_DATA", root):
+                resp = await self.client.get("/admin/sessions?character=zz-sup-test",
+                                             headers=self.BEARER)
+                self.assertEqual(resp.status, 200, await resp.text())
+                data = await resp.json()
+                self.assertEqual(data["character"], "zz-sup-test")
+                self.assertEqual(len(data["sessions"]), 1)
+                meta = data["sessions"][0]
+                self.assertEqual(meta["session_id"], "session-x")
+                self.assertEqual(meta["turns"], 1)
+                self.assertEqual(meta["memory_mode"], "recall-only")
+                self.assertNotIn("SENSITIVE",
+                                 json.dumps(data), "listing must never carry content")
+                self.assertNotIn("path", meta, "file paths are not exposed")
+                resp = await self.client.get("/admin/sessions?character=zz-nope",
+                                             headers=self.BEARER)
+                self.assertEqual(resp.status, 404)
 
     async def test_offline_root_page(self):
         resp = await self.client.get("/", headers=self.BEARER)

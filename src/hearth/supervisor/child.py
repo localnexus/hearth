@@ -2,7 +2,8 @@
 
 Process-level truth only: spawn in its own process group with
 EXPLICIT session args (the interactive session picker never engages without a
-TTY, so the API passes --new / --resume [name]); stop via the stop.sh
+TTY, so the API passes --new / --resume [name], plus --memory <mode> when the
+caller sets the sitting's memory posture); stop via the stop.sh
 escalation ladder — SIGINT → wait → SIGTERM → wait → SIGKILL — so the graceful
 finally path (TokenMeter summary, capture finalize, memory on_session_end,
 session finalize/hold) always gets its chance. Warm stop only: the LLM server
@@ -32,6 +33,9 @@ from loguru import logger
 
 # stop.sh parity: matches python / python3 / python3.12 running the bot module.
 _PATTERN = r"python[0-9.]* -m hearth\.pipeline\.bot"
+
+# The bot's own --memory choices (kept in lockstep with bot.py's argparse).
+_MEMORY_MODES = ("full", "recall-only", "off")
 
 # SIGINT → escalate wait. stop.sh waits ~6 s; the daemon is deliberately more
 # generous because memory consolidation (on_session_end) runs on this path.
@@ -103,7 +107,8 @@ class BotChild:
 
     # ── lifecycle ─────────────────────────────────────────────────────────────
 
-    async def start(self, mode: str = "new", name: Optional[str] = None) -> dict:
+    async def start(self, mode: str = "new", name: Optional[str] = None,
+                    memory: Optional[str] = None) -> dict:
         if self.state in ("starting", "running", "stopping"):
             return {"ok": False, "error": f"bot is {self.state}", "pid": self.pid}
         if await self.adopt():
@@ -115,6 +120,13 @@ class BotChild:
             args = ["--resume"] + ([name] if name else [])
         else:
             return {"ok": False, "error": f"unknown mode {mode!r} (new | resume)"}
+        if memory is not None:
+            # Forwarded even for an explicit "full": the flag wins over a resumed
+            # session's stamp (inherit_memory_mode); None = absent = inherit.
+            if memory not in _MEMORY_MODES:
+                return {"ok": False,
+                        "error": f"unknown memory mode {memory!r} (full | recall-only | off)"}
+            args += ["--memory", memory]
 
         env = dict(os.environ)
         env.update(self._env_overlay)  # values never logged
@@ -142,8 +154,12 @@ class BotChild:
         self.started_at = time.time()
         self.state = "running"
         self._reaper = asyncio.create_task(self._reap(self._proc))
-        logger.info("[supervisor] bot started (pid {}, mode {})", self.pid, mode)
-        return {"ok": True, "pid": self.pid, "mode": mode}
+        logger.info("[supervisor] bot started (pid {}, mode {}{})", self.pid, mode,
+                    f", memory {memory}" if memory else "")
+        result = {"ok": True, "pid": self.pid, "mode": mode}
+        if memory is not None:
+            result["memory"] = memory
+        return result
 
     async def stop(self, hold: bool = False, name: Optional[str] = None) -> dict:
         if self.state == "down" and not await self.adopt():
