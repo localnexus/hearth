@@ -41,14 +41,38 @@ Records are Hearth's own format and outlive any backend. Every backend must be
 rebuildable by replaying them:
 
 ```bash
-python -m hearth.memory records            # list a companion's records (metadata only)
-python -m hearth.memory rebuild            # replay all records into the active backend
+python -m hearth.memory records                 # list a companion's records (metadata only)
+python -m hearth.memory rebuild                 # replay all records into the active backend
+python -m hearth.memory forget --session <id>   # delete ONE conversation everywhere (previews first)
+python -m hearth.memory rebuild --clean --yes   # wipe the index, replay the surviving records
 ```
 
 That's also how you **switch backends mid-relationship** (edit memory.toml,
 rebuild — the new backend inherits the whole history instead of starting
-amnesiac), how an A/B between candidates stays fair, and how forgetting works:
-delete the record file, rebuild, and the session is gone from every layer.
+amnesiac) and how an A/B between candidates stays fair (each contender indexes
+the same records).
+
+## Forgetting one conversation
+
+There is an undo for a banked conversation. `forget --session <id>` (the id as
+`records` lists it) previews the record's date, name and digest — without
+`--yes` it touches nothing. Confirmed, it removes the session from both layers:
+
+* **the backend index** first: sessions are stored *keyed* (each is one
+  document in the bank), so a keyed backend cascade-deletes exactly that
+  session's facts on the spot. The floor needs no index step at all — it reads
+  the record files directly.
+* **the record file** second, and only if the index step succeeded — a failed
+  backend call keeps the record, so the verb is safely re-runnable. The
+  deletion is a true-delete: an archive step would retain what you asked gone.
+
+**Banks written before session-keyed storing** hold facts the server cannot
+attribute to a session. `forget` still deletes the record, says so plainly,
+and points at the fix: one `rebuild --clean` (wipe the index, replay the
+surviving records through the keyed store) migrates the whole bank — after
+that, every future `forget` is complete on its own. Granularity is the
+session, by design: "forget just this one sentence" is record *editing*, a
+different tool.
 
 ## Privacy — read this before enabling
 
@@ -58,6 +82,8 @@ transcript's own lifecycle (deleting a saved session does not touch the bank,
 and vice versa). They are 0600 files in a 0700
 directory under your data root, gitignored, local-only — the same sensitivity
 class as held sessions. Per-companion opt-out: map that companion to `"none"`.
+And the choice is revocable one conversation at a time — see
+[Forgetting one conversation](#forgetting-one-conversation).
 
 ## Per-session memory mode (`--memory`)
 
@@ -362,6 +388,12 @@ Run-verified 2026-08-29/30 against fully local models. Be aware:
   once: `HF_HUB_OFFLINE=0 ./start.sh`, then never again.
 * **Session-end latency**: extraction on a 30B-class local model takes a few
   seconds at stop; `retain_max_chars` bounds it.
+* **Keyed store**: each session is retained as one bank document
+  (`document_id` = the session id, replace-on-update, timestamped with the
+  session's real end). Re-ending a *resumed* session therefore updates its
+  document instead of re-extracting every fact additively, and per-session
+  `forget` can cascade-delete precisely. Banks indexed before this existed
+  need one `rebuild --clean` to become keyed.
 * **Recent-boost (the last-session slot)**: recall is a *single* top-K semantic
   query at session open, so a fact retained only minutes ago can rank below the
   cut and never reach the companion at the next boot. `recent_boost` (default

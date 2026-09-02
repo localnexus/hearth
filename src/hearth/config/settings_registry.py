@@ -387,7 +387,8 @@ REGISTRY: dict[str, FileEntry] = {e.kind: e for e in (
     FileEntry("memory", MemoryTable, "The memory-seam gate", "config/memory.toml",
               "gate", "operator", "place", "bot+facade", top_key="memory",
               note="Cross-session continuity per companion. Records are the truth; backends are "
-                   "derived indexes (delete a record, rerun rebuild, and the backend forgets too)."),
+                   "derived indexes (`forget --session <id>` deletes one conversation from both; "
+                   "see docs/memory.md)."),
     FileEntry("openclaw", OpenclawTable, "The OpenClaw-bridge gate", "config/openclaw.toml",
               "gate", "operator", "place", "bot", top_key="openclaw",
               note="One gate drives tool registration AND the {{openclaw_tools}} prompt slot, so "

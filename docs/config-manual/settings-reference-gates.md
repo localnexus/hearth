@@ -59,7 +59,7 @@ All keys below live under the `[serve]` table.
 
 *place scope · operator-owned · gate · restart: bot+facade*
 
-Cross-session continuity per companion. Records are the truth; backends are derived indexes (delete a record, rerun rebuild, and the backend forgets too).
+Cross-session continuity per companion. Records are the truth; backends are derived indexes (`forget --session <id>` deletes one conversation from both; see docs/memory.md).
 
 All keys below live under the `[memory]` table.
 
