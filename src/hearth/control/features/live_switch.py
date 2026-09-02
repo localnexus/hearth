@@ -1,4 +1,4 @@
-"""features/live_switch.py — the bot half of the live companion switch (ADR 007 stroke 3).
+"""features/live_switch.py — the bot half of the live companion switch.
 
 DROP-IN (the panel-extension seam): bot.py imports this module; registration is
 the import side effect, control.py takes zero edits. The routes expose the
@@ -8,13 +8,13 @@ a live switch intent that applies at the next turn boundary.
 
 The daemon's /admin/switch is still the one product door for switching: it
 validates + writes active.toml, then HANDS the bundle here when every changed
-piece has a live path (registry-routed), falling back to the stroke-2
-supervised restart otherwise. A direct POST here also converges active.toml —
+piece has a live path (registry-routed), falling back to a supervised
+restart otherwise. A direct POST here also converges active.toml —
 the apply path writes the selection iff the file doesn't already carry it.
 
 Wiring: bot.py main() calls ``attach(live_switcher)`` once the switcher's
 late-bound deps (engine_info, recorder) exist; until then the routes answer
-503. Responses carry names, states, and warnings only (POL-GL-039).
+503. Responses carry names, states, and warnings only — never secret values.
 
 API:
     GET  /switch/live  → {armed, pending, current, last, resident_models}

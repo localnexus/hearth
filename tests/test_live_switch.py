@@ -1,4 +1,4 @@
-"""test_live_switch.py — the LIVE companion switch (ADR 007 stroke 3).
+"""test_live_switch.py — the LIVE companion switch.
 
 Proves, on real files and real session stores (pipeline objects duck-typed —
 the module is deliberately pipecat-free, so this suite runs in the base venv):

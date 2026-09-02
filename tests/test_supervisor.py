@@ -1,4 +1,4 @@
-"""test_supervisor.py — the daemon face (ADR 007 stroke 1).
+"""test_supervisor.py — the daemon face (the supervisor core).
 
 Proves, on real subprocesses and a real aiohttp app:
   1. CHILD     — BotChild spawn/stop honors the escalation ladder (SIGINT
@@ -15,7 +15,7 @@ Proves, on real subprocesses and a real aiohttp app:
   4. ACTUATORS — declared commands run bounded (ok / non-zero / timeout-kill),
                  log to 0600 files in a 0700 dir, refuse concurrent runs and
                  unknown names; declared watch names join /admin/state's
-                 externals (stroke 4).
+                 externals.
 
 No test here spawns the real bot — every child is a stdlib fake with an
 injected argv/pattern, so the suite never touches the mic, models, or a

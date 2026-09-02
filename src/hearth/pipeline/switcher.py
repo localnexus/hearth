@@ -1,7 +1,7 @@
-"""pipeline/switcher.py — the LIVE companion switch (ADR 007 stroke 3).
+"""pipeline/switcher.py — the LIVE companion switch.
 
 The turn-boundary escalation of ``/admin/switch``: the SAME selection bundle
-that stroke 2 delivered as a supervised restart applies IN-PROCESS at the next
+that a supervised restart would deliver applies IN-PROCESS at the next
 turn boundary — persona + model-template re-compose, LLM model FIELD swap
 (resident models only, M4c), voice re-clone, and the **session-swap
 primitive**: finalize the current companion's session (memory record + store
@@ -22,10 +22,10 @@ Design constraints honored:
   * Heavy old-side work (memory record + consolidate + store finalize) runs in
     a background thread AFTER the swap — the new companion answers while the
     old session records. Failures degrade and log; they never break the loop.
-  * File discipline (ADR 007 §2): ``active.toml`` stays the durable selection
+  * File discipline: ``active.toml`` stays the durable selection
     record. On apply, the selection is written iff the file does not already
     carry it (the daemon path pre-writes; a direct panel arm converges here).
-  * POL-GL-039: every status/response carries names, states, and warnings
+  * Secret hygiene: every status/response carries names, states, and warnings
     only — never prompt text, message content, or tokens.
 
 Shutdown contract: bot.py's finally-path reads ``current_store`` /
@@ -174,7 +174,7 @@ class LiveSwitcher:
         if st is not None:
             st.snapshot(messages)
 
-    # ── status (names only — POL-GL-039) ─────────────────────────────────────
+    # ── status (names only, never secret values) ─────────────────────────────
 
     async def describe(self) -> dict:
         resident = await self._resident_probe()

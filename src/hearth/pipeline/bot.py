@@ -116,9 +116,9 @@ import hearth.control.features.manual  # noqa: F401
 import hearth.control.features.companion  # noqa: F401
 #   /switch/live     — the bot half of the LIVE companion switch (features/
 #                      live_switch.py): the supervisor's /admin/switch hands a
-#                      bundle here when every changed piece has a live path
-#                      (ADR 007 stroke 3); routes answer 503 until main()
-#                      attaches the pipeline's LiveSwitcher below.
+#                      bundle here when every changed piece has a live path;
+#                      routes answer 503 until main() attaches the pipeline's
+#                      LiveSwitcher below.
 import hearth.control.features.live_switch  # noqa: F401
 # Already pulled in by config_profiles; imported explicitly because bot core calls its
 # F9 startup scrub below (remove that call too if these feature imports ever go).
@@ -417,7 +417,7 @@ async def build_pipeline(
         baseline_voice=_CFG.ref_wav,
         baseline_vad=vad_baseline,
     )
-    # ADR 007 stroke 3 — the LIVE companion switch. Owns the CURRENT session's
+    # The LIVE companion switch. Owns the CURRENT session's
     # store/seam (the shutdown path reads them back from here so a live switch
     # is honored at stop), arms intents POSTed on /switch/live, and applies
     # them at the turn boundary via the processor below (which also rebases
@@ -538,7 +538,7 @@ async def main(
     # window. None → the panel falls back to `allotted` (advertised) — see control.py.
     engine_info["reliable"] = _CFG.reliable_context
 
-    # ADR 007 stroke 3: hand the switcher its late-bound deps and expose it on
+    # Hand the switcher its late-bound deps and expose it on
     # the panel — features/live_switch.py routes answer 503 until this attach.
     live_switcher.engine_info = engine_info
     live_switcher.recorder = recorder
@@ -555,7 +555,7 @@ async def main(
         while True:
             await asyncio.sleep(interval_s)
             # live_switcher.lm_model tracks the ACTIVE model id across live
-            # switches (ADR 007 stroke 3); it starts equal to LM_MODEL.
+            # switches; it starts equal to LM_MODEL.
             engine_info.update(await fetch_engine_info_for(
                 LM_PROVIDER, LM_BASE_URL, LM_API_TOKEN, live_switcher.lm_model))
 
@@ -605,7 +605,7 @@ async def main(
         # file. The seam writes the canonical memory record first, then lets the
         # backend index it; every step is contained inside on_session_end (a
         # memory failure degrades, never breaks shutdown — decider 6).
-        # A live companion switch (ADR 007 stroke 3) may have replaced the
+        # A live companion switch may have replaced the
         # store/seam mid-run — the switcher owns the CURRENT pair. Drain its
         # background old-session finalize first so the two never interleave.
         await live_switcher.drain(30.0)

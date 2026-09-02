@@ -29,7 +29,7 @@ async def _main() -> int:
 
     from . import app as serve_app
 
-    # [serve.supervisor] (ADR 007): the daemon face mounts ONLY here, in the
+    # [serve.supervisor]: the daemon face mounts ONLY here, in the
     # standalone process — gate off/absent => mount=None, facade byte-identical.
     mount = None
     sup_cfg = dict(cfg.get("supervisor") or {})

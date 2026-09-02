@@ -1,31 +1,31 @@
 """supervisor/routes.py — the /admin surface + the panel reverse-proxy.
 
 Mounted into the standalone facade app by serve/__main__.py iff
-[serve.supervisor] enabled = true (ADR 007 stroke 1). Every route rides the
-facade's existing bearer middleware (D7: one door; X-03 strict — header auth
-only this stroke; browser-friendly auth is a named later refinement).
-Responses carry names, states, and booleans only — never tokens, env values,
-or file contents (POL-GL-039 posture, as `hearth.config.check` prints keys).
+[serve.supervisor] enabled = true. Every route rides the facade's existing
+bearer middleware (one door; header auth only for now — browser-friendly auth
+is a named later refinement). Responses carry names, states, and booleans
+only — never tokens, env values, or file contents (the same posture as
+`hearth.config.check`, which prints keys and not values).
 
 The catch-all proxy is registered LAST so every real facade route wins; any
 other path forwards to the bot's control panel when the bot is up, and answers
 an honest "offline — start me" when it is down.
 
-Stroke 2 (ADR 007 §Execution 2) adds /admin/switch — switch-companion as ONE
+/admin/switch is switch-companion as ONE
 action: a registry-validated active.toml write + a supervised warm restart
 (the mechanics live in switch.py; the restart runs as a background task so
 the response returns before the SIGINT lands on the bot).
 
-Stroke 3 (ADR 007 §Execution 3) routes each switch: a registry-consulted
+The router then routes each switch: a registry-consulted
 (switch.live_capable_fields) LIVE handoff to the bot's /switch/live intent
 slot when the bot is up and every changed field has a live path — the reply
 then says applied: "live" and the bot swaps at its next turn boundary —
 falling back to the supervised restart otherwise. The optional body key
 "apply" steers it: "auto" (default) | "live" (live or 409, never restarts) |
-"restart" (force the stroke-2 path).
+"restart" (force the supervised-restart path).
 
-Stroke 4 (ADR 007 §Execution 4) enriches the watched externals and adds the
-declared actuators: [serve.supervisor.watch.<name>] URLs join /admin/state's
+The operator can also declare watched externals and actuators:
+[serve.supervisor.watch.<name>] URLs join /admin/state's
 externals, and [serve.supervisor.actuators.<name>] commands — operator-fixed
 argv, bounded, output to log files, never children — run via
 POST /admin/actuators/<name>/run (GET /admin/actuators lists them). Warm stop
@@ -143,7 +143,7 @@ async def _http_alive(session, url: str, headers: Optional[dict] = None):
 async def _state(request: web.Request) -> web.Response:
     app = request.app
     deps = app["deps"]
-    # Watched, never owned (ADR 007 §3): the built-ins plus every declared
+    # Watched, never owned: the built-ins plus every declared
     # [serve.supervisor.watch.<name>] URL, probed concurrently. A declared
     # name never shadows a built-in.
     probes = {
@@ -228,10 +228,10 @@ async def _daemon_restart(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, "restarting": True})
 
 
-# ── switch-companion, one action (ADR 007 stroke 2) ──────────────────────────
+# ── switch-companion, one action ─────────────────────────────────────────────
 
 async def _switch_get(request: web.Request) -> web.Response:
-    """Current selection + what the picker can offer. Names only (POL-GL-039)."""
+    """Current selection + what the picker can offer. Names only, never values."""
     app = request.app
     deps = app["deps"]
     current, err = switch_mod.read_selection()

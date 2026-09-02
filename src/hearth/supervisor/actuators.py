@@ -1,10 +1,10 @@
-"""supervisor/actuators.py — declared external actuators (ADR 007 stroke 4).
+"""supervisor/actuators.py — declared external actuators.
 
-The supervisor OWNS the voice bot and nothing else (§3): every other process
+The supervisor OWNS the voice bot and nothing else: every other process
 is a watched external. An actuator is the operator's own declared command —
 ``[serve.supervisor.actuators.<name>]`` in serve.toml — for the moments
 watching is not enough: free the LLM server's models (an explicit cold stop;
-warm stays the default everywhere, §4), bring StreamCore back after a reboot,
+warm stays the default everywhere), bring StreamCore back after a reboot,
 kick a stalled roster.
 
 Containment shape:
@@ -15,7 +15,7 @@ Containment shape:
     never becomes this daemon's child, and a timeout never reaps what it
     left running;
   * output goes to a 0600 log file (DATA/logs/actuators/<name>.log), never
-    into a response — a command may print what a route must not (POL-GL-039);
+    into a response — a command may print what a route must not;
     routes carry names, exit codes, and durations only;
   * one run per actuator at a time; a second press answers busy.
 """

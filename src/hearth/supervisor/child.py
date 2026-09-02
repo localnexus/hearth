@@ -1,6 +1,6 @@
 """supervisor/child.py — the voice bot as an owned child process.
 
-Process-level truth only (ADR 007 §4): spawn in its own process group with
+Process-level truth only: spawn in its own process group with
 EXPLICIT session args (the interactive session picker never engages without a
 TTY, so the API passes --new / --resume [name]); stop via the stop.sh
 escalation ladder — SIGINT → wait → SIGTERM → wait → SIGKILL — so the graceful
@@ -117,7 +117,7 @@ class BotChild:
             return {"ok": False, "error": f"unknown mode {mode!r} (new | resume)"}
 
         env = dict(os.environ)
-        env.update(self._env_overlay)  # values never logged (POL-GL-039)
+        env.update(self._env_overlay)  # values never logged
         stdout = asyncio.subprocess.DEVNULL
         if self._log_path is not None:
             self._log_path.parent.mkdir(parents=True, exist_ok=True)

@@ -181,7 +181,7 @@
      (i.e. the supervisor daemon is configured, the panel binds loopback, and the
      standalone facade is up). The switch itself runs in the DAEMON (one door):
      a validated active.toml write, then either a LIVE handoff to this bot's
-     /switch/live intent slot (ADR 007 stroke 3 — applies at your next words,
+     /switch/live intent slot (applies at your next words,
      no restart) or a supervised bot restart; in the restart case this page
      dies with the bot and comes back on its own. -->
 <div id="switcher" class="hidden">
@@ -722,7 +722,7 @@ initManual();
 
 // ── Companion switcher (self-gating: hidden unless GET /companion answers) ────
 // The POST is relayed by features/companion.py to the supervisor daemon, which
-// validates + writes active.toml and then ROUTES it (ADR 007 stroke 3): a LIVE
+// validates + writes active.toml and then ROUTES it: a LIVE
 // handoff to this bot's /switch/live intent slot when every changed piece has a
 // live path (we then poll /switch/live for the applied moment), otherwise a
 // restart in the background (this page goes down with the bot; we watch the
@@ -784,7 +784,7 @@ async function initSwitcher() {
       }
     } catch (e) { /* bot may already be going down mid-reply — treat as a restart underway */ }
     if (j && j.applied === 'live') {
-      // LIVE path (stroke 3): the bot stays up; the swap lands at the next
+      // LIVE path: the bot stays up; the swap lands at the next
       // turn boundary — poll our own /switch/live for the applied moment.
       $('sw-state').textContent = 'armed — applies the moment you next speak…';
       const lt0 = Date.now();

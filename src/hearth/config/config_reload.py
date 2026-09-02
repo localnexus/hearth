@@ -18,7 +18,7 @@ Tier map:
                    profile-carried; baseline = config/vad.toml [live])
     HIDEABLE/voice ref_wav                                  → tts.set_ref_wav()  (~0.2s)
 The EXPENSIVE tier (TTS engine swap, STT model, audio devices) stays restart.
-ADR 007 stroke 3: the processor also carries the LIVE companion-switch intent
+The processor also carries the LIVE companion-switch intent
 slot (pipeline/switcher.py) — applied at the same turn boundary, BEFORE the
 poll, with the reloader REBASED to the new companion's baselines; the LLM
 model FIELD swap rides it (resident models only, M4c).
@@ -332,9 +332,9 @@ class ConfigReloader:
 
     def rebase(self, *, model_name: str, baseline_llm: dict, baseline_voice: str,
                applied_voice: str | None = None) -> None:
-        """Re-seed baselines + applied state after a LIVE companion switch
-        (ADR 007 stroke 3). Without this the next overrides poll would diff
-        against the OLD companion's baselines and fight the switch. TTS/VAD
+        """Re-seed baselines + applied state after a LIVE companion switch.
+        Without this the next overrides poll would diff against the OLD
+        companion's baselines and fight the switch. TTS/VAD
         baselines survive untouched (engine + room don't change with the
         companion). ``applied_voice`` records reality when the re-clone failed
         (baseline = target, applied = what's actually loaded)."""
@@ -368,14 +368,14 @@ class ConfigReloadProcessor(FrameProcessor):
         self._reloader = reloader
         self._tts = tts
         self._vad_analyzer = vad_analyzer  # None ⇒ vad deltas are logged and skipped
-        self._switcher = switcher  # None ⇒ no live-switch intent slot (stroke 3)
+        self._switcher = switcher  # None ⇒ no live-switch intent slot
 
     async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
 
         if isinstance(frame, LLMContextFrame):
-            # ADR 007 stroke 3 — the turn-boundary seam generalized to an
-            # intent slot: a pending LIVE companion switch applies FIRST
+            # The turn-boundary seam generalized to an intent slot: a
+            # pending LIVE companion switch applies FIRST
             # (context/session/voice swapped, reloader rebased), so the poll
             # below diffs against the NEW baselines; its settings frame pushes
             # ahead of the context frame like every other turn-boundary delta.

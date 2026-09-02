@@ -323,7 +323,7 @@ def compose_persona(character: str, persona: str | None = None) -> str:
     The file is authored as two labelled sections ('## IDENTITY', '## SOUL')
     with HTML-comment guidance. The composed persona is the IDENTITY body plus a
     blank line plus the SOUL body — reproducing the original prompt's paragraph
-    shape (identity paragraph first) byte-for-byte (plan §6, wiring-doc §4).
+    shape (identity paragraph first) byte-for-byte.
     """
     path = persona_path(character, persona)
     text = _strip_comments(_read_text(path))
@@ -449,7 +449,7 @@ def load_serve_config() -> dict | None:
     absent optional file is NOT an error (facade off); malformed ⇒ ConfigError
     naming it. Unlike OpenClaw the facade is strictly I/O-edge — no prompt slot,
     no tool registration — so this gate never participates in prompt composition
-    or the drift fingerprint (M8 §modular-gate: off = byte-identical appliance).
+    or the drift fingerprint (gate off = byte-identical appliance).
 
     token_source / lm_token_source are PATHS to secrets, never secrets;
     relative paths resolve against the data root (HEARTH_DATA). Env wins: SERVE_TOKEN for the
@@ -533,7 +533,7 @@ def compose_with_persona(model_name: str, persona_text: str, *, datetime_str: st
     is always the wrapper and ONLY the {{persona}} slot is substituted, a live
     persona override can never drop those hard rules: they are pinned by
     construction. (This is why the live [llm] override key is `persona`, not a raw
-    `system_instruction` — config_reload §persona-slot.)
+    `system_instruction` — see config_reload's persona-slot handling.)
     """
     tpl_path = _lookup(f"config/models/{model_name}/system-prompt-template.md")
     template = _strip_comments(_read_text(tpl_path)).strip()

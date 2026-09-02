@@ -40,7 +40,7 @@ from pipecat.adapters.schemas.tools_schema import ToolsSchema
 
 from hearth.config import config_loader
 
-# The completion contract (DESIGN-bridge §completion-contract): the HTTP response
+# The completion contract: the HTTP response
 # text = the spoken summary; the channel post carries the artifacts. The `hands`
 # workspace charter (AGENTS.md) states the same rules — this wrapper is the
 # per-dispatch reminder, kept terse because it rides every request.

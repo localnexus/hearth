@@ -1,4 +1,4 @@
-"""test_switch.py — switch-companion, one action (ADR 007 stroke 2).
+"""test_switch.py — switch-companion, one action.
 
 Proves, on real files and a real aiohttp app:
   1. HELPERS  — merge/validate/write against an on-disk fixture install:
@@ -20,7 +20,7 @@ Proves, on real files and a real aiohttp app:
 The bot child here is a FAKE (calls recorded) — child process semantics are
 test_supervisor.py's job; this file owns the switch orchestration contract.
 
-  4. ROUTING (stroke 3) — the registry-consulted live handoff: a switch whose
+  4. ROUTING — the registry-consulted live handoff: a switch whose
      every changed field has a live path goes to the bot's /switch/live (a
      fake panel server here); a refusal or unreachable panel falls back to
      the supervised restart; "apply" steers ("live" never restarts).

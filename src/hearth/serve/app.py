@@ -623,7 +623,7 @@ async def start(active, cfg: dict, lm_base_url: str, lm_token: str,
     )
     app = build_app(deps)
     if mount is not None:
-        mount(app)  # [serve.supervisor] — the daemon face (ADR 007); joins BEFORE setup
+        mount(app)  # [serve.supervisor] — the daemon face; joins BEFORE setup
     runner = web.AppRunner(app)
     await runner.setup()
     host, port = str(cfg["host"]), int(cfg["port"])

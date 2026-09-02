@@ -21,7 +21,7 @@ import signal
 import sys
 import threading
 
-# Egress kill switch #2 (survey §5b): litellm otherwise fetches its model-cost
+# Egress kill switch #2: litellm otherwise fetches its model-cost
 # map from raw.githubusercontent.com at import. The parent usually exports this
 # already; setdefault keeps the runner safe when launched by hand.
 os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")

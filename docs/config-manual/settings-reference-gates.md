@@ -6,7 +6,7 @@
 
 Companion page: [settings-reference.md](settings-reference.md). **Live path** = how a setting hot-applies at the next turn
 boundary: a `config/overrides.toml` dotted key (the panel writes that layer), or the supervisor's
-*switch intent* for the selection fields (the COMPANION button / `/admin/switch`, ADR 007 stroke 3).
+*switch intent* for the selection fields (the COMPANION button / `/admin/switch`).
 **Restart** (in each
 section header) = what must relaunch for a persisted edit to land: *bot* = the desk pipeline
 (`start.sh`) · *facade* = the serve facade (kickstart) · *none* = applies live. Strict validation
@@ -37,7 +37,7 @@ All keys below live under the `[serve]` table.
 | `transcript_dir` | str | `transcripts` |  | — | relative ⇒ inside each companion's own directory; absolute used as-is |
 | `identity` | table | — |  | — | fixed facade identity instead of the active.toml snapshot |
 | `characters` | map(str → str) | — |  | — | roster a client may declare: character name → its voice bundle (/v1/models) |
-| `supervisor` | table | — |  | — | the daemon face (ADR 007): the standalone facade owns the voice bot as a child; absent/off ⇒ byte-identical |
+| `supervisor` | table | — |  | — | the daemon face: the standalone facade owns the voice bot as a child; absent/off ⇒ byte-identical |
 | `identity.character` | str | **required** |  | — | pinned facade character (independent of active.toml) |
 | `identity.voice` | str | **required** |  | — | pinned voice bundle for that character |
 | `identity.tts` | table | — |  | — | pinned synth knobs; win over client body and live layer |
@@ -52,8 +52,8 @@ All keys below live under the `[serve]` table.
 | `supervisor.stop_grace_s` | float | `15.0` | 0.0– | — | seconds after SIGINT before escalating (memory-consolidation headroom) |
 | `supervisor.term_grace_s` | float | `5.0` | 0.0– | — | seconds after SIGTERM before SIGKILL |
 | `supervisor.env` | map(str → str) | — |  | — | extra child env for the spawned bot (e.g. LM_PROVIDER) — values never printed |
-| `supervisor.watch` | tables | — |  | — | extra watched externals probed on /admin/state (ADR 007 §3 — watched, never owned) |
-| `supervisor.actuators` | tables | — |  | — | declared external actuators (stroke 4): operator-fixed commands behind the door, never children |
+| `supervisor.watch` | tables | — |  | — | extra watched externals probed on /admin/state (watched, never owned) |
+| `supervisor.actuators` | tables | — |  | — | declared external actuators: operator-fixed commands behind the door, never children |
 
 ## `config/memory.toml` — The memory-seam gate
 

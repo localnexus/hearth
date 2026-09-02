@@ -292,7 +292,7 @@ python -m hearth.memory rebuild --character <name>
 
 ### Hindsight notes
 
-Run-verified (survey §5b, 2026-08-29/30) against fully local models. Be aware:
+Run-verified 2026-08-29/30 against fully local models. Be aware:
 
 * **Embedded ≠ free**: it starts a bundled PostgreSQL (~15 processes) on fixed
   port **5432** with data under `~/.pg0`. One instance per machine — a second

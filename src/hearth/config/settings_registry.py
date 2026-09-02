@@ -236,8 +236,8 @@ class _ServeSupervisor(_Cfg):
     stop_grace_s: float = Field(15.0, gt=0.0, description="seconds after SIGINT before escalating (memory-consolidation headroom)")
     term_grace_s: float = Field(5.0, gt=0.0, description="seconds after SIGTERM before SIGKILL")
     env: dict[str, str] = Field(default_factory=dict, description="extra child env for the spawned bot (e.g. LM_PROVIDER) — values never printed")
-    watch: dict[str, _SupWatch] = Field(default_factory=dict, description="extra watched externals probed on /admin/state (ADR 007 §3 — watched, never owned)")
-    actuators: dict[str, _SupActuator] = Field(default_factory=dict, description="declared external actuators (stroke 4): operator-fixed commands behind the door, never children")
+    watch: dict[str, _SupWatch] = Field(default_factory=dict, description="extra watched externals probed on /admin/state (watched, never owned)")
+    actuators: dict[str, _SupActuator] = Field(default_factory=dict, description="declared external actuators: operator-fixed commands behind the door, never children")
 
 
 class ServeTable(_Cfg):
@@ -258,7 +258,7 @@ class ServeTable(_Cfg):
     characters: dict[str, str] = Field(default_factory=dict,
                                        description="roster a client may declare: character name → its voice bundle (/v1/models)")
     supervisor: Optional[_ServeSupervisor] = Field(
-        None, description="the daemon face (ADR 007): the standalone facade owns the voice bot as a child; absent/off ⇒ byte-identical")
+        None, description="the daemon face: the standalone facade owns the voice bot as a child; absent/off ⇒ byte-identical")
 
 
 # ── config/memory.toml [memory] (the memory seam gate) ───────────────────────
@@ -345,7 +345,7 @@ class FileEntry:
     path: str          # human-readable location pattern (data root first)
     role: str          # selection | load facts | descriptor | live overrides | calibration | gate | preset
     owner: str         # operator | panel | shipped
-    layer: str         # place | model | identity  (ADR 005 scopes)
+    layer: str         # place | model | identity  (companion data-root scopes)
     restart: str       # what must relaunch for a persisted edit to land: none | bot | facade | bot+facade
     top_key: str | None = None  # gate files: the single top-level table
     note: str = ""
@@ -613,7 +613,7 @@ def _render_page(name: str) -> str:
         "",
         f"Companion page: [{other}]({other}). **Live path** = how a setting hot-applies at the next turn",
         "boundary: a `config/overrides.toml` dotted key (the panel writes that layer), or the supervisor's",
-        "*switch intent* for the selection fields (the COMPANION button / `/admin/switch`, ADR 007 stroke 3).",
+        "*switch intent* for the selection fields (the COMPANION button / `/admin/switch`).",
         "**Restart** (in each",
         "section header) = what must relaunch for a persisted edit to land: *bot* = the desk pipeline",
         "(`start.sh`) · *facade* = the serve facade (kickstart) · *none* = applies live. Strict validation",

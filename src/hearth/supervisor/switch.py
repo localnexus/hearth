@@ -1,15 +1,15 @@
-"""supervisor/switch.py — switch-companion as ONE action (ADR 007 stroke 2).
+"""supervisor/switch.py — switch-companion as ONE action.
 
 POST /admin/switch = a registry-validated `config/active.toml` write + a
 supervised bot restart: today's ritual (edit the selection → stop → relaunch)
 performed by the daemon, so the user presses one button instead of following
-a runbook. Stroke 3 escalates: when every changed field has a declared live
-path (live_capable_fields below) and the bot is up, the daemon hands the same
-bundle to the bot's intent slot (/switch/live) and it applies at the next turn
-boundary — no restart; anything heavier (or a refused/unreachable live arm)
-falls back to the stroke-2 supervised restart. Same button either way.
+a runbook. The live path escalates it: when every changed field has a declared
+live path (live_capable_fields below) and the bot is up, the daemon hands the
+same bundle to the bot's intent slot (/switch/live) and it applies at the next
+turn boundary — no restart; anything heavier (or a refused/unreachable live
+arm) falls back to the supervised restart. Same button either way.
 
-File discipline (ADR 007 §2): active.toml stays the durable selection record
+File discipline: active.toml stays the durable selection record
 and the cold-boot truth. The write is atomic (tmp → rename), keeps unknown
 scalar keys a hand-edit may have added, and leaves the previous file beside it
 as `active.toml.prev` (rollback = one rename). Hand-edit + restart keeps
@@ -206,12 +206,12 @@ def choices() -> dict:
             "model_ids": model_ids}
 
 
-# ── the router's registry consult (ADR 007 stroke 3) ─────────────────────────
+# ── the router's registry consult ────────────────────────────────────────────
 
 def live_capable_fields() -> frozenset:
     """Selection fields with a DECLARED live path — the x-hearth.hot_via extra
-    on the registry's ActiveFile fields. The router's mechanical lookup
-    (ADR 007 §2): a switch whose every changed field appears here may be
+    on the registry's ActiveFile fields. The router's mechanical lookup:
+    a switch whose every changed field appears here may be
     handed to the running bot's intent slot; anything else restarts."""
     out = set()
     for name, field in sr.ActiveFile.model_fields.items():

@@ -6,7 +6,7 @@
 
 Companion page: [settings-reference-gates.md](settings-reference-gates.md). **Live path** = how a setting hot-applies at the next turn
 boundary: a `config/overrides.toml` dotted key (the panel writes that layer), or the supervisor's
-*switch intent* for the selection fields (the COMPANION button / `/admin/switch`, ADR 007 stroke 3).
+*switch intent* for the selection fields (the COMPANION button / `/admin/switch`).
 **Restart** (in each
 section header) = what must relaunch for a persisted edit to land: *bot* = the desk pipeline
 (`start.sh`) · *facade* = the serve facade (kickstart) · *none* = applies live. Strict validation

@@ -1,6 +1,6 @@
 """memory_prefetch.py — voice-lane per-turn targeted recall (lane (b), voice stroke).
 
-Prefetch-behind (DESIGN-lane-b-per-turn-recall.md §D-A): after the user's turn N
+Prefetch-behind: after the user's turn N
 is transcribed, a targeted recall runs in the BACKGROUND, off the event loop; its
 extras are injected into the system instruction before turn N+1. Zero added
 latency, a one-turn lag — "ask, she checks, next turn she knows". Synchronous

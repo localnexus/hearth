@@ -61,7 +61,7 @@ from loguru import logger
 
 from .backend import MemoryItem, SessionRecord
 
-# Egress kill switch #2 (survey §5b) — for embedded mode / hand-run CLIs.
+# Egress kill switch #2 — for embedded mode / hand-run CLIs.
 os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 
 _MAX_RETAIN_CHARS_DEFAULT = 6000

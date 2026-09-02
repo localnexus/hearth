@@ -1,6 +1,6 @@
 """test_memory_prefetch.py — the voice-lane per-turn recall processor (lane (b)).
 
-Prefetch-behind (DESIGN-lane-b-per-turn-recall.md §D-A): recall runs in the
+Prefetch-behind: recall runs in the
 background after turn N, its extras injected before turn N+1 — zero added
 latency, one-turn lag. Proves:
 

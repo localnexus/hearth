@@ -63,7 +63,7 @@ transcript_dir = "transcripts"
 #[serve.characters]
 # example = "default"
 
-# ── The daemon face (ADR 007) — off by default ────────────────────────────────
+# ── The daemon face (the supervisor design) — off by default ──────────────────
 # With enabled = true the STANDALONE facade (`python -m hearth.serve`) also
 # supervises the voice bot: POST /admin/bot/start|stop, GET /admin/state, POST
 # /admin/daemon/restart, POST /admin/switch (switch companion: a registry-

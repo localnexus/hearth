@@ -2,26 +2,27 @@
 
 DROP-IN (the panel-extension seam): bot.py imports this module; registration is
 the import side effect, control.py takes zero edits. The switch itself runs in
-the SUPERVISOR DAEMON (ADR 007 stroke 2 — one door, one owner of the restart):
-these routes only RELAY the panel's clicks to the standalone facade's /admin
-surface, presenting the facade bearer server-side so the browser never holds it.
+the SUPERVISOR DAEMON (one door, one owner of the restart): these routes only
+RELAY the panel's clicks to the standalone facade's /admin surface, presenting
+the facade bearer server-side so the browser never holds it.
 
 Registration self-gates to the safe topology, otherwise the contributor
 returns an EMPTY route table and the page's switcher section stays hidden:
   • config/serve.toml [serve] enabled AND [serve.supervisor] enabled = true
     (no daemon configured ⇒ nothing to relay to), and
   • the panel binds loopback (WEB_HOST default) — the relay must never widen a
-    LAN-exposed panel into an unauthenticated control door (X-03: non-localhost
+    LAN-exposed panel into an unauthenticated control door (non-localhost
     surfaces present the bearer at :65001 themselves).
 
-Secrets (POL-GL-039): the bearer is resolved from serve.toml's token_source
-PATH (or SERVE_TOKEN env) via the facade's own resolver, held in a closure,
-and never logged, echoed, or returned in any response.
+Secret hygiene — names and states only, never values: the bearer is resolved
+from serve.toml's token_source PATH (or SERVE_TOKEN env) via the facade's own
+resolver, held in a closure, and never logged, echoed, or returned in any
+response.
 
 API (mirrors the daemon, names only):
     GET  /companion         → GET  <daemon>/admin/switch   (current + choices + bot state)
     POST /companion/switch  → POST <daemon>/admin/switch   (allowlisted body keys;
-                              "apply" steers live vs restart — ADR 007 stroke 3)
+                              "apply" steers live vs restart)
 Daemon down ⇒ 502 {"error": "supervisor unreachable"} — the page hides itself.
 """
 
