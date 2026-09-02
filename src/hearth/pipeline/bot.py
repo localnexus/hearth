@@ -120,6 +120,11 @@ import hearth.control.features.companion  # noqa: F401
 #                      routes answer 503 until main() attaches the pipeline's
 #                      LiveSwitcher below.
 import hearth.control.features.live_switch  # noqa: F401
+#   /memory          — read-only memory status tap (features/memory_status.py):
+#                      mode + the current seam's backend/gates/recall attribution;
+#                      DISPLAY only per the write-layer rule (c) — answers 503
+#                      until main() attaches the switcher below.
+import hearth.control.features.memory_status  # noqa: F401
 # Already pulled in by config_profiles; imported explicitly because bot core calls its
 # startup override-scrub below (remove that call too if these feature imports ever go).
 import hearth.control.features.config_knobs  # noqa: F401
@@ -565,6 +570,12 @@ async def main(
     live_switcher.engine_info = engine_info
     live_switcher.recorder = recorder
     hearth.control.features.live_switch.attach(live_switcher)
+    # The memory status tap reads the switcher's CURRENT seam per request (a
+    # live switch is honored); mode is the sitting's effective posture, same
+    # value the Misc line shows. Attached even seamless — the route reports
+    # {attached: false} honestly rather than 503ing forever.
+    hearth.control.features.memory_status.attach(
+        live_switcher, engine_info["memory_mode"])
 
     # LM Studio serves several clients, so Hearth's model can be
     # swapped/unloaded mid-run — a startup-frozen Engine line would then show

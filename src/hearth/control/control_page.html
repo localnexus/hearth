@@ -138,6 +138,7 @@
 <div id="s-engine">Engine | …</div>
 <div id="s-agent">Agent  | …</div>
 <div id="s-misc">Misc   | …</div>
+<div id="s-memory" class="hidden">Memory | …</div>
 </div>
 <div id="leak" class="hidden">⚠ reasoning tokens leaked</div>
 <div id="ctxwarn" class="hidden">⚠ approaching reliable context line — consider wrapping or consolidating this session</div>
@@ -398,10 +399,37 @@ async function pollUsage() {
     $('leak').classList.toggle('hidden', !u.leak);
   } catch(e) { /* transient; next tick retries */ }
 }
+// Memory status line (read-only tap): rides /memory (features/memory_status).
+// Self-gating like the knobs section — hidden unless the route answers with an
+// attached seam (the sitting's MODE alone already shows on the Misc line).
+// Attribution names the backend that ACTUALLY answered: a floor fallback shows
+// as "floor", never as the primary.
+async function pollMemory() {
+  const el = $('s-memory');
+  try {
+    const r = await fetch('/memory');
+    if (!r.ok) throw 0;
+    const m = await r.json();
+    if (!m.ok || !m.attached || !m.seam) { el.classList.add('hidden'); return; }
+    const s = m.seam;
+    const pt = s.per_turn || {};
+    const ptTxt = pt.chat ? ('chat' + (pt.voice ? ' + voice' : '')) : 'off';
+    const open = s.open_recall
+      ? `${fmt(s.open_recall.count)} at open via ${s.open_recall.source || DASH}` : DASH;
+    const turn = s.turn_recall
+      ? `${fmt(s.turn_recall.extras)} extra(s) via ${s.turn_recall.source || DASH}` : DASH;
+    el.textContent =
+      `Memory | ${s.backend || DASH}${s.retain === false ? ' (recall-only)' : ''} · per-turn: ${ptTxt} · recalled: ${open} · last turn: ${turn}`;
+    el.classList.remove('hidden');
+  } catch(e) { el.classList.add('hidden'); }
+}
+
 loadEngine();  // paint immediately on load
 setInterval(loadEngine, 60000);  // slow re-fetch — matches bot.py's engine re-poll cadence
 setInterval(pollUsage, 1500);
 pollUsage();  // paint immediately on load
+setInterval(pollMemory, 5000);  // per-turn attribution moves at conversation pace
+pollMemory();
 
 // ── L2 hot knobs ────────────────────────────────────────────────────────────────
 // Self-gating: the whole section stays hidden unless GET /config answers (i.e.

@@ -1917,5 +1917,78 @@ class TestSessionMode(unittest.TestCase):
             self.assertFalse(slot.is_file())
 
 
+class TestSeamStatus(unittest.TestCase):
+    """The panel's read-only memory tap (surfacing prelim 3): status() is
+    JSON-safe, carries names/counts/gates only — never message content — and
+    attributes each recall to the backend that ACTUALLY answered."""
+
+    CUE = TestPerTurnRecall.CUE
+
+    def _seam(self, backend, tmp: Path, **per_turn) -> MemorySeam:
+        cfg = {"recall_limit": 3,
+               "per_turn": {"enabled": True, "limit": 3, "min_cue_chars": 12,
+                            **per_turn}}
+        seam = MemorySeam("testchar", "default", backend, cfg)
+        seam._floor = FloorBackend(tmp / "floor")
+        return seam
+
+    def test_status_is_json_safe_and_content_free(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            backend = _CueBackend()
+            seam = self._seam(backend, Path(tmp), voice=True)
+            seam.augment("BASE")
+            seam.augment_turn("BASE", self.CUE)
+            s = seam.status()
+            payload = json.dumps(s)               # JSON-safe end to end
+            self.assertEqual(s["backend"], backend.name)
+            self.assertEqual(s["companion"], "testchar")
+            self.assertTrue(s["retain"])
+            self.assertEqual(s["per_turn"], {"chat": True, "voice": True, "limit": 3})
+            self.assertEqual(s["open_recall"]["source"], backend.name)
+            self.assertEqual(s["turn_recall"]["source"], backend.name)
+            self.assertGreater(s["turn_recall"]["extras"], 0)
+            # Discipline: recalled TEXT never rides the status payload.
+            self.assertNotIn("vanilla", payload)
+            self.assertNotIn("Knight Rider", payload)
+            self.assertNotIn(self.CUE, payload)
+
+    def test_voice_gate_reports_effective_not_raw(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            # voice=true but enabled=false ⇒ the voice lane never lights
+            # (bot.py requires BOTH) — status must say so.
+            seam = self._seam(_CueBackend(), Path(tmp), enabled=False, voice=True)
+            s = seam.status()
+            self.assertFalse(s["per_turn"]["chat"])
+            self.assertFalse(s["per_turn"]["voice"])
+
+    def test_open_recall_attribution_names_the_answering_rung(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            records_mod.write_record(_record("s1", "2026-08-29T09:00:00"), d)
+            seam = MemorySeam("testchar", "default", _BoomBackend(), {"recall_limit": 3})
+            seam._floor = FloorBackend(d)
+            self.assertIsNone(seam.status()["open_recall"])   # nothing ran yet
+            seam.recall()                       # primary raises → floor answers
+            got = seam.status()["open_recall"]
+            self.assertEqual(got["source"], "floor")
+            self.assertEqual(got["count"], 1)
+            self.assertIn("at", got)
+
+    def test_turn_recall_attribution_and_guard_skip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            backend = _CueBackend()
+            seam = self._seam(backend, Path(tmp))
+            seam.augment("BASE")
+            self.assertIsNone(seam.status()["turn_recall"])   # no turn yet
+            backend.fail_on_cue = True
+            seam.augment_turn("BASE", self.CUE)  # primary fails → floor ([] here)
+            got = seam.status()["turn_recall"]
+            self.assertEqual(got["source"], "floor")          # never the primary
+            self.assertEqual(got["extras"], 0)
+            # A guard-skipped turn (short cue) leaves the last record standing.
+            seam.augment_turn("BASE", "hi")
+            self.assertEqual(seam.status()["turn_recall"], got)
+
+
 if __name__ == "__main__":
     unittest.main()

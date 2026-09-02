@@ -127,14 +127,24 @@ class MemorySeam:
         # Disabled ⇒ an existing slot is IGNORED, not deleted (re-enabling
         # must not have silently thrown the plan away).
         self._intent = self._read_intent() if self.intent_enabled else None
+        # Status-tap state (the panel's read-only memory line): attribution of
+        # the last recalls — counts + the backend that ACTUALLY answered (a
+        # floor fallback must never masquerade as the primary). Set by
+        # recall() / augment_turn(); names, counts, timestamps only.
+        self._open_recall: Optional[dict] = None
+        self._turn_recall: Optional[dict] = None
 
     # ── recall (session start) ───────────────────────────────────────────────
 
     def recall(self) -> list[MemoryItem]:
-        """Contained recall: backend → floor → empty."""
+        """Contained recall: backend → floor → empty. Each rung records its
+        attribution for the status tap — count + the source that answered."""
         query = self._recall_query()
         try:
-            return self.backend.recall(self.companion, query, self.recall_limit)
+            items = self.backend.recall(self.companion, query, self.recall_limit)
+            self._open_recall = {"count": len(items), "source": self.backend.name,
+                                 "at": _now_iso()}
+            return items
         except Exception as exc:  # noqa: BLE001 — memory must never break startup
             logger.warning(
                 "[memory] {} recall failed ({}) — degrading to floor",
@@ -142,9 +152,13 @@ class MemorySeam:
             )
         if self._floor is not self.backend:
             try:
-                return self._floor.recall(self.companion, query, self.recall_limit)
+                items = self._floor.recall(self.companion, query, self.recall_limit)
+                self._open_recall = {"count": len(items), "source": self._floor.name,
+                                     "at": _now_iso()}
+                return items
             except Exception as exc:  # noqa: BLE001
                 logger.warning("[memory] floor recall failed ({}) — no recall", type(exc).__name__)
+        self._open_recall = {"count": 0, "source": "", "at": _now_iso()}
         return []
 
     def augment(self, system_instruction: str) -> str:
@@ -238,7 +252,35 @@ class MemorySeam:
             if extras:
                 logger.info("[memory] turn recall surfaced {} extra(s) via {}",
                             len(extras), source)
+            # Status tap: every ACTUAL recall is recorded, zero-extra ones
+            # included (honest); guard-skipped turns leave the last one standing.
+            self._turn_recall = {"extras": len(extras), "source": source,
+                                 "at": _now_iso()}
         return self._compose(system_instruction, extras)
+
+    def status(self) -> dict:
+        """JSON-safe seam status for the panel's read-only memory line
+        (:65000 DISPLAYS memory state; every memory write lives behind the
+        :65001 facade — the write-layer rule, signed (c) 2026-09-02).
+
+        Names, counts, gate booleans, timestamps — never message content,
+        never the cue text (SessionMeta discipline). Pure attribute reads:
+        no backend call, safe on the event loop."""
+        return {
+            "companion": self.companion,
+            "backend": self.backend.name,
+            "retain": self.retain,
+            "recall_limit": self.recall_limit,
+            "per_turn": {
+                "chat": self.per_turn_enabled,
+                # Effective, not raw: the voice lane needs BOTH gates (bot.py
+                # only builds the prefetch processor when chat is on too).
+                "voice": self.per_turn_enabled and self.per_turn_voice,
+                "limit": self.per_turn_limit,
+            },
+            "open_recall": self._open_recall,
+            "turn_recall": self._turn_recall,
+        }
 
     # ── the intent slot (boot side; capture side lives in on_session_end) ─────
 
