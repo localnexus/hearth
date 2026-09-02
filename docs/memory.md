@@ -104,6 +104,11 @@ mode wins.
 sitting, back to the default (or to the resumed session's stamp). The serve
 facade's conversations are separate sittings; this flag does not govern them.
 
+**Seeing it.** The control panel's `Misc` line shows the sitting's effective
+posture (`Memory: full | recall-only | off`; a `—` means memory isn't
+configured at all), so mid-conversation you never have to wonder whether the
+sitting retains.
+
 ## Intent-primed boot recall
 
 Off by default. Enabled, it makes *"next time, let's talk about X"* actually

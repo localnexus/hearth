@@ -544,6 +544,12 @@ async def main(
     # resolved once at startup (New / Restored / <held-name>) and rides the
     # existing /engine route + one-shot fetch. "New" is the safe default.
     engine_info["session"] = session_descriptor or "New"
+    # The sitting's memory posture, as EFFECTIVE state: the mode when the seam
+    # is attached (or deliberately "off"); None when memory simply isn't
+    # configured — the panel dashes rather than implying a bank exists.
+    engine_info["memory_mode"] = (
+        memory_mode if (memory_seam is not None or memory_mode == "off") else None
+    )
     # Also piggyback the active persona identity (character + voice), resolved once
     # from config at startup (_CFG). Rides the same /engine route → the panel's
     # "Agent | Name: … · Voice: …" line.
