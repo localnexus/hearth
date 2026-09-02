@@ -54,6 +54,7 @@ import os
 import subprocess
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import TextIO
 
@@ -74,6 +75,15 @@ _LOG_DIR_MODE = 0o700
 _LOG_FILE_MODE = 0o600
 _LOG_ROTATE_BYTES = 5 * 1024 * 1024  # one generation kept (<name>.1); no scheduler needed
 _DEFAULT_LOG_REL = ("logs", "hindsight-sidecar.log")
+
+
+def _ended_at(record: SessionRecord) -> datetime | None:
+    """``record.ended`` as a datetime (retain's fact-dating anchor); None —
+    retain falls back to its own clock — when the field is absent or odd."""
+    try:
+        return datetime.fromisoformat(record.ended) if record.ended else None
+    except ValueError:
+        return None
 
 
 def _render_transcript(record: SessionRecord, max_chars: int) -> str:
@@ -467,7 +477,65 @@ class HindsightBackend:
         if not transcript:
             return
         self._ensure()
-        self._call(self._client.retain, bank_id=companion, content=transcript)
+        # Keyed store (record-level curation, D1): document_id = the session,
+        # so (a) re-retaining a resumed session REPLACES its document instead
+        # of re-extracting every fact additively — each graceful stop stores
+        # the whole transcript, and save-by-default made resume the normal
+        # lifecycle — and (b) ``forget`` can cascade-delete exactly one
+        # session's facts. ``timestamp`` anchors extraction to when the
+        # session actually ended, which keeps a rebuild's replayed history
+        # correctly dated instead of stamped with the replay day.
+        self._call(
+            self._client.retain,
+            bank_id=companion,
+            content=transcript,
+            document_id=record.session_id,
+            update_mode="replace",
+            timestamp=_ended_at(record),
+        )
+
+    def forget(self, companion: str, session_id: str) -> bool:
+        """Cascade-delete the facts extracted from one session.
+
+        The keyed store makes each session a document in the bank; the server
+        cascade-deletes the document, its memory units and their links.
+        False = no such document — facts stored before keyed retain (or a
+        session that stored nothing); excising those takes a clean rebuild
+        (``python -m hearth.memory rebuild --clean``)."""
+        self._ensure()
+        try:
+            self._call(self._delete_document_sync, companion, session_id)
+            return True
+        except Exception as exc:  # noqa: BLE001 — only not-found is a non-error
+            if type(exc).__name__ == "NotFoundException" or getattr(exc, "status", None) == 404:
+                return False
+            raise
+
+    def _delete_document_sync(self, companion: str, session_id: str) -> None:
+        """The one low-level (async-only) SDK call this adapter needs: the
+        wrapper has no sync delete_document, so bridge exactly the way its own
+        sync verbs do — run_until_complete on the calling thread's loop. Via
+        ``_call`` that thread is the backend's one worker, whose loop already
+        owns the SDK's cached aiohttp session (see ``_call``)."""
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        loop.run_until_complete(
+            self._client.documents.delete_document(companion, session_id)
+        )
+
+    def clear(self, companion: str) -> None:
+        """Wipe the companion's whole bank — documents, facts, links, the lot.
+
+        The rebuild --clean primitive. ``delete_bank`` rather than the
+        memories-only clear: this adapter never customizes bank profile or
+        mission (nothing replay cannot recreate), and delete_bank also drops
+        the DOCUMENTS a keyed re-replay would otherwise collide with. The
+        next retain auto-recreates the bank."""
+        self._ensure()
+        self._call(self._client.delete_bank, bank_id=companion)
 
     def consolidate(self, companion: str) -> None:  # noqa: ARG002
         """No-op this pass: retain already extracts; Hindsight's ``reflect`` is

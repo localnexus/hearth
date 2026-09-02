@@ -54,5 +54,14 @@ class FloorBackend:
     def consolidate(self, companion: str) -> None:  # noqa: ARG002
         """No-op: nothing to consolidate in a plain record store."""
 
+    def forget(self, companion: str, session_id: str) -> bool:  # noqa: ARG002
+        """True unconditionally: the floor indexes nothing, so deleting the
+        record file (the caller's half of a forget) already removed the
+        session from its recall — next turn, completely."""
+        return True
+
+    def clear(self, companion: str) -> None:  # noqa: ARG002
+        """No-op: no derived index to drop (see store)."""
+
     def close(self) -> None:
         """No resources held."""

@@ -589,6 +589,101 @@ class TestHindsightSidecar(unittest.TestCase):
             self.assertFalse(b._drain.is_alive() if b._drain else False)
 
 
+class _CurationDocsApi:
+    """The SDK's low-level DocumentsApi stand-in — its delete is async-only,
+    which is exactly what the adapter's sync bridge exists to cross."""
+
+    def __init__(self, fail: Exception | None = None) -> None:
+        self.calls: list[tuple[str, str]] = []
+        self._fail = fail
+
+    async def delete_document(self, bank_id: str, document_id: str) -> None:
+        self.calls.append((bank_id, document_id))
+        if self._fail is not None:
+            raise self._fail
+
+
+class _CurationClient:
+    """Hindsight SDK stand-in for the keyed-store/forget/clear surface."""
+
+    def __init__(self, docs: _CurationDocsApi | None = None) -> None:
+        self.retains: list[dict] = []
+        self.deleted_banks: list[str] = []
+        self.documents = docs if docs is not None else _CurationDocsApi()
+
+    def retain(self, **kwargs) -> None:  # noqa: ANN003
+        self.retains.append(kwargs)
+
+    def delete_bank(self, bank_id: str) -> None:
+        self.deleted_banks.append(bank_id)
+
+    def close(self) -> None:
+        pass
+
+
+class _NotFound(Exception):
+    status = 404  # the generated ApiException carries HTTP status here
+
+
+class TestHindsightCuration(unittest.TestCase):
+    """Record-level curation (D1/D2/D4): the store is session-keyed and
+    replacing, forget cascade-deletes one session's document, clear drops the
+    bank. Client-level fakes only — no hindsight install, no sidecar spawn."""
+
+    def _backend(self, client):
+        from hearth.memory.backend_hindsight import HindsightBackend
+        b = HindsightBackend({"mode": "sidecar", "python": sys.executable,
+                              "llm_model": "m"})
+        b._client = client  # bound directly: _ensure sees a live client, no spawn
+        return b
+
+    def test_store_is_keyed_replacing_and_dated(self):
+        from datetime import datetime
+        client = _CurationClient()
+        rec = _record("session-a", "2026-09-01T10:30:00+02:00")
+        self._backend(client).store("testchar", rec)
+        (kw,) = client.retains
+        self.assertEqual(kw["bank_id"], "testchar")
+        self.assertEqual(kw["document_id"], "session-a")
+        self.assertEqual(kw["update_mode"], "replace")
+        self.assertEqual(kw["timestamp"],
+                         datetime.fromisoformat("2026-09-01T10:30:00+02:00"))
+
+    def test_store_with_unparsable_ended_still_stores_undated(self):
+        client = _CurationClient()
+        self._backend(client).store("testchar", _record("session-b", "not-a-date"))
+        (kw,) = client.retains
+        self.assertEqual(kw["document_id"], "session-b")
+        self.assertIsNone(kw["timestamp"])
+
+    def test_forget_cascade_deletes_the_session_document(self):
+        docs = _CurationDocsApi()
+        b = self._backend(_CurationClient(docs))
+        self.assertTrue(b.forget("testchar", "session-a"))
+        self.assertEqual(docs.calls, [("testchar", "session-a")])
+
+    def test_forget_unkeyed_session_reports_false(self):
+        # Facts stored before keyed retain have no document — the server 404s
+        # and the verb must say "not excised", never pretend.
+        b = self._backend(_CurationClient(_CurationDocsApi(fail=_NotFound())))
+        self.assertFalse(b.forget("testchar", "pre-keying-session"))
+
+    def test_forget_transport_errors_still_raise(self):
+        b = self._backend(_CurationClient(_CurationDocsApi(fail=RuntimeError("boom"))))
+        with self.assertRaises(RuntimeError):
+            b.forget("testchar", "session-a")
+
+    def test_clear_deletes_the_bank(self):
+        client = _CurationClient()
+        self._backend(client).clear("testchar")
+        self.assertEqual(client.deleted_banks, ["testchar"])
+
+    def test_floor_curation_is_trivially_complete(self):
+        f = FloorBackend()
+        self.assertTrue(f.forget("testchar", "anything"))
+        f.clear("testchar")  # no-op, must not raise
+
+
 class TestClosureDetection(unittest.TestCase):
     """The ONE extraction call, parsed hostilely. The transport is mocked in
     every test — these make zero network calls."""

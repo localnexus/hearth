@@ -79,6 +79,19 @@ class MemoryBackend(Protocol):
         """Optional idle-time internal maintenance. Default no-op."""
         ...
 
+    def forget(self, companion: str, session_id: str) -> bool:
+        """Remove everything this backend indexed from one session. True =
+        excised; False = the backend holds facts it cannot attribute to that
+        session (content indexed before session-keyed storing) — a clean
+        rebuild is the honest path then. The record file is the caller's."""
+        ...
+
+    def clear(self, companion: str) -> None:
+        """Drop this companion's whole derived index. Destructive by intent —
+        only ever run on the operator's explicit rebuild; the canonical
+        records are untouched (they are the substrate a replay rebuilds from)."""
+        ...
+
     def close(self) -> None:
         """Release resources (stop an embedded server, close handles)."""
         ...
