@@ -245,7 +245,7 @@ def build_web_app(
 ) -> web.Application:
     app = web.Application()
     app.add_routes(_make_routes(worker, context, mute_gate, speaking_tap, meter, engine_info, recorder))
-    # L2 seam: feature modules (M2 volume, M4a/b knobs, …) contribute their own
+    # Extension seam: feature modules (volume, config knobs, …) contribute their own
     # routes via control_routes.register — they plug in HERE with zero edits to this
     # file. Empty until a feature module is imported → byte-identical to core-only.
     panel = control_routes.PanelContext(

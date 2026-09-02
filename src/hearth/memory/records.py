@@ -7,7 +7,7 @@ isn't worth 25 lines). These records persist even though the session file
 itself is ephemeral-by-default and deletes on graceful stop: enabling memory
 IS the choice to keep a trace (documented in docs/memory.md). Deleting a
 record is the explicit act, and it removes that session from every backend on
-the next rebuild (decider 7: backends are derived indexes).
+the next rebuild (backends are derived indexes).
 """
 
 from __future__ import annotations

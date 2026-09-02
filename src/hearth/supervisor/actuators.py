@@ -58,7 +58,7 @@ class ActuatorSet:
             command = [str(a) for a in (entry.get("command") or [])]
             if not command:
                 # the registry catches this at check time; at runtime a bad
-                # block costs only itself, never the mount (decider-6 posture)
+                # block costs only itself, never the mount (containment posture)
                 logger.warning("[supervisor] actuator {!r} has no command — skipped", name)
                 continue
             self._acts[str(name)] = {

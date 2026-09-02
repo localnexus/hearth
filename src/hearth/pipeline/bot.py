@@ -121,7 +121,7 @@ import hearth.control.features.companion  # noqa: F401
 #                      LiveSwitcher below.
 import hearth.control.features.live_switch  # noqa: F401
 # Already pulled in by config_profiles; imported explicitly because bot core calls its
-# F9 startup scrub below (remove that call too if these feature imports ever go).
+# startup override-scrub below (remove that call too if these feature imports ever go).
 import hearth.control.features.config_knobs  # noqa: F401
 
 # ── Configuration ─────────────────────────────────────────────────────────────
@@ -604,7 +604,7 @@ async def main(
         # session_store.finalize below, which true-deletes an ephemeral session
         # file. The seam writes the canonical memory record first, then lets the
         # backend index it; every step is contained inside on_session_end (a
-        # memory failure degrades, never breaks shutdown — decider 6).
+        # memory failure degrades, never breaks shutdown).
         # A live companion switch may have replaced the
         # store/seam mid-run — the switcher owns the CURRENT pair. Drain its
         # background old-session finalize first so the two never interleave.

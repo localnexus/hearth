@@ -5,7 +5,7 @@ the module is deliberately pipecat-free, so this suite runs in the base venv):
 
   1. PREPARE — arming validates against the registry + on-disk install and
      PREPARES eagerly (memory attach + recall, session resolution); refusals
-     arm nothing; the model FIELD swap demands residency (M4c); a second arm
+     arm nothing; the model FIELD swap demands residency; a second arm
      supersedes the first and releases its prepared seam.
   2. APPLY — the turn-boundary swap: the trigger utterance carries over, the
      old session finalizes with graceful-stop parity (memory record first,

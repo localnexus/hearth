@@ -12,12 +12,12 @@ the engine is byte-identical. Enabled, the seam:
     own words and appends what surfaced under a labeled line — the open-time
     block is never recomputed, and a guard-tripped or failing turn recall
     serves the open composition unchanged;
-  * at graceful session end, writes the CANONICAL memory record (decider 7)
+  * at graceful session end, writes the CANONICAL memory record
     and then lets the backend index it (``store``) and tidy (``consolidate``);
   * optionally (off by default, [memory.intent]) asks the extraction model at
     close whether the user STATED what to pick up next session, and injects
     that intent — dated — into the next boot's memory block (intent.py);
-  * contains every backend failure (decider 6): recall degrades to the
+  * contains every backend failure: recall degrades to the
     compaction floor, then to nothing; store/consolidate log and drop. Memory
     absent must mean "she doesn't recall", never "session down".
 
@@ -59,7 +59,7 @@ def _now_iso() -> str:
 def _build_backend(backend_name: str, cfg: dict):
     """Construct the named backend. Unknown name ⇒ ConfigError (config tier is
     fail-fast, naming the file); a MISSING EXTRA for a known backend is caught
-    later at the containment boundary (decider 6), not here — the engine must
+    later at the containment boundary, not here — the engine must
     start even when the memory dependency is broken."""
     from hearth.config.config_loader import MEMORY_TOML, ConfigError
 
@@ -115,7 +115,7 @@ class MemorySeam:
     # ── recall (session start) ───────────────────────────────────────────────
 
     def recall(self) -> list[MemoryItem]:
-        """Contained recall: backend → floor → empty (decider 6)."""
+        """Contained recall: backend → floor → empty."""
         query = self._recall_query()
         try:
             return self.backend.recall(self.companion, query, self.recall_limit)
@@ -134,7 +134,7 @@ class MemorySeam:
     def augment(self, system_instruction: str) -> str:
         """system_instruction + a framed memory block; byte-identical when empty.
 
-        Provenance framing per decider 1: every line carries its date (or the
+        Provenance framing: every line carries its date (or the
         backend's own temporal phrasing inside the text). A captured intent
         rides the same block as a dated last line — she opens aware of the
         plan, not merely better-briefed about it — and is consumed here,
@@ -219,7 +219,7 @@ class MemorySeam:
     # ── the intent slot (boot side; capture side lives in on_session_end) ─────
 
     def _read_intent(self) -> Optional[dict]:
-        """Contained slot read — a hint must never cost a boot (decider 6)."""
+        """Contained slot read — a hint must never cost a boot."""
         try:
             return intent_mod.load_slot(
                 self.companion, int(self._intent_cfg.get("expiry_days", 14))
@@ -275,7 +275,7 @@ class MemorySeam:
         status = f"record kept ({record.session_id})"
         try:
             self.backend.store(self.companion, record)
-        except Exception as exc:  # noqa: BLE001 — log and drop (decider 6)
+        except Exception as exc:  # noqa: BLE001 — log and drop
             logger.warning("[memory] {} store failed ({}) — record kept, index skipped",
                            self.backend.name, type(exc).__name__)
             status += " — backend index skipped"

@@ -36,7 +36,7 @@ worker thread. The seam contract is synchronous, some backends block for
 seconds, and the hindsight adapter's own thread-hop refuses to run inside a
 running event loop. The event-loop thread only ever mutates the session table.
 
-Containment (decider 6): this is the health-load-bearing channel. Every step is
+Containment: this is the health-load-bearing channel. Every step is
 try/except-contained — recall failure ⇒ the base instruction, checkpoint
 failure ⇒ logged, close failure ⇒ logged and the checkpoint survives for the
 next start. Memory absent must mean "she doesn't recall", never "the
@@ -150,7 +150,7 @@ def _restamp_ended(companion: str, session_id: str, ended: str) -> None:
     is right for every live close and wrong for a checkpoint finalized at the
     next start. The canonical record is therefore rewritten once, atomically,
     from the checkpoint's mtime. A backend keeps the boot-time stamp until its
-    next rebuild: records are the truth, indexes are derived (decider 7).
+    next rebuild: records are the truth, indexes are derived.
     """
     path = Path(records_mod.records_dir(companion)) / f"{session_id}.json"
     with open(path, "r", encoding="utf-8") as f:
@@ -329,7 +329,7 @@ class ServeMemory:
         Guards are decided here cheaply (gate, chat lane only, cue length,
         one-slot cue cache); the recall itself runs on the worker thread under
         a deadline. Every failure path serves the OPEN instruction: an extra
-        must never cost the turn (decider 6)."""
+        must never cost the turn."""
         seam = session.seam
         if not getattr(seam, "per_turn_enabled", False):
             return session.instruction

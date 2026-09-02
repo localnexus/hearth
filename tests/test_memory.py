@@ -4,7 +4,7 @@
  2. canonical records round-trip atomically at 0600/0700, malformed files skip
  3. floor recall: newest-first, limit honored, provenance on every item
  4. augment: byte-identical with no items; dated block with items
- 5. containment (decider 6): a failing backend degrades to floor, never raises,
+ 5. containment: a failing backend degrades to floor, never raises,
     and the canonical record is still written when the backend index fails
  6. the config gate: absent/disabled ⇒ None; enabled ⇒ defaults + per-companion
     map; "none" opts a companion out; unknown backend ⇒ ConfigError
@@ -985,7 +985,7 @@ class TestServeGlue(unittest.TestCase):
             self.assertEqual(len(list(records_mod.iter_records("testchar", recs))), 1)
 
     def test_a_failing_backend_never_breaks_a_turn_or_a_close(self):
-        """Containment (decider 6): recall, store, consolidate and close all
+        """Containment: recall, store, consolidate and close all
         raise — the turn is still answered and the canonical record still
         lands."""
         with tempfile.TemporaryDirectory() as tmp:

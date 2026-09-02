@@ -348,7 +348,7 @@ function renderEngine() {
 }
 
 // The active persona: character + voice. Baseline rides /engine (the SESSION's
-// startup-resolved voice — F9 scrubs [voice] overrides at startup, so with no
+// startup-resolved voice — the startup scrub clears [voice] overrides, so with no
 // live override this IS the voice speaking). The baseline alone read naturally
 // as "the voice speaking now,"
 // which is false mid-audition — with a live [voice] override bound, show both.
@@ -741,7 +741,7 @@ async function initSwitcher() {
   }
   fill($('sw-char'), chars.map(c => c.name), cur.character);
   fill($('sw-model'), d.choices.models || [], cur.model);
-  // M4c: mark models the LLM server actually holds right now (live-swappable).
+  // mark models the LLM server actually holds right now (live-swappable).
   try {
     const lr = await fetch('/switch/live');
     if (lr.ok) {

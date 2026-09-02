@@ -21,7 +21,7 @@ The EXPENSIVE tier (TTS engine swap, STT model, audio devices) stays restart.
 The processor also carries the LIVE companion-switch intent
 slot (pipeline/switcher.py) — applied at the same turn boundary, BEFORE the
 poll, with the reloader REBASED to the new companion's baselines; the LLM
-model FIELD swap rides it (resident models only, M4c).
+model FIELD swap rides it (resident models only).
 
 Key design choice — **desired = baseline ⊗ overrides**, diffed against applied:
     A live override is an OVERLAY on the persisted baseline. `desired` is always the

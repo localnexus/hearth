@@ -4,10 +4,10 @@ Design source: the signed memory-seam design (two hooks + optional consolidate,
 a backend per companion). The types here ARE the contract:
 
   * ``MemoryItem`` is the only thing ``recall`` may return — provenance
-    (source_session, when) is enforced by the type, not by review (decider 1:
-    wrong memory is worse than no memory; backends that cannot attach
+    (source_session, when) is enforced by the type, not by review (wrong
+    memory is worse than no memory; backends that cannot attach
     provenance are not admitted).
-  * ``SessionRecord`` is the canonical substrate (decider 7): Hearth's own
+  * ``SessionRecord`` is the canonical substrate: Hearth's own
     format, written by the seam on every graceful session end, outliving any
     backend. Every backend must be rebuildable by replaying records through
     ``store`` — backend = disposable cache, record = hers.
@@ -108,7 +108,7 @@ def digest_record(record: SessionRecord) -> str:
 
     This is what the compaction floor injects: enough for "last time we
     spoke about …" continuity on a fresh install with zero extra
-    dependencies (decider 5). Deliberately extractive — first user line,
+    dependencies. Deliberately extractive — first user line,
     last exchange, turn count — never generated, so it can't hallucinate.
     """
     user_msgs = [m for m in record.messages

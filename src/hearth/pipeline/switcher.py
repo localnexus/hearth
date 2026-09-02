@@ -3,7 +3,7 @@
 The turn-boundary escalation of ``/admin/switch``: the SAME selection bundle
 that a supervised restart would deliver applies IN-PROCESS at the next
 turn boundary — persona + model-template re-compose, LLM model FIELD swap
-(resident models only, M4c), voice re-clone, and the **session-swap
+(resident models only), voice re-clone, and the **session-swap
 primitive**: finalize the current companion's session (memory record + store
 delete-decision, exactly the graceful-stop semantics) and seed the new
 companion's context (fresh or resumed) with its own recall. The supervisor's
@@ -64,7 +64,7 @@ def _default_seam_factory(character: str, persona: str):
 
 
 async def fetch_resident_ids(provider: str, base_url: str, token: str):
-    """Model ids the LLM server holds RIGHT NOW (M4c: the live model-field
+    """Model ids the LLM server holds RIGHT NOW (the live model-field
     swap offers resident models only).
 
     llama-server → /v1/models (the one loaded model, by alias/filename).
@@ -236,7 +236,7 @@ class LiveSwitcher:
                 if new_model_id not in resident:
                     return {"ok": False, "code": 409, "errors": [
                         f"model '{new_model_id}' is not resident on the LLM server "
-                        "(M4c: live swap offers resident models only) — "
+                        "(live swap offers resident models only) — "
                         "the restart path still works"]}
 
             def _attach_and_resolve():

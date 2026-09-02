@@ -24,8 +24,8 @@ Three properties this module exists to hold:
     a plan that re-asserts itself for weeks is worse than no plan. An expiry
     backstop covers the long-gap case where "next time" lost its referent.
   * **Sidecar, never substrate.** Losing this file loses one hint, never a
-    memory: it is deliberately NOT part of the record-replay contract
-    (decider 7). Every failure here is logged and dropped.
+    memory: it is deliberately NOT part of the record-replay contract.
+    Every failure here is logged and dropped.
 
 The transport is stdlib urllib against a local Ollama — no new dependency, and
 the extraction model is the one [memory.hindsight] already names.
