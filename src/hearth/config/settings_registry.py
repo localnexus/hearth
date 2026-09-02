@@ -68,6 +68,24 @@ def _live(hot_via: str, status: str | None = None) -> dict:
     return {"x-hearth": {"hot_via": hot_via, "status_source": status}}
 
 
+def _effect(restart: str, note: str = "") -> dict:
+    """x-hearth extra for a field with NO live path: the effect-time stamp
+    (audit 2026-09-02) — what must relaunch for a persisted edit to land.
+    Vocabulary matches FileEntry.restart ("bot+facade" | "facade" | ...).
+
+    Verified against the code, not assumed: both lanes snapshot [memory] at
+    process boot (memory.maybe_attach loads the file at bot start;
+    serve ServeMemory.__init__ caches it at facade boot and builds every
+    per-session seam and per-companion backend from that snapshot), and
+    MemorySeam.__init__ freezes recall/per_turn values into seam attributes.
+    The per-turn gates are CONSULTED every turn (memory_prefetch, chat glue)
+    but never re-read from disk — so nothing under [memory] is hot."""
+    x: dict = {"hot_via": None, "effect": restart}
+    if note:
+        x["effect_note"] = note
+    return {"x-hearth": x}
+
+
 class _Cfg(BaseModel):
     """Base for every file model: unknown keys tolerated at validation (they are
     reported separately, as warnings — never a hard stop)."""
@@ -263,52 +281,96 @@ class ServeTable(_Cfg):
 
 # ── config/memory.toml [memory] (the memory seam gate) ───────────────────────
 
+# Effect-time notes shared by a whole sub-table (kept short: they ride the
+# JSON Schema into any surface that renders them).
+_PER_TURN_NOTE = ("gate consulted every turn, value frozen into the seam at attach "
+                  "from the process-boot snapshot — not hot")
+_SIDECAR_NOTE = ("a dead sidecar's auto-respawn reuses the in-memory boot snapshot — "
+                 "restart the owning process, not just the sidecar")
+
+
 class _MemIntent(_Cfg):
-    enabled: bool = Field(False, description="intent-primed boot recall: a stated next-topic survives the gap")
-    expiry_days: int = Field(14, ge=0, description="skip + clear a slot older than this (0 = no expiry)")
-    llm_provider: str = Field("", description="extraction transport; falls back to [memory.hindsight]'s")
-    llm_model: str = Field("", description="extraction model; falls back to [memory.hindsight]'s")
-    llm_url: str = Field("", description="extraction endpoint override")
-    companions: dict[str, bool] = Field(default_factory=dict, description="per-companion enable override")
+    enabled: bool = Field(False, description="intent-primed boot recall: a stated next-topic survives the gap",
+                          json_schema_extra=_effect("bot+facade"))
+    expiry_days: int = Field(14, ge=0, description="skip + clear a slot older than this (0 = no expiry)",
+                             json_schema_extra=_effect("bot+facade"))
+    llm_provider: str = Field("", description="extraction transport; falls back to [memory.hindsight]'s",
+                              json_schema_extra=_effect("bot+facade"))
+    llm_model: str = Field("", description="extraction model; falls back to [memory.hindsight]'s",
+                           json_schema_extra=_effect("bot+facade"))
+    llm_url: str = Field("", description="extraction endpoint override",
+                         json_schema_extra=_effect("bot+facade"))
+    companions: dict[str, bool] = Field(default_factory=dict, description="per-companion enable override",
+                                        json_schema_extra=_effect("bot+facade"))
 
 
 class _MemPerTurn(_Cfg):
-    enabled: bool = Field(False, description="per-turn targeted recall (chat lane): re-query the bank with the user's own words each request")
-    limit: int = Field(3, ge=0, description="targeted extras appended under their own labeled line (deduped against the open block)")
-    min_cue_chars: int = Field(12, ge=0, description="skip cues shorter than this (bare greetings and closes)")
-    voice: bool = Field(False, description="ALSO run the voice lane (prefetch-behind: recall after turn N, injected before turn N+1); needs enabled=true; ships OFF")
+    enabled: bool = Field(False, description="per-turn targeted recall (chat lane): re-query the bank with the user's own words each request",
+                          json_schema_extra=_effect("bot+facade", _PER_TURN_NOTE))
+    limit: int = Field(3, ge=0, description="targeted extras appended under their own labeled line (deduped against the open block)",
+                       json_schema_extra=_effect("bot+facade", _PER_TURN_NOTE))
+    min_cue_chars: int = Field(12, ge=0, description="skip cues shorter than this (bare greetings and closes)",
+                               json_schema_extra=_effect("bot+facade", _PER_TURN_NOTE))
+    voice: bool = Field(False, description="ALSO run the voice lane (prefetch-behind: recall after turn N, injected before turn N+1); needs enabled=true; ships OFF",
+                        json_schema_extra=_effect("bot+facade",
+                                                  _PER_TURN_NOTE + "; on the desk pipeline it also "
+                                                  "gates whether the prefetch processor is built at all"))
 
 
 class _MemServe(_Cfg):
-    enabled: bool = Field(False, description="facade-lane sessions (idle-gap boundaries, records, recall)")
-    idle_close_voice: int = Field(5, ge=1, description="voice-lane idle close, MINUTES (grace + margin over the voice server's reaper)")
-    idle_close_chat: int = Field(480, ge=1, description="chat-lane idle FALLBACK close, MINUTES (behind deliberate closure)")
-    checkpoint: bool = Field(True, description="checkpoint open sessions each exchange (crash leaves a recoverable orphan)")
+    enabled: bool = Field(False, description="facade-lane sessions (idle-gap boundaries, records, recall)",
+                          json_schema_extra=_effect("facade", "the bot lane never reads [memory.serve]"))
+    idle_close_voice: int = Field(5, ge=1, description="voice-lane idle close, MINUTES (grace + margin over the voice server's reaper)",
+                                  json_schema_extra=_effect("facade"))
+    idle_close_chat: int = Field(480, ge=1, description="chat-lane idle FALLBACK close, MINUTES (behind deliberate closure)",
+                                 json_schema_extra=_effect("facade"))
+    checkpoint: bool = Field(True, description="checkpoint open sessions each exchange (crash leaves a recoverable orphan)",
+                             json_schema_extra=_effect("facade"))
 
 
 class _MemHindsight(_Cfg):
-    mode: str = Field("sidecar", description='"sidecar" (own venv; protobuf wall) or "embedded" (non-pipecat hosts only)')
-    python: Optional[str] = Field(None, description="sidecar venv python — REQUIRED for sidecar mode")
-    runner: Optional[str] = Field(None, description="sidecar runner override (default: bundled sidecar_runner.py)")
-    llm_provider: str = Field("ollama", description="extraction-model provider")
-    llm_model: Optional[str] = Field(None, description="REQUIRED when any companion selects hindsight: local extraction model")
-    llm_api_key: str = Field("", description="provider key if the local server wants one")
-    db_url: str = Field("pg0", description="backend store — pg0 = bundled embedded PostgreSQL")
-    retain_max_chars: int = Field(6000, ge=0, description="transcript tail handed to extraction at stop")
-    recent_boost: int = Field(3, ge=0, description="the last-session slot: newest valid facts appended past semantic rank (0 = off)")
-    log_level: str = Field("warning", description="sidecar log level")
-    log_file: Optional[str] = Field(None, description="sidecar child's own stdout+stderr (default: <data root>/logs/…)")
-    start_timeout_s: Optional[float] = Field(None, gt=0.0, description="sidecar start timeout override, seconds")
-    env: dict[str, str] = Field(default_factory=dict, description="extra environment for the server (setdefault; shell wins)")
+    mode: str = Field("sidecar", description='"sidecar" (own venv; protobuf wall) or "embedded" (non-pipecat hosts only)',
+                      json_schema_extra=_effect("bot+facade", _SIDECAR_NOTE))
+    python: Optional[str] = Field(None, description="sidecar venv python — REQUIRED for sidecar mode",
+                                  json_schema_extra=_effect("bot+facade", _SIDECAR_NOTE))
+    runner: Optional[str] = Field(None, description="sidecar runner override (default: bundled sidecar_runner.py)",
+                                  json_schema_extra=_effect("bot+facade", _SIDECAR_NOTE))
+    llm_provider: str = Field("ollama", description="extraction-model provider",
+                              json_schema_extra=_effect("bot+facade", _SIDECAR_NOTE))
+    llm_model: Optional[str] = Field(None, description="REQUIRED when any companion selects hindsight: local extraction model",
+                                     json_schema_extra=_effect("bot+facade", _SIDECAR_NOTE))
+    llm_api_key: str = Field("", description="provider key if the local server wants one",
+                             json_schema_extra=_effect("bot+facade", _SIDECAR_NOTE))
+    db_url: str = Field("pg0", description="backend store — pg0 = bundled embedded PostgreSQL",
+                        json_schema_extra=_effect("bot+facade", _SIDECAR_NOTE))
+    retain_max_chars: int = Field(6000, ge=0, description="transcript tail handed to extraction at stop",
+                                  json_schema_extra=_effect("bot+facade", _SIDECAR_NOTE))
+    recent_boost: int = Field(3, ge=0, description="the last-session slot: newest valid facts appended past semantic rank (0 = off)",
+                              json_schema_extra=_effect("bot+facade", _SIDECAR_NOTE))
+    log_level: str = Field("warning", description="sidecar log level",
+                           json_schema_extra=_effect("bot+facade", _SIDECAR_NOTE))
+    log_file: Optional[str] = Field(None, description="sidecar child's own stdout+stderr (default: <data root>/logs/…)",
+                                    json_schema_extra=_effect("bot+facade", _SIDECAR_NOTE))
+    start_timeout_s: Optional[float] = Field(None, gt=0.0, description="sidecar start timeout override, seconds",
+                                             json_schema_extra=_effect("bot+facade", _SIDECAR_NOTE))
+    env: dict[str, str] = Field(default_factory=dict, description="extra environment for the server (setdefault; shell wins)",
+                                json_schema_extra=_effect("bot+facade", _SIDECAR_NOTE))
 
 
 class MemoryTable(_Cfg):
-    enabled: bool = Field(False, description="master gate: off ⇒ engine byte-identical (no recall, no records)")
-    backend: str = Field("floor", description='default backend per companion: "floor" | "hindsight" | "none"')
-    recall_limit: int = Field(6, ge=0, description="recalled items injected at session start (one dated line each)")
+    enabled: bool = Field(False, description="master gate: off ⇒ engine byte-identical (no recall, no records)",
+                          json_schema_extra=_effect("bot+facade"))
+    backend: str = Field("floor", description='default backend per companion: "floor" | "hindsight" | "none"',
+                         json_schema_extra=_effect("bot+facade",
+                                                   "the facade keeps one backend per companion for its whole life"))
+    recall_limit: int = Field(6, ge=0, description="recalled items injected at session start (one dated line each)",
+                              json_schema_extra=_effect("bot+facade"))
     recall_query: str = Field("the user's life, preferences, and recent conversations",
-                              description="what recall asks the backend for (semantic backends only)")
-    companions: dict[str, str] = Field(default_factory=dict, description="per-companion backend override (the continuity dial)")
+                              description="what recall asks the backend for (semantic backends only)",
+                              json_schema_extra=_effect("bot+facade"))
+    companions: dict[str, str] = Field(default_factory=dict, description="per-companion backend override (the continuity dial)",
+                                       json_schema_extra=_effect("bot+facade",
+                                                                 "the facade keeps one backend per companion for its whole life"))
     intent: Optional[_MemIntent] = Field(None, description="intent-primed boot recall")
     per_turn: Optional[_MemPerTurn] = Field(None, description="per-turn targeted recall (chat lane synchronous; voice lane prefetch-behind; ships OFF)")
     serve: Optional[_MemServe] = Field(None, description="facade-lane session glue")
@@ -572,7 +634,12 @@ def _field_rows(model_cls: type[BaseModel], prefix: str = "") -> list[str]:
     for name, field in model_cls.model_fields.items():
         ann = field.annotation
         extra = (field.json_schema_extra or {}).get("x-hearth", {}) if isinstance(field.json_schema_extra, dict) else {}
-        live = f"`{extra['hot_via']}`" if extra.get("hot_via") else "—"
+        if extra.get("hot_via"):
+            live = f"`{extra['hot_via']}`"
+        elif extra.get("effect"):  # effect-time stamp: no live path, edit lands at…
+            live = f"— (lands at *{extra['effect']}* restart)"
+        else:
+            live = "—"
         sub = _model_of(ann)
         if sub is not None:
             subtables.append((f"{prefix}{name}", sub))
