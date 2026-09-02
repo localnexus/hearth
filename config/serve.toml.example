@@ -24,6 +24,11 @@ token_source = "config/serve-token"
 # Upstream LLM endpoint (your OpenAI-compatible server, e.g. llama-server).
 # lm_base_url = "http://127.0.0.1:8080/v1"
 
+# Upstream speech server (mlx-audio) and the model ids sent to it.
+# audio_base_url = "http://127.0.0.1:8555/v1"
+# tts_model = "mlx-community/chatterbox-turbo-fp16"
+# stt_model = "mlx-community/whisper-large-v3-turbo"
+
 # Voice output: proxy speech synthesis using the active voice bundle, pinned
 # server-side (client-supplied voice/model fields are ignored).
 speech_enabled = true
@@ -37,6 +42,26 @@ transcriptions_enabled = false
 # data root — gitignored); an absolute path is used as given.
 transcript_tap = true
 transcript_dir = "transcripts"
+
+# ── Pinned facade identity (optional) ─────────────────────────────────────────
+# By default the facade snapshots config/active.toml at kickstart. Pin an identity
+# here to make the facade always speak as one companion — its own voice, independent
+# of who is live at the desk. Uncomment and set both fields.
+#[serve.identity]
+#character = "example"       # pinned facade character (independent of active.toml)
+#voice = "default"          # pinned voice bundle for that character
+#[serve.identity.tts]        # optional: pin synth knobs — win over the client body AND the live layer
+#temperature = 0.8          # (the example values here == the engine's own defaults)
+#top_p = 0.95
+#top_k = 1000
+#repetition_penalty = 1.2
+#speed = 1.0                 # playback-rate multiplier (upstream mlx-audio)
+#allow_tag_profiles = false  # may per-tag profiles overlay the pin? (never forwarded upstream)
+
+# Client-declarable roster: character name → its voice bundle. Listed names join the
+# pinned/active identity in GET /v1/models, so a client can pick from a roster.
+#[serve.characters]
+# example = "default"
 
 # ── The daemon face (ADR 007) — off by default ────────────────────────────────
 # With enabled = true the STANDALONE facade (`python -m hearth.serve`) also

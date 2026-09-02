@@ -45,7 +45,7 @@ secret you only ever manage, never read.
 | **`config/models/<model>/`** | **You** | Edit `model.toml` load facts + `system-prompt-template.md` | `docs/config-manual/llm.md` |
 | **`config/serve.toml`** | **You** — but it holds a **bearer** | Manage the gate; **never print its contents** | This page, below · `config/serve.toml.example` |
 | **`config/tts/<engine>/tts.toml`**, **`config/vad.toml`** | **Shipped baselines** (calibrated) | Leave alone unless you're re-calibrating by ear/mic; the panel's `overrides.toml` layers over them. A copy under your data root replaces the shipped file whole | `docs/config-manual/voice-tts.md` · `docs/config-manual/listening-vad-barge-in.md` |
-| **`characters/<name>/profile.toml`** (and per voice) | **The panel** | The companion's saved knob preset — it travels with the companion. Hands off | `docs/config-manual/README.md` |
+| **`characters/<name>/profile.toml`**, **`…/overrides.toml`** (and per voice) | **The panel** | The companion's saved knob preset, and a live mirror of its identity-scope knobs — they travel with the companion. Hands off | `docs/config-manual/README.md` |
 | **`config/memory.toml`**, **`config/openclaw.toml`** | **You** | Two more gates, both OFF by default: cross-session memory, and the companion's dispatch "hands" | `docs/memory.md` · `docs/config-manual/settings-reference-gates.md` |
 
 ---

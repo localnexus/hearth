@@ -92,12 +92,14 @@ recall_query = "the user's life, preferences, and recent conversations"
 # python = "/path/to/hindsight-sidecar/.venv/bin/python"   # REQUIRED for sidecar mode:
 #                                  # uv venv -p 3.11 <dir>/.venv
 #                                  # uv pip install --python <dir>/.venv/bin/python 'hindsight-all==0.9.2'
+# runner = "/path/to/custom_sidecar_runner.py"   # sidecar runner override (default: the bundled sidecar_runner.py)
 # llm_provider = "ollama"          # ollama | lmstudio | llamacpp | ...
 # llm_model = "qwen3-coder:30b"    # extraction model, must be pulled locally
 # llm_api_key = ""
 # db_url = "pg0"                   # bundled embedded PostgreSQL (port 5432, ~/.pg0)
 # retain_max_chars = 6000          # transcript tail handed to extraction at stop
 # recent_boost = 3                 # last-session slot: newest valid facts appended past semantic rank (0 = off)
+# start_timeout_s = 60.0           # sidecar start timeout override, seconds (default: the adapter's built-in)
 # log_level = "warning"
 # log_file = "/path/to/hindsight-sidecar.log"   # the sidecar CHILD's own stdout+stderr.
 #                                  # Unset: <data root>/logs/hindsight-sidecar.log (0600 in a

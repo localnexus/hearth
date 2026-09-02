@@ -22,3 +22,10 @@
 
 [tts]
 # (prosody knobs live here when set by the panel)
+
+# Listening calibration overrides (how the mic/room is heard).
+[vad]
+# confidence = 0.7      # how sure the VAD must be a sound is speech (0.0–1.0)
+# start_secs = 0.2      # sustained sound before "you started talking" (0.05–1.0)
+# stop_secs = 0.5       # silence after speech before "you finished" (0.2–3.0)
+# min_volume = 0.6      # loudness floor to count as speech (0.0–1.0)

@@ -67,9 +67,10 @@ land next time:
   makes **one** call to the local extraction model over the tail of the
   transcript, and that call answers two questions: *did the user deliberately
   end this conversation?* and *did they explicitly state what they want to
-  discuss next session?* A stated topic goes into a one-line **intent slot**;
-  a goodbye with no topic keeps nothing, and no goodbye at all keeps nothing —
-  a conversation that merely stopped is not a plan.
+  discuss next session?* A stated topic goes into a one-line **intent slot**
+  whether or not the user said goodbye — a plan named mid-conversation is still
+  the plan. With no topic stated, nothing is kept, whether the conversation was
+  deliberately closed or merely trailed off — a stop is not a plan.
 * **At the next session start** — the recall query becomes the standing
   `recall_query` **plus** the stated topic (semantic backends surface material
   *about* it), and the memory block gains a dated line: *"On 2026-08-30 you
@@ -304,6 +305,12 @@ Run-verified (survey §5b, 2026-08-29/30) against fully local models. Be aware:
   once: `HF_HUB_OFFLINE=0 ./start.sh`, then never again.
 * **Session-end latency**: extraction on a 30B-class local model takes a few
   seconds at stop; `retain_max_chars` bounds it.
+* **Recent-boost (the last-session slot)**: recall is a *single* top-K semantic
+  query at session open, so a fact retained only minutes ago can rank below the
+  cut and never reach the companion at the next boot. `recent_boost` (default
+  **3**, `0` = off) appends that many of the **newest valid facts** past the
+  semantic ranking — deduped against what recall already surfaced. Contained: a
+  failed boost costs nothing but itself, and the semantic recall stands.
 * `consolidate` is a no-op this pass — Hindsight's `reflect` wants a real idle
   trigger, which the engine doesn't have yet.
 
@@ -325,6 +332,21 @@ live under. The file is `0600` in a `0700` directory (records' discipline: it
 carries extraction chatter about your conversations), and at each sidecar start
 a file past ~5 MB is renamed to `<name>.1`, replacing any previous `.1`. The
 resolved path is logged once at start: `[memory] hindsight sidecar log → …`.
+
+#### The env passthrough (`HINDSIGHT_API_*`)
+
+`[memory.hindsight.env]` is a straight passthrough to the sidecar server's own
+environment. Every key is applied with `setdefault` just before the child is
+spawned, so anything you already export in your shell **wins** — the block only
+fills in what you haven't. This is where the sidecar's own **`HINDSIGHT_API_*`**
+knobs live: e.g. `HINDSIGHT_API_LLM_BASE_URL` points its extraction model at a
+specific local endpoint. Values are never printed. See the block in
+`config/memory.toml.example`.
+
+```toml
+[memory.hindsight.env]
+# HINDSIGHT_API_LLM_BASE_URL = "http://127.0.0.1:11434"
+```
 
 #### If the sidecar dies mid-session
 

@@ -39,6 +39,7 @@ control panel's; one is a secret you only ever manage, never read.
 | **`config/serve.toml`** | **You** — but it holds a **bearer token path** | Manage the gate; **never print its contents** |
 | **`config/tts/<engine>/tts.toml`**, **`config/vad.toml`** | **Shipped baselines** (calibrated) | Leave alone unless you are re-calibrating by ear/mic; the panel's `overrides.toml` layers over them. A copy under your data root replaces the shipped file |
 | **`characters/<name>/profile.toml`**, **`…/overrides.toml`** (and per voice) | **The control panel** | The companion's saved knob preset, and a live mirror of its identity-scope knobs — they travel with the companion. Hands off |
+| **`config/memory.toml`**, **`config/openclaw.toml`** | **You** (operator) | Two more gates, both **OFF** by default: cross-session memory, and the companion's OpenClaw dispatch "hands" |
 
 ---
 
