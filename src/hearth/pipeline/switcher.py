@@ -491,7 +491,7 @@ class LiveSwitcher:
     @staticmethod
     def _finalize_old(store, seam, messages, hold: bool, hold_name) -> str:
         """Graceful-stop parity for the OLD session, off the event loop.
-        Memory record FIRST (it must precede the store's ephemeral delete),
+        Memory record FIRST (it must precede the store's keep-decision),
         then the delete-decision — hold honored via the same marker stop.sh
         uses. Returns a short human status; never raises."""
         try:

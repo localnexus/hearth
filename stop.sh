@@ -5,9 +5,11 @@
 # stop llama-server (or eject the model in whatever server you run); this script never touches it.
 #
 # Session continuity (Tier 1):
-#   ./stop.sh                     stop; the session is EPHEMERAL → its transcript is truly deleted
-#   ./stop.sh --hold [name]       stop, but KEEP this session (held class: sticky, purge-exempt,
-#                                 optionally named for `--resume <name>`)
+#   ./stop.sh                     stop; the session is SAVED by default (a recall-only sitting is
+#                                 the carve-out: its transcript is truly deleted unless held)
+#   ./stop.sh --hold [name]       stop and NAME this session (held class: sticky, purge-exempt,
+#                                 resumable via `--resume <name>`; also the explicit keep for a
+#                                 recall-only sitting)
 #   ./stop.sh --discard-held <name>         true-delete ONE held session (targeted, immediate)
 #   ./stop.sh --discard-held [--all]         true-delete ALL held — irreversible; requires typing HEARTH
 set -uo pipefail
@@ -44,7 +46,7 @@ fi
 
 if ! pgrep -f "$PATTERN" >/dev/null 2>&1; then
   if [ "$MODE" = "hold" ]; then
-    # No bot running: promote the newest ephemeral ORPHAN to held directly.
+    # No bot running: name/keep the newest not-yet-held session directly.
     "$VENV_PY" -m hearth.session.session_store hold ${HOLD_NAME:+"$HOLD_NAME"}
     exit $?
   fi

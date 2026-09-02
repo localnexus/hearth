@@ -4,8 +4,9 @@ Runs WITHOUT mic / LM Studio (the voice loop can't be exercised here). It proves
 the load-bearing invariants on the REAL artifacts:
   1. context.messages JSON round-trip through a real LLMContext (the #1 risk)
   2. system prompt is never persisted (no duplication on reload)
-  3. ephemeral-delete on graceful stop; held-exempt; hold-request promotes
-  4. picker/guard metadata never carries content; ephemeral vs held discard
+  3. saved-by-default on graceful stop; recall-only carve-out deletes; held sticky;
+     hold-request promotes/names
+  4. picker/guard metadata never carries content; sweep spares saved + held
   5. atomicity (no .tmp left) + private perms (dir 0700 / file 0600)
   6. malformed files never crash startup (fall back / skip)
 
@@ -38,10 +39,11 @@ def check(cond, label):
         print(f"  FAIL  {label}")
 
 
-def _store(tmp, sid="session-test", held=False, name=None):
+def _store(tmp, sid="session-test", held=False, name=None, memory_mode="full"):
     return ss.SessionStore(
         session_id=sid, model="qwen-test", voice="default",
         prompt_sha256="deadbeef", sessions_dir=Path(tmp), held=held, name=name,
+        memory_mode=memory_mode,
     )
 
 
@@ -85,16 +87,39 @@ def test_system_excluded(tmp):
     check(roles == ["user"], "only the user message persisted")
 
 
-def test_ephemeral_delete(tmp):
-    print("\n[3a] ephemeral-default: graceful stop truly deletes the file")
+def test_saved_default(tmp):
+    print("\n[3a] saved-by-default: graceful stop KEEPS the file; empty sitting saves nothing")
     ctx = LLMContext()
     ctx.add_message({"role": "user", "content": "hi"})
-    st = _store(tmp, sid="session-ephem")
+    st = _store(tmp, sid="session-saved")
     st.snapshot(ctx.messages)
     check(st.path.exists(), "file exists after a turn")
     status = ss.finalize(st, ctx.messages)
-    check(not st.path.exists(), "file GONE after graceful finalize")
+    check(st.path.exists(), "file SURVIVES graceful finalize (saved by default)")
+    check("saved" in status, f"status reports saved ({status!r})")
+    # zero-turn sitting: no file was ever snapshotted → finalize creates nothing
+    empty = _store(tmp, sid="session-empty")
+    status = ss.finalize(empty, [])
+    check(not empty.path.exists(), "empty sitting leaves no file behind")
+    check("nothing to save" in status, f"status reports empty ({status!r})")
+
+
+def test_recall_only_carveout(tmp):
+    print("\n[3a'] recall-only carve-out: transcript truly deleted on graceful stop; held exempt")
+    ctx = LLMContext()
+    ctx.add_message({"role": "user", "content": "private"})
+    st = _store(tmp, sid="session-ro", memory_mode="recall-only")
+    st.snapshot(ctx.messages)
+    check(ss.load(st.path).get("memory_mode") == "recall-only", "leftover carries its stamp")
+    status = ss.finalize(st, ctx.messages)
+    check(not st.path.exists(), "recall-only file GONE after graceful finalize")
     check("deleted" in status, f"status reports deletion ({status!r})")
+    # explicit keep wins over the carve-out
+    kept = _store(tmp, sid="session-ro-held", held=True, memory_mode="recall-only")
+    kept.snapshot(ctx.messages)
+    status = ss.finalize(kept, ctx.messages)
+    check(kept.path.exists(), "held recall-only file SURVIVES (deliberate keep wins)")
+    check("kept" in status, f"status reports kept ({status!r})")
 
 
 def test_held_exempt(tmp):
@@ -145,20 +170,29 @@ def test_picker_and_resolve(tmp):
 
 
 def test_guard_and_discard(tmp):
-    print("\n[5] guard/--new: ephemeral orphans vs held; discard-ephemeral spares held")
+    print("\n[5] sweep classes: only recall-only leftovers are ephemeral; saved + held spared")
     d = Path(tmp) / "guard"
     ss.ensure_dir(d)
-    _store(d, sid="session-orphan1").snapshot([{"role": "user", "content": "o1"}])
-    _store(d, sid="session-orphan2").snapshot([{"role": "user", "content": "o2"}])
+    _store(d, sid="session-saved1").snapshot([{"role": "user", "content": "s1"}])
+    _store(d, sid="session-ro1", memory_mode="recall-only").snapshot(
+        [{"role": "user", "content": "r1"}])
+    _store(d, sid="session-ro-kept", held=True,
+           memory_mode="recall-only").snapshot([{"role": "user", "content": "r2"}])
     _store(d, sid="kept", held=True, name="kept").snapshot([{"role": "user", "content": "k"}])
 
-    check(len(ss.ephemeral_orphans(d)) == 2, "2 ephemeral orphans detected")
-    check(len(ss.held_sessions(d)) == 1, "1 held session detected")
+    check(len(ss.ephemeral_orphans(d)) == 1, "only the recall-only leftover is ephemeral")
+    check(len(ss.held_sessions(d)) == 2, "2 held sessions detected")
     removed = ss.discard_ephemeral(d)
-    check(len(removed) == 2, "--new discarded exactly the 2 ephemeral orphans")
-    check((d / "kept.json").exists(), "held file untouched by --new")
-    check(len(ss.ephemeral_orphans(d)) == 0, "no ephemeral orphans remain")
-    # explicit discard-held verb removes the held one (true delete)
+    check(removed == ["session-ro1"], "sweep removed exactly the recall-only leftover")
+    check((d / "session-saved1.json").exists(), "plain saved session untouched by the sweep")
+    check((d / "session-ro-kept.json").exists(), "held recall-only file untouched by the sweep")
+    check((d / "kept.json").exists(), "held file untouched by the sweep")
+    check(len(ss.ephemeral_orphans(d)) == 0, "no leftovers remain")
+    # name-it-now: hold with no bot promotes the newest not-yet-held session
+    sid = ss.hold_latest_orphan("named-later", d)
+    check(sid == "named-later", f"hold_latest_orphan named the saved session ({sid!r})")
+    check(ss.load(d / "named-later.json").get("held") is True, "promoted file marked held")
+    # explicit discard-held verb removes a held one (true delete)
     ss.discard_held("kept", d)
     check(not (d / "kept.json").exists(), "discard-held removed the held file")
 
@@ -228,7 +262,8 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         test_round_trip(tmp)
         test_system_excluded(tmp)
-        test_ephemeral_delete(tmp)
+        test_saved_default(tmp)
+        test_recall_only_carveout(tmp)
         test_held_exempt(tmp)
         test_hold_request_promotes(tmp)
         test_picker_and_resolve(tmp)

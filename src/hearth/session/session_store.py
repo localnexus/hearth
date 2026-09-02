@@ -8,19 +8,23 @@ persisted here → zero duplication on reload.
 
 Privacy: a session file (``characters/<name>/sessions/*.json`` under the data root)
 is a full plaintext transcript.
-It is local-only, gitignored, dir ``0700`` / files ``0600``, and **ephemeral by
-default** — a graceful ``./stop.sh`` truly deletes it (this sensitive class is
-deleted, not retained). ``--hold`` is the deliberate keep; the held
-class is sticky (survives resumes) and only leaves via an explicit discard. The
-snapshot+os.replace model closes the file handle every turn, so delete frees the
-file cleanly (no deleted-but-open-handle trap). Transcripts are never exposed over
-the web ``/``.
+It is local-only, gitignored, dir ``0700`` / files ``0600``, and **saved by
+default** — a graceful ``./stop.sh`` keeps it; deleting is the explicit act
+(``discard-held`` / ``discard-ephemeral``), and every delete is a true-delete
+(this sensitive class is deleted, not retained). The one carve-out: a
+**recall-only** sitting (``--memory recall-only``) stays transcript-ephemeral —
+a graceful stop deletes its file unless it was explicitly held, so "leaves no
+durable record" stays true of the privacy tier. ``held`` now means *explicitly
+kept/named* (sticky, exempt from every sweep); ``--hold`` degenerates to "name
+it now". The snapshot+os.replace model closes the file handle every turn, so
+delete frees the file cleanly (no deleted-but-open-handle trap). Transcripts are
+never exposed over the web ``/``.
 
 CLI (used by start.sh / stop.sh; keeps the bash thin and the logic unit-tested):
     python session_store.py list
     python session_store.py request-hold [name]   # bot running: drop marker, bot honors in finally
-    python session_store.py hold [name]            # no bot: promote latest ephemeral orphan
-    python session_store.py discard-ephemeral      # --new: true-delete ephemeral orphans (keeps held)
+    python session_store.py hold [name]            # no bot: name/keep the newest unnamed session
+    python session_store.py discard-ephemeral      # sweep recall-only leftovers (everything else is saved)
     python session_store.py discard-held [name|--all]
 """
 
@@ -254,6 +258,7 @@ class SessionMeta:
     turns: int
     persona: str = "default"
     character: Optional[str] = None
+    memory_mode: str = "full"  # the sitting's stamped posture ("full" when unstamped)
 
 
 def list_sessions(sessions_dir: Optional[Path] = None) -> list:
@@ -284,13 +289,19 @@ def list_sessions(sessions_dir: Optional[Path] = None) -> list:
             turns=turns,
             persona=str(data.get("persona") or "default"),
             character=data.get("character"),
+            memory_mode=str(data.get("memory_mode") or "full"),
         ))
     metas.sort(key=lambda m: (m.updated or m.started or ""), reverse=True)
     return metas
 
 
 def ephemeral_orphans(sessions_dir: Optional[Path] = None) -> list:
-    return [m for m in list_sessions(sessions_dir) if not m.held]
+    """The sweepable class under saved-by-default: ONLY a recall-only sitting's
+    leftover (crash/unclean death) is ephemeral — everything else is a saved
+    conversation. Explicitly held recall-only files are exempt (the deliberate
+    keep wins)."""
+    return [m for m in list_sessions(sessions_dir)
+            if not m.held and m.memory_mode == "recall-only"]
 
 
 def held_sessions(sessions_dir: Optional[Path] = None) -> list:
@@ -319,7 +330,8 @@ def resolve_resume_arg(arg: str, sessions_dir: Optional[Path] = None):
 # ── discard verbs (all true-delete for this sensitive class) ────────
 
 def discard_ephemeral(sessions_dir: Optional[Path] = None) -> list:
-    """--new: true-delete ephemeral orphans; held files are left untouched."""
+    """Fresh start: true-delete recall-only leftovers; every saved conversation
+    (and every held file) is left untouched."""
     removed = []
     for m in ephemeral_orphans(sessions_dir):
         try:
@@ -379,9 +391,11 @@ def clear_hold_request(sessions_dir: Optional[Path] = None) -> None:
 
 
 def hold_latest_orphan(name: Optional[str] = None, sessions_dir: Optional[Path] = None):
-    """stop.sh --hold with no bot running: promote the newest ephemeral orphan to
-    held (optionally naming/renaming it). Returns its new id, or None if none exist."""
-    orphans = ephemeral_orphans(sessions_dir)
+    """stop.sh --hold with no bot running: mark the newest not-yet-held session as
+    held (optionally naming/renaming it). Under saved-by-default this is "name it
+    now" for the latest conversation — and the explicit keep for a recall-only
+    leftover. Returns its new id, or None if nothing qualifies."""
+    orphans = [m for m in list_sessions(sessions_dir) if not m.held]
     if not orphans:
         return None
     m = orphans[0]  # newest first
@@ -403,10 +417,11 @@ def hold_latest_orphan(name: Optional[str] = None, sessions_dir: Optional[Path] 
 # ── finalize (called from bot.py's shutdown finally) ─────────────────────────
 
 def finalize(store: "SessionStore", messages) -> str:
-    """Apply the shutdown delete-decision. Returns a short human status string.
+    """Apply the shutdown keep-decision. Returns a short human status string.
 
-    held-request present → promote to held (keep). already held → keep (sticky).
-    otherwise ephemeral → true-delete.
+    Saved-by-default: hold-request present → promote to held/named (keep).
+    already held → keep (sticky). recall-only sitting → true-delete (the
+    privacy tier stays transcript-ephemeral). otherwise → saved.
     """
     if store is None:
         return "no session"
@@ -420,15 +435,21 @@ def finalize(store: "SessionStore", messages) -> str:
         return f"held → {store.path.name}"
     if store.held:
         return f"held session kept → {store.path.name}"
-    if store.delete():
-        return "ephemeral session deleted (graceful stop)"
-    return "no session file to delete"
+    if getattr(store, "memory_mode", "full") == "recall-only":
+        if store.delete():
+            return "recall-only sitting — transcript deleted (graceful stop)"
+        return "recall-only sitting — no transcript to delete"
+    if not store.path.exists() and not _persistable_messages(messages):
+        return "empty sitting — nothing to save"
+    store.snapshot(messages)
+    return f"session saved → {store.path.name}"
 
 
 # ── CLI (thin surface for start.sh / stop.sh) ────────────────────────────────
 
 def _fmt_meta(m: "SessionMeta") -> str:
-    tag = " [HELD]" if m.held else ""
+    tag = " [HELD]" if m.held else (
+        " [recall-only]" if m.memory_mode == "recall-only" else "")
     nm = f" · {m.name}" if m.name else ""
     pv = f" · persona.{m.persona}.md" if m.persona not in (None, "", "default") else ""
     return f"{m.updated or m.started or '?'}  ·  {m.turns} turns  ·  {m.model}  ·  {m.voice}{pv}{nm}{tag}"
@@ -461,11 +482,11 @@ def _main(argv) -> int:
         return 0
     if cmd == "hold":
         sid = hold_latest_orphan(arg)
-        print(f"held: {sid}" if sid else "no ephemeral session to hold")
+        print(f"held: {sid}" if sid else "no unnamed session to hold")
         return 0
     if cmd == "discard-ephemeral":
         removed = discard_ephemeral()
-        print(f"discarded {len(removed)} ephemeral orphan(s)")
+        print(f"discarded {len(removed)} recall-only leftover(s)")
         return 0
     if cmd == "discard-held":
         if arg in (None, "--all"):

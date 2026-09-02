@@ -623,8 +623,9 @@ async def main(
         if serve_runner is not None:
             await serve_runner.cleanup()
         # Memory seam: store + consolidate on graceful end — MUST run BEFORE
-        # session_store.finalize below, which true-deletes an ephemeral session
-        # file. The seam writes the canonical memory record first, then lets the
+        # session_store.finalize below, which applies the keep-decision (and
+        # true-deletes a recall-only sitting's transcript).
+        # The seam writes the canonical memory record first, then lets the
         # backend index it; every step is contained inside on_session_end (a
         # memory failure degrades, never breaks shutdown).
         # A live companion switch may have replaced the
@@ -639,12 +640,12 @@ async def main(
                 print(f"[memory] {mem_status}", flush=True)
             seam_now.close()
         live_switcher.close_pending()
-        # Session lifecycle (Tier 1): ephemeral-default. On this graceful SIGINT/finally
-        # path (what ./stop.sh triggers) the bot truly deletes its own session file
-        # UNLESS held (or a --hold request marker is present). Snapshot+os.replace means
-        # no file handle is open here → delete frees it cleanly. An UNCLEAN death
-        # (kill -9 / crash / outage) skips this block entirely → the file survives as a
-        # recoverable orphan, which is exactly what enables battery/outage resume.
+        # Session lifecycle (Tier 1): saved-by-default. On this graceful SIGINT/finally
+        # path (what ./stop.sh triggers) the bot keeps its session file — the one
+        # carve-out is a recall-only sitting, whose transcript is truly deleted unless
+        # held. Snapshot+os.replace means no file handle is open here → delete frees it
+        # cleanly. An UNCLEAN death (kill -9 / crash / outage) skips this block
+        # entirely → the file survives untouched, which is what enables outage resume.
         if store_now is not None:
             try:
                 status = session_store.finalize(store_now, context.messages)
@@ -686,8 +687,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--new",
         action="store_true",
-        help="start fresh, discarding any ephemeral orphan session files (held "
-        "sessions are never touched). Skips the bare-start chooser.",
+        help="start fresh. Saved sessions are kept (sessions save by default); "
+        "only recall-only leftovers are swept. Skips the bare-start chooser.",
     )
     parser.add_argument(
         "--memory",

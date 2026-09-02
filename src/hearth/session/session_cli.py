@@ -32,11 +32,20 @@ def _fmt_session(m: "session_store.SessionMeta") -> str:
     return f"{m.updated or m.started or '?'} · {m.turns} turns · {m.model} · {m.voice}{nm}"
 
 
+def _class_tag(m: "session_store.SessionMeta") -> str:
+    """Saved-by-default classes: named/held · recall-only leftover · plain saved."""
+    if m.held:
+        return " [HELD]"
+    if m.memory_mode == "recall-only":
+        return "  (recall-only leftover)"
+    return ""
+
+
 def _pick_session(cands: list):
     """Interactive picker: list candidates by METADATA ONLY, let the operator choose."""
     print("Multiple resumable sessions (metadata only — conversation content is never shown):")
     for i, m in enumerate(cands, 1):
-        tag = " [HELD]" if m.held else "  (orphan)"
+        tag = _class_tag(m)
         print(f"  {i}. {_fmt_session(m)}{tag}")
     print("  0. start fresh")
     try:
@@ -59,16 +68,16 @@ def _startup_menu(cands: list):
     """Bare-start chooser (TTY only). Lists 'new session' + every resumable session
     by METADATA ONLY, and lets the operator pick. Returns:
       • a Path        → resume that session,
-      • _NEW_SESSION  → start fresh (caller discards ephemeral orphans, keeps held),
+      • _NEW_SESSION  → start fresh (saved sessions kept; recall-only leftovers swept),
       • None          → cancel (start nothing, discard nothing).
     Replaces the hard exit(2) guard when stdin is interactive; the guard still applies
     non-interactively so automation (launchd / web control) never blocks or silently
     discards.
     """
     print("Resumable sessions (metadata only — conversation content is never shown):")
-    print("  0. new session   (start fresh — discards ephemeral orphans, keeps held)")
+    print("  0. new session   (start fresh — saved sessions are kept)")
     for i, m in enumerate(cands, 1):
-        tag = " [HELD]" if m.held else "  (orphan)"
+        tag = _class_tag(m)
         print(f"  {i}. {_fmt_session(m)}{tag}")
     try:
         choice = input("choose #  (0 = new · Enter/Ctrl-C = cancel): ").strip()
@@ -104,12 +113,14 @@ def resolve_session(args, lm_model: str, voice_tag: str, prompt_fingerprint: str
 
     ``descriptor`` is a static-at-startup panel label (never content):
       "New"          — a fresh session created this run,
-      "Restored"     — a resumed ephemeral orphan (unclean death → recovered),
-      "<name>"       — a resumed held (deliberately-kept, named) session.
+      "Restored"     — a resumed unnamed saved session (auto-saved, or recovered
+                       from an unclean death),
+      "<name>"       — a resumed held (deliberately-named) session.
 
     Never crashes startup: a malformed/missing/empty file falls back to a fresh
-    session with a warning. The ephemeral-orphan guard exits(2) so a bare
-    ./start.sh can't silently start-and-discard an unfinished conversation.
+    session with a warning. The recall-only-leftover guard exits(2) so a bare
+    non-interactive start can't silently discard the privacy tier's one
+    crash-recovery chance.
 
     ``lm_model`` / ``voice_tag`` / ``prompt_fingerprint`` / ``character`` / ``persona``
     are the live identity values (from bot.py's config load) — passed in so this module
@@ -144,10 +155,11 @@ def resolve_session(args, lm_model: str, voice_tag: str, prompt_fingerprint: str
                 print(f"[session] {resume_path} unreadable ({type(exc).__name__}) — starting fresh")
                 resume_data, resume_path = None, None
     elif args.new:
-        # Explicit fresh start: discard ephemeral orphans (held sessions untouched).
+        # Explicit fresh start: saved sessions are kept; only recall-only
+        # leftovers (the transcript-ephemeral class) are swept.
         removed = session_store.discard_ephemeral(sdir)
         if removed:
-            print(f"[session] --new: discarded {len(removed)} ephemeral orphan(s)")
+            print(f"[session] --new: swept {len(removed)} recall-only leftover(s)")
     else:
         # Bare ./start.sh. Interactive terminal → offer a chooser (new + resumables,
         # held included so named work-topics are pickable). Non-interactive → keep the
@@ -160,7 +172,7 @@ def resolve_session(args, lm_model: str, voice_tag: str, prompt_fingerprint: str
             if sel is _NEW_SESSION:
                 removed = session_store.discard_ephemeral(sdir)
                 if removed:
-                    print(f"[session] new session: discarded {len(removed)} ephemeral orphan(s)")
+                    print(f"[session] new session: swept {len(removed)} recall-only leftover(s)")
             else:
                 resume_path = sel
                 try:
@@ -169,15 +181,15 @@ def resolve_session(args, lm_model: str, voice_tag: str, prompt_fingerprint: str
                     print(f"[session] {resume_path} unreadable ({type(exc).__name__}) — starting fresh")
                     resume_data, resume_path = None, None
         elif session_store.ephemeral_orphans(sdir):
-            # Non-interactive with orphans present: refuse rather than silently discard.
-            print("[session] ephemeral orphan session(s) present — refusing to silently discard:")
+            # Non-interactive with recall-only leftovers present: refuse rather
+            # than silently discard the one recovery chance after a crash.
+            print("[session] recall-only leftover session(s) present — refusing to silently discard:")
             for m in session_store.ephemeral_orphans(sdir):
-                print(f"    orphan  {_fmt_session(m)}")
-            for m in session_store.held_sessions(sdir):
-                print(f"    held    {_fmt_session(m)}   (untouched)")
+                print(f"    leftover  {_fmt_session(m)}")
             print("  Non-interactive start — re-run with:  --resume <name>   or   --new")
             raise SystemExit(2)
-        # else: no candidates (or held-only, non-interactive) → fall through to fresh
+        # else: saved/held-only (or none), non-interactive → fall through to fresh
+        # (nothing is discarded on a bare fresh start under saved-by-default)
 
     if resume_data is not None:
         resume_messages = resume_data.get("messages") or []
@@ -200,8 +212,8 @@ def resolve_session(args, lm_model: str, voice_tag: str, prompt_fingerprint: str
         held_tag = " [HELD]" if store.held else ""
         print(f"[session] resumed {store.path.name} · {len(resume_messages)} messages{held_tag}")
         # Panel descriptor: a held session shows its NAME (fall back to the file
-        # stem, then "Held", if it was kept without one); a resumed ephemeral
-        # orphan is "Restored". Just a static label — never conversation content.
+        # stem, then "Held", if it was kept without one); a resumed unnamed
+        # saved session is "Restored". Just a static label — never content.
         descriptor = (store.name or store.session_id or "Held") if store.held else "Restored"
         return store, resume_messages, descriptor
 
