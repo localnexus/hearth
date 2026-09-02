@@ -187,26 +187,33 @@ class MemorySeam:
 
     # ── per-turn targeted recall (design lane (b), signed 2026-09-01) ────────
 
-    def recall_turn(self, cue: str) -> list[MemoryItem]:
+    def recall_turn(self, cue: str) -> tuple[list[MemoryItem], str]:
         """Contained targeted recall — the user's own words as the query.
 
         Same containment ladder as recall() (backend → floor → empty); the
         floor ignores queries by design, so its answer simply dedupes away
         against the open-time lines. Asks for headroom above the per-turn cap
-        because dedupe happens seam-side, in augment_turn()."""
+        because dedupe happens seam-side, in augment_turn().
+
+        Returns (items, source-backend-name) so the caller's log names the
+        backend that actually answered — a floor fallback must never
+        masquerade as the primary (run-observed 2026-09-02: a broken primary
+        looked healthy for a day behind the mislabeled success line)."""
         want = self.per_turn_limit + self.recall_limit
         try:
-            return self.backend.recall(self.companion, cue, want)
+            return self.backend.recall(self.companion, cue, want), self.backend.name
         except Exception as exc:  # noqa: BLE001 — an extra must never cost the turn
-            logger.warning("[memory] {} turn recall failed ({}) — no extras",
-                           self.backend.name, type(exc).__name__)
+            has_floor = self._floor is not self.backend
+            logger.warning("[memory] {} turn recall failed ({}) — {}",
+                           self.backend.name, type(exc).__name__,
+                           "trying the floor" if has_floor else "no extras")
         if self._floor is not self.backend:
             try:
-                return self._floor.recall(self.companion, cue, want)
+                return self._floor.recall(self.companion, cue, want), self._floor.name
             except Exception as exc:  # noqa: BLE001
                 logger.warning("[memory] floor turn recall failed ({}) — no extras",
                                type(exc).__name__)
-        return []
+        return [], ""
 
     def augment_turn(self, system_instruction: str, cue: str) -> str:
         """The per-request instruction: the open-time block + targeted extras.
@@ -219,8 +226,9 @@ class MemorySeam:
         extras: list[MemoryItem] = []
         if (self.per_turn_enabled and self.per_turn_limit > 0
                 and len(cue) >= self.per_turn_min_chars):
+            items, source = self.recall_turn(cue)
             seen = set(self._session_texts)
-            for item in self.recall_turn(cue):
+            for item in items:
                 if not item.text or item.text in seen:
                     continue
                 seen.add(item.text)
@@ -229,7 +237,7 @@ class MemorySeam:
                     break
             if extras:
                 logger.info("[memory] turn recall surfaced {} extra(s) via {}",
-                            len(extras), self.backend.name)
+                            len(extras), source)
         return self._compose(system_instruction, extras)
 
     # ── the intent slot (boot side; capture side lives in on_session_end) ─────

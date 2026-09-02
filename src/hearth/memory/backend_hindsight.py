@@ -129,20 +129,19 @@ class HindsightBackend:
         self._drain: threading.Thread | None = None
 
     def _call(self, fn, /, *args, **kwargs):
-        """Run a sync SDK method safely from sync OR async context.
+        """Run every sync SDK method on ONE persistent worker thread.
 
-        In a plain script (CLI rebuild) the call goes straight through. Inside
-        a running event loop (the bot) it executes on ONE persistent worker
-        thread owned by this backend: the SDK caches an aiohttp ClientSession
-        bound to the loop of the first call, so every call must share that
-        thread/loop pair. A short-lived per-call thread leaves the cached
-        session on a dead loop — RuntimeError on the second call (run-observed
-        2026-08-30, the first in-bot store after a recall).
+        The SDK caches an aiohttp ClientSession bound to the event loop of the
+        first call, so every call must share that thread/loop pair — from ANY
+        calling context: the bot's event loop, an asyncio.to_thread worker (the
+        voice prefetch lane), an executor thread, or a plain CLI script. A
+        short-lived per-call thread leaves the cached session on a dead loop
+        (RuntimeError on the second call — run-observed 2026-08-30), and
+        dispatching on the CALLER's context leaks the same mismatch the moment
+        two contexts mix (RuntimeError on every voice-prefetch recall —
+        run-observed 2026-09-02). So there is no direct path: the pool is the
+        only lane, in every context.
         """
-        try:
-            asyncio.get_running_loop()
-        except RuntimeError:
-            return fn(*args, **kwargs)
         if self._pool is None:
             self._pool = concurrent.futures.ThreadPoolExecutor(
                 max_workers=1, thread_name_prefix="hindsight-io"

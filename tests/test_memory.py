@@ -460,8 +460,12 @@ class TestHindsightSidecar(unittest.TestCase):
         self.assertEqual(idents[0], idents[1])            # same worker thread
         self.assertNotEqual(idents[0], threading.get_ident())  # not the caller's
         b.close()  # shuts the pool with no client/proc — must not raise
-        # sync context (CLI rebuild) goes straight through on the caller's thread
-        self.assertEqual(b._call(threading.get_ident), threading.get_ident())
+        # sync context (CLI rebuild) rides the SAME lane — since 2026-09-02
+        # there is no direct path in any context (a caller-context dispatch
+        # broke the moment the voice prefetch's to_thread calls mixed with the
+        # bot's async calls); close() re-creates the pool on the next call
+        self.assertNotEqual(b._call(threading.get_ident), threading.get_ident())
+        b.close()
 
     # ── the 2026-08-30 incident: a child that died blind and undrained ───────
 
@@ -713,6 +717,37 @@ class _CLIBackend:
 
     def store(self, companion: str, record: SessionRecord) -> None:  # noqa: ARG002
         self.stored.append(record.session_id)
+
+
+class TestHindsightCallLane(unittest.TestCase):
+    """_call routes EVERY calling context onto the one persistent worker
+    thread. The SDK's cached aiohttp session is loop-bound, so dispatching on
+    the caller's context breaks the moment contexts mix (run-observed
+    2026-09-02: RuntimeError on every voice-prefetch recall, which rides
+    asyncio.to_thread — a thread with no running loop took the old direct
+    path while the bot's async calls used the pool)."""
+
+    def test_every_calling_context_lands_on_the_same_lane_thread(self):
+        from hearth.memory.backend_hindsight import HindsightBackend
+        b = HindsightBackend({"mode": "sidecar", "python": sys.executable,
+                              "llm_model": "m"})
+        try:
+            def lane():
+                return threading.current_thread().name
+
+            sync_lane = b._call(lane)                       # plain script (CLI)
+            to_thread_lane = asyncio.run(asyncio.to_thread(b._call, lane))
+
+            async def _from_loop():                          # the bot's loop
+                return b._call(lane)
+
+            loop_lane = asyncio.run(_from_loop())
+            self.assertTrue(sync_lane.startswith("hindsight-io"))
+            self.assertEqual(to_thread_lane, sync_lane)
+            self.assertEqual(loop_lane, sync_lane)
+        finally:
+            if b._pool is not None:
+                b._pool.shutdown(wait=True)
 
 
 class TestCurationCLI(unittest.TestCase):
@@ -1692,6 +1727,36 @@ class TestPerTurnRecall(unittest.TestCase):
             self.assertFalse(slot.exists())                  # consumed at augment
             out = seam.augment_turn("BASE", self.CUE)
             self.assertEqual(out.count("you agreed to pick up"), 1)
+
+    def test_floor_fallback_answers_and_is_attributed_honestly(self):
+        # Run-observed 2026-09-02: the primary failed every voice turn, the
+        # floor filled in, and the success log credited the primary. The seam
+        # must name the backend that actually answered.
+        class _AnsweringFloor:
+            name = "floor"
+
+            def recall(self, companion, query, limit):  # noqa: ANN001
+                return [MemoryItem(text="A floor digest line",
+                                   source_session="s2", when="2026-08-29")]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            backend = _CueBackend()
+            seam = self._seam(backend, Path(tmp))
+            seam._floor = _AnsweringFloor()
+            seam.augment("BASE")
+            backend.fail_on_cue = True
+            items, source = seam.recall_turn(self.CUE)
+            self.assertEqual(source, "floor")                # not the primary's name
+            self.assertEqual([i.text for i in items], ["A floor digest line"])
+            out = seam.augment_turn("BASE", self.CUE)        # extras still ride
+            self.assertIn("A floor digest line", out)
+
+    def test_recall_turn_names_the_primary_when_it_answers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            seam = self._seam(_CueBackend(), Path(tmp))
+            seam.augment("BASE")
+            _items, source = seam.recall_turn(self.CUE)
+            self.assertEqual(source, "cuespy")
 
 
 class TestServeGluePerTurn(unittest.TestCase):
