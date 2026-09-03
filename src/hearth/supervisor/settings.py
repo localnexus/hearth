@@ -65,7 +65,10 @@ from typing import Literal, Union, get_args, get_origin
 
 from aiohttp import web
 
-_PAGE = (Path(__file__).parent / "settings_page.html").read_text(encoding="utf-8")
+from hearth.ui import brand
+
+_PAGE = brand.splice(
+    (Path(__file__).parent / "settings_page.html").read_text(encoding="utf-8"))
 
 _REDACTED = "•••"
 

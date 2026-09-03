@@ -38,6 +38,8 @@ class UnauthedDoorsAreDocumented(unittest.TestCase):
             "/admin/roster",
             "/admin/settings/ui",
             "/health",
+            "/ui/brand/favicon.png",
+            "/ui/brand/mark.png",
         ], "the unauthed set changed — update " + " and ".join(self.DOCS))
 
     def test_the_docs_state_the_right_shell_count(self):
@@ -48,6 +50,21 @@ class UnauthedDoorsAreDocumented(unittest.TestCase):
             with self.subTest(doc=rel):
                 self.assertIn("five unauthed static shells", text)
                 self.assertNotIn("four unauthed static shells", text)
+
+    def test_the_only_unauthed_assets_are_artwork(self):
+        """The brand exemption is for two images and must never become a
+        general static route: anything under /ui/ that reads operator state
+        would be an unauthenticated door onto it."""
+        from hearth.serve.app import _AUTH_EXEMPT
+        from hearth.ui import brand
+
+        assets = sorted(p for p in _AUTH_EXEMPT if p.startswith("/ui/"))
+        self.assertEqual(assets, sorted(brand.ROUTES),
+                         "/ui/ exemptions must be exactly the brand artwork")
+        for path in assets:
+            with self.subTest(path=path):
+                self.assertTrue(path.endswith(".png"),
+                                f"{path} is not artwork — it must not be unauthed")
 
 
 if __name__ == "__main__":

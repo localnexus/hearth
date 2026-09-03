@@ -42,6 +42,7 @@ from pipecat.frames.frames import (
 )
 
 from hearth.control import control_routes
+from hearth.ui import brand
 
 if TYPE_CHECKING:
     from pipecat.pipeline.worker import PipelineWorker
@@ -132,10 +133,15 @@ async def fetch_engine_info(base_url: str, token: str, target_model: str | None 
 # The companion switcher itself is SHARED with the facade's launch page — one
 # source file (ui/switch_card.js), spliced into both at import, so the two
 # surfaces offer the same fields and read live-vs-restart the same way.
+# The brand layer (palette + mark + favicon) is shared the same way, so the
+# panel and the facade cannot drift into two visual languages; the artwork is
+# served from /ui/brand/ rather than inlined, which took 12.7 KB of base64 out
+# of this page.
 _SWITCH_CARD_JS = (Path(__file__).parent.parent / "ui" /
                    "switch_card.js").read_text(encoding="utf-8")
-_HTML = (Path(__file__).parent / "control_page.html").read_text(
-    encoding="utf-8").replace("/*SWITCH_CARD_JS*/", _SWITCH_CARD_JS)
+_HTML = brand.splice(
+    (Path(__file__).parent / "control_page.html").read_text(encoding="utf-8")
+    .replace("/*SWITCH_CARD_JS*/", _SWITCH_CARD_JS))
 
 
 # ── Route handlers ─────────────────────────────────────────────────────────────
@@ -251,6 +257,7 @@ def build_web_app(
 ) -> web.Application:
     app = web.Application()
     app.add_routes(_make_routes(worker, context, mute_gate, speaking_tap, meter, engine_info, recorder))
+    brand.add_routes(app)  # /ui/brand/*.png — the shared mark and favicon
     # Extension seam: feature modules (volume, config knobs, …) contribute their own
     # routes via control_routes.register — they plug in HERE with zero edits to this
     # file. Empty until a feature module is imported → byte-identical to core-only.

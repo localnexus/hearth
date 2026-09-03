@@ -89,11 +89,14 @@ from pathlib import Path
 from aiohttp import web
 from loguru import logger
 
+from hearth.ui import brand
+
 from hearth.memory.enroll import enroll_memory_tier as _enroll_memory_tier
 
 from . import switch as switch_mod
 
-_PAGE = (Path(__file__).parent / "roster_page.html").read_text(encoding="utf-8")
+_PAGE = brand.splice(
+    (Path(__file__).parent / "roster_page.html").read_text(encoding="utf-8"))
 
 _TIERS = ("", "floor", "hindsight")  # "" = don't touch memory.toml
 _FFMPEG_TIMEOUT_S = 60.0

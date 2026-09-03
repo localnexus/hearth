@@ -45,6 +45,7 @@ from aiohttp import web
 from loguru import logger
 
 from hearth.config import config_loader
+from hearth.ui import brand
 
 from . import stt_prep, tts_prep
 from .transcript import TranscriptTap
@@ -140,9 +141,17 @@ def _resolve_lm_token(passed: str, cfg: dict) -> str:
 # The pairing pair: the shell a new device opens, and the one route that can
 # hand out the bearer — guarded by a short-lived, single-use, three-strikes code
 # the operator mints at the desk (supervisor/routes.py), not by this middleware.
+# The brand artwork: two static PNGs (the mark and the favicon) that the shells
+# above reference. They are the same files this project publishes in docs/brand/
+# and they disclose nothing — no names, no state. They are exempt because a
+# <link rel="icon"> on a navigation cannot carry the bearer, the same constraint
+# that made the switch card a splice; serving them once beat inlining 12.7 KB of
+# base64 into six pages. Artwork only: this is not a general static route, and
+# nothing that reads operator state may ever join it.
 _AUTH_EXEMPT = frozenset({"/health", "/admin/launch", "/admin/roster",
                           "/admin/memory/ui", "/admin/settings/ui",
-                          "/admin/pair/ui", "/admin/pair/claim"})
+                          "/admin/pair/ui", "/admin/pair/claim",
+                          "/ui/brand/favicon.png", "/ui/brand/mark.png"})
 
 
 # The browser carrier. A top-level navigation cannot attach an Authorization
@@ -543,6 +552,7 @@ def build_app(deps: FacadeDeps) -> web.Application:
     app.router.add_post("/v1/chat/completions", _chat)
     app.router.add_post("/v1/audio/speech", _speech)
     app.router.add_post("/v1/audio/transcriptions", _transcriptions)
+    brand.add_routes(app)  # /ui/brand/*.png — shared with the :65000 panel
 
     async def _open(app_: web.Application) -> None:
         app_["deps"].session = aiohttp.ClientSession()

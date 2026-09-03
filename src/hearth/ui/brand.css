@@ -1,0 +1,70 @@
+/* Hearth brand layer — one definition, both surfaces.
+   Spliced into every page at import (ui/brand.py), so the palette cannot drift
+   between the control panel on :65000 and the facade pages on :65001. The
+   artwork is SERVED, not inlined: the mark and favicon were 12.7 KB of base64
+   in one page, and copying that into six would have cost ~63 KB and pushed
+   launch_page.html over the file-size line. One route, browser-cached, instead.
+
+   Ember sampled from the logo's ring/flame (#e0a040/#e08020); wordmark gold
+   from the inner flame (#f0c050). The panel's own amber #e8b04b keeps its
+   pre-existing meaning (changed-from-default) and is deliberately NOT here. */
+
+:root {
+  --ember: #e0913f;
+  --ember-hi: #f0c05e;
+  --glow: rgba(224, 145, 63, .30);
+  --brand-ink: var(--ember-hi);
+  --brand-sub: #8a7a62;
+  --brand-rule: #2a2a2a;
+}
+
+/* The facade pages follow the OS (color-scheme: light dark) — that adaptivity
+   is load-bearing on the phone, so the brand bends to it rather than the other
+   way round: on a light background the dark-surface gold has almost no
+   contrast and the glow reads as a smudge. The panel is committed dark and
+   must NOT take this, which is why an adaptive host opts IN with a class
+   instead of this being a bare media query. */
+@media (prefers-color-scheme: light) {
+  .brand-adaptive {
+    --brand-ink: #9c5b14;
+    --glow: rgba(224, 145, 63, .16);
+    --brand-sub: #6b5c46;
+    --brand-rule: rgba(0, 0, 0, .14);
+  }
+}
+
+.brandmark {
+  display: inline-block;
+  flex: none;
+  background: url("/ui/brand/mark.png") no-repeat center/contain;
+}
+
+.brandhead {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--brand-rule);
+}
+
+/* Sized here rather than left to each host: all six pages now render the same
+   header element, and a bare <h1> would come out at the browser default 2em on
+   the panel (which previously used an <h2>). 1.4em matches what the facade
+   pages already set for themselves, so neither surface visibly shifts. */
+.brandhead h1, .brandhead h2 {
+  margin: 0;
+  font-size: 1.4em;
+  color: var(--brand-ink);
+  letter-spacing: 3px;
+  text-shadow: 0 0 16px var(--glow);
+}
+
+.brandhead .brandmark { width: 26px; height: 43px; }
+
+.brandsub {
+  font-size: 0.72em;
+  color: var(--brand-sub);
+  letter-spacing: 2px;
+  margin-top: 3px;
+}

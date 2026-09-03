@@ -33,3 +33,25 @@ WebRTC). Open `http://<facade-host>:65001/admin/launch`; it asks for the serve b
 
 The page never bounces the facade itself — it starts and stops the **bot** only. First supervised
 spawn on a fresh macOS install is a desk moment (the mic permission attributes to the daemon).
+
+## One look across both ports
+
+The launch page and its siblings (roster, settings, memory, pairing) share their palette,
+mark, and header with the `:65000` control panel. The definition lives in one place —
+`src/hearth/ui/brand.css` plus `ui/brand.py` — and is spliced into every page at import, the
+same mechanism as the companion switcher and for the same reason: six hand-copied palettes
+drift, and these two surfaces had already drifted into opposite visual languages.
+
+Two deliberate asymmetries survive that sharing:
+
+- **The facade pages stay theme-adaptive.** They follow the OS (`color-scheme: light dark`),
+  because they are the phone surface; they opt into light-mode brand overrides with
+  `class="brand-adaptive"` on `<body>`. The panel is committed dark and must *not* take
+  those overrides, which is why opting in is a class rather than a bare media query.
+- **The panel keeps its own signal colours.** Amber means changed-from-default and hot
+  orange means knob-extreme; those are panel semantics, not brand, and stay out of the
+  shared layer.
+
+The artwork is served from `/ui/brand/` rather than inlined — two cacheable images instead of
+12.7 KB of base64 in every page. Edit the palette in `brand.css`; a page that declares a brand
+token itself fails `tests/supervisor/test_shared_brand.py`.

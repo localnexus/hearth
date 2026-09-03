@@ -60,6 +60,8 @@ import aiohttp
 from aiohttp import web
 from loguru import logger
 
+from hearth.ui import brand
+
 from .child import STOP_GRACE_S, TERM_GRACE_S, _MEMORY_MODES, BotChild, _now_iso
 from . import actuators as actuators_mod
 from . import compact_watch
@@ -97,9 +99,11 @@ _OFFLINE_PAGE = """<!doctype html><meta charset="utf-8">
 # door count where it is and guarantees both surfaces run the same bytes.
 _SWITCH_CARD_JS = (Path(__file__).parent.parent / "ui" /
                    "switch_card.js").read_text(encoding="utf-8")
-_LAUNCH_PAGE = (Path(__file__).parent / "launch_page.html").read_text(
-    encoding="utf-8").replace("/*SWITCH_CARD_JS*/", _SWITCH_CARD_JS)
-_PAIR_PAGE = (Path(__file__).parent / "pair_page.html").read_text(encoding="utf-8")
+_LAUNCH_PAGE = brand.splice(
+    (Path(__file__).parent / "launch_page.html").read_text(encoding="utf-8")
+    .replace("/*SWITCH_CARD_JS*/", _SWITCH_CARD_JS))
+_PAIR_PAGE = brand.splice(
+    (Path(__file__).parent / "pair_page.html").read_text(encoding="utf-8"))
 
 # Device pairing. A 64-hex bearer is not something anyone types into a phone,
 # and file transfer to a hardened handset is its own adventure — so the desk
