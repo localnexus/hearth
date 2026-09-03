@@ -72,7 +72,8 @@ _FACADE_NOTE = ("untouched — a [serve.identity] pin keeps its own voice; unpin
                 "LLM-leg params follow at the next facade restart")
 
 # Never forwarded to the loopback panel: the bearer stays at the one door.
-_DROP_HEADERS = {"Host", "Authorization", "Content-Length", "Transfer-Encoding", "Connection"}
+_DROP_HEADERS = {"Host", "Authorization", "Cookie", "Content-Length",
+                 "Transfer-Encoding", "Connection"}
 
 _OFFLINE_PAGE = """<!doctype html><meta charset="utf-8">
 <title>Hearth — offline</title>
@@ -130,6 +131,7 @@ def build_mount(sup_cfg: dict):
         app.router.add_get("/admin/switch", _switch_get)
         app.router.add_post("/admin/switch", _switch_post)
         app.router.add_get("/admin/actuators", _actuators_get)
+        app.router.add_post("/admin/cookie", _cookie)
         app.router.add_post("/admin/actuators/{name}/run", _actuator_run)
         # /admin/memory — record-level curation (preview-then-confirm forget +
         # digest views; the CLI's web half, write-layer rule (c)).
@@ -240,6 +242,31 @@ async def _actuator_run(request: web.Request) -> web.Response:
     except actuators_mod.ActuatorBusy:
         return web.json_response({"error": f"{name} is already running"}, status=409)
     return web.json_response({"name": name, **record})
+
+
+async def _cookie(request: web.Request) -> web.Response:
+    """Mint the browser carrier for this facade (authed by header, like every
+    other admin POST).
+
+    Why it exists: a browser navigating to the proxied control panel at ``/``
+    cannot attach an Authorization header, so without this the panel is
+    reachable by curl and by nothing a person clicks. The value is derived from
+    the bearer, never the bearer itself.
+
+    HttpOnly, so a page script can never read it back out (strictly better than
+    the localStorage the page keeps the bearer in). SameSite=Lax, so it rides a
+    top-level navigation but not a cross-site form post. No Secure flag: the
+    facade speaks plain HTTP and the overlay network, not TLS, is what encrypts
+    this hop — setting Secure would simply stop the cookie working.
+    """
+    from hearth.serve import app as serve_app  # lazy: serve.app mounts us
+
+    resp = web.json_response({"ok": True})
+    resp.set_cookie(
+        serve_app.COOKIE_NAME, serve_app.cookie_value(request.app["deps"].bearer),
+        max_age=30 * 24 * 3600, httponly=True, samesite="Lax", path="/",
+    )
+    return resp
 
 
 async def _launch(request: web.Request) -> web.Response:

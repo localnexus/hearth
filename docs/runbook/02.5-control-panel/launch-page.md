@@ -12,6 +12,9 @@ WebRTC). Open `http://<facade-host>:65001/admin/launch`; it asks for the serve b
 - **Start** (bot down): pick the companion (a different companion auto-fills a valid voice and
   rides `/admin/switch` with `start:true`), pick **— new session —** or a saved session off the
   shelf, pick the memory posture (default = full; a resumed session keeps its own saved mode).
+- The **control panel** link (bot up): the page mints the browser carrier once per load, so
+  the proxied `:65000` panel opens by clicking rather than answering `401`. Everything else
+  here sends the bearer as a header and never needs the cookie.
 - **Stop** (bot up): one button — the session saves by default; an optional *name this session*
   field is the "name it now" ergonomic. Plus a link into the proxied control panel.
 - A live state line (bot / pid / uptime / externals / switch phase, polled every few seconds).

@@ -107,6 +107,7 @@ let lastBotState = null; // collapse repeated renders
 let busy = false;        // a start/stop is in flight — freeze the cards
 let tick = 0;            // poll counter — actuators refresh on a slower cadence
 const actBusy = new Set(); // actuator runs in flight — never re-render under one
+let cookieMinted = false;  // the browser carrier for plain navigation
 
 function token() { try { return localStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; } }
 
@@ -218,6 +219,13 @@ async function refresh() {
     return;
   }
   show("tokencard", false);
+  // A link is a navigation, and a navigation cannot carry the bearer header —
+  // so mint the cookie carrier once per load, or the control panel link below
+  // 401s. Silent on failure: the next poll retries, and nothing else needs it.
+  if (!cookieMinted) {
+    cookieMinted = true;
+    api("/admin/cookie", { method: "POST" }).catch(() => { cookieMinted = false; });
+  }
   // Externals move on their own clock (and each probe costs a request), so the
   // actuator card refreshes every fourth poll rather than every one.
   if (tick++ % 4 === 0) loadActuators();
@@ -266,8 +274,8 @@ async function loadStartForm() {
   const sel = $("pick-char");
   sel.innerHTML = "";
   for (const c of chars) {
-    const o = document.createElement("option");
-    o.value = c.name; o.textContent = c.name;
+    const o = el("option", "", c.name);
+    o.value = c.name;
     if (c.name === cur.character) o.selected = true;
     sel.appendChild(o);
   }
@@ -285,8 +293,8 @@ async function charPicked() {
   const vs = $("pick-voice");
   vs.innerHTML = "";
   for (const v of charInfo(name).voices) {
-    const o = document.createElement("option");
-    o.value = v; o.textContent = v;
+    const o = el("option", "", v);
+    o.value = v;
     if (name === cur.character && v === cur.voice) o.selected = true;
     vs.appendChild(o);
   }
@@ -295,7 +303,7 @@ async function charPicked() {
   try {
     const r = await api("/admin/sessions?character=" + encodeURIComponent(name));
     for (const m of (r.data && r.data.sessions) || []) {
-      const o = document.createElement("option");
+      const o = el("option");
       o.value = m.session_id;
       const tags = (m.held ? " [named]" : "") +
         (m.memory_mode === "recall-only" ? " [recall-only]" : "");

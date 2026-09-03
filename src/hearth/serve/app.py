@@ -32,6 +32,7 @@ response body.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import hmac
 import json
 import os
@@ -140,15 +141,34 @@ _AUTH_EXEMPT = frozenset({"/health", "/admin/launch", "/admin/roster",
                           "/admin/memory/ui", "/admin/settings/ui"})
 
 
+# The browser carrier. A top-level navigation cannot attach an Authorization
+# header, so the proxied control panel is unreachable from a browser on the
+# header alone. A page that already holds the bearer mints this cookie through
+# an authed POST /admin/cookie; it is DERIVED from the bearer rather than being
+# it, so the raw secret never sits in a cookie jar and the cookie's value can
+# never be replayed as a header. Same power, different carrier — and it dies
+# the moment the bearer is rotated, with no server-side session state.
+COOKIE_NAME = "hearth_facade"
+_COOKIE_LABEL = b"hearth-facade-cookie-v1"
+
+
+def cookie_value(bearer: str) -> str:
+    """The cookie that stands in for ``bearer`` on a browser navigation."""
+    return hmac.new(bearer.encode(), _COOKIE_LABEL, hashlib.sha256).hexdigest()
+
+
 @web.middleware
 async def _auth(request: web.Request, handler):
     if request.path in _AUTH_EXEMPT:
         return await handler(request)
+    bearer = request.app["deps"].bearer
     supplied = request.headers.get("Authorization", "")
-    expected = "Bearer " + request.app["deps"].bearer
-    if not hmac.compare_digest(supplied.encode(), expected.encode()):
-        return web.json_response({"error": "unauthorized"}, status=401)
-    return await handler(request)
+    if hmac.compare_digest(supplied.encode(), ("Bearer " + bearer).encode()):
+        return await handler(request)
+    cookie = request.cookies.get(COOKIE_NAME, "")
+    if cookie and hmac.compare_digest(cookie.encode(), cookie_value(bearer).encode()):
+        return await handler(request)
+    return web.json_response({"error": "unauthorized"}, status=401)
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────

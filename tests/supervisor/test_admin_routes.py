@@ -19,6 +19,7 @@ from aiohttp import web
 from aiohttp.test_utils import AioHTTPTestCase
 from hearth import supervisor
 from hearth.supervisor import actuators as actuators_mod
+from hearth.supervisor import routes as routes_mod
 from hearth.supervisor.child import BotChild
 
 
@@ -187,6 +188,40 @@ class AdminRoutes(AioHTTPTestCase):
         # Also fine with the bearer (same page either way).
         resp = await self.client.get("/admin/launch", headers=self.BEARER)
         self.assertEqual(resp.status, 200)
+
+    async def test_cookie_carrier_mints_and_stands_in_for_the_header(self):
+        """A navigation can't carry a header, so a browser gets a cookie instead."""
+        from hearth.serve import app as serve_app
+
+        # Minting is itself authed: no bearer, no carrier.
+        resp = await self.client.post("/admin/cookie")
+        self.assertEqual(resp.status, 401)
+
+        resp = await self.client.post("/admin/cookie", headers=self.BEARER)
+        self.assertEqual(resp.status, 200)
+        morsel = resp.cookies[serve_app.COOKIE_NAME]
+        self.assertEqual(morsel.value, serve_app.cookie_value("test-bearer"))
+        self.assertNotIn("test-bearer", morsel.value,
+                         "the raw bearer must never enter a cookie jar")
+        self.assertTrue(morsel["httponly"], "a page script must not read it back")
+        self.assertEqual(morsel["samesite"], "Lax")
+        self.assertFalse(morsel["secure"], "the facade speaks plain HTTP")
+
+        # It stands in for the header …
+        self.client.session.cookie_jar.clear()   # send the carrier explicitly
+        sent = {"Cookie": serve_app.COOKIE_NAME + "=" + morsel.value}
+        resp = await self.client.get("/admin/state", headers=sent)
+        self.assertEqual(resp.status, 200)
+
+        # … and nothing else does.
+        self.client.session.cookie_jar.clear()
+        resp = await self.client.get(
+            "/admin/state", headers={"Cookie": serve_app.COOKIE_NAME + "=nope"})
+        self.assertEqual(resp.status, 401)
+
+    async def test_cookie_never_travels_on_to_the_panel(self):
+        # The carrier is the FACADE's secret; the proxy must not hand it downstream.
+        self.assertIn("Cookie", routes_mod._DROP_HEADERS)
 
     async def test_actuator_list_run_unknown(self):
         resp = await self.client.get("/admin/actuators", headers=self.BEARER)
