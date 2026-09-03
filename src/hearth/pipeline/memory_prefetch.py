@@ -117,6 +117,15 @@ class MemoryPrefetch(FrameProcessor):
     def _launch(self, seam) -> None:
         if (seam is None or not getattr(seam, "per_turn_enabled", False)
                 or not getattr(seam, "per_turn_voice", False)):
+            # Gates off — including a mid-sitting runtime poke (the panel's
+            # per-turn-voice pause). Stop PAYING, not just launching: extras
+            # already injected would otherwise ride every remaining turn, so
+            # target the clean base next turn (augment_turn("") makes no
+            # backend call — same mechanism as the below-floor clear).
+            if seam is not None and self._applied_cue is not None:
+                self._gen += 1  # supersede any in-flight recall — it must not overwrite the clear
+                self._pending = (None, seam.augment_turn(self._raw_base, ""))
+            self._last_launched = None
             return
         cue = " ".join(_last_user_text(self._context.messages).split())
         if len(cue) < getattr(seam, "per_turn_min_chars", 12):

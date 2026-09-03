@@ -575,7 +575,8 @@ async def main(
     # value the Misc line shows. Attached even seamless — the route reports
     # {attached: false} honestly rather than 503ing forever.
     hearth.control.features.memory_status.attach(
-        live_switcher, engine_info["memory_mode"])
+        live_switcher, engine_info["memory_mode"],
+        voice_prefetch_built=memory_prefetch_proc is not None)
 
     # LM Studio serves several clients, so Hearth's model can be
     # swapped/unloaded mid-run — a startup-frozen Engine line would then show

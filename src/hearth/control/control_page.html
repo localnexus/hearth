@@ -142,7 +142,8 @@
      this panel displays and links over; the relative link works when the panel
      is viewed through the facade's proxy — same gate as the roster link. -->
 <div id="s-memory" class="hidden"><span id="s-memory-txt">Memory | …</span>
-  · <a href="/admin/memory/ui">review &amp; prune</a></div>
+  · <a href="/admin/memory/ui">review &amp; prune</a>
+  <button id="s-memory-voice" class="hidden" title="runtime-only — memory.toml stays the between-sessions truth"></button></div>
 </div>
 <div id="leak" class="hidden">⚠ reasoning tokens leaked</div>
 <div id="ctxwarn" class="hidden">⚠ approaching reliable context line — consider wrapping or consolidating this session</div>
@@ -432,9 +433,36 @@ async function pollMemory() {
       ? `${fmt(s.turn_recall.extras)} extra(s) via ${s.turn_recall.source || DASH}` : DASH;
     $('s-memory-txt').textContent =
       `Memory | ${s.backend || DASH}${s.retain === false ? ' (recall-only)' : ''} · per-turn: ${ptTxt} · recalled: ${open} · last turn: ${turn}`;
+    // Per-turn-voice pause/resume: a RUNTIME-ONLY poke of the live seam
+    // (decision signed 2026-09-02) — self-gating: shown only when bot.py built
+    // the prefetch processor this sitting (a voice-off start has nothing to
+    // light) and the chat gate is on for the current companion.
+    const vbtn = $('s-memory-voice');
+    if (m.voice_prefetch_built && pt.chat) {
+      vbtn.textContent = pt.voice ? 'pause voice recall' : 'resume voice recall';
+      vbtn.classList.remove('hidden');
+    } else {
+      vbtn.classList.add('hidden');
+    }
     el.classList.remove('hidden');
   } catch(e) { el.classList.add('hidden'); }
 }
+
+$('s-memory-voice').addEventListener('click', async () => {
+  const btn = $('s-memory-voice');
+  const resume = btn.textContent.startsWith('resume');
+  btn.disabled = true;
+  try {
+    const r = await fetch('/memory/per-turn-voice', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({on: resume}),
+    });
+    const d = await r.json();
+    if (!d.ok) throw 0;
+  } catch(e) { /* the poll repaints the true state either way */ }
+  btn.disabled = false;
+  pollMemory();
+});
 
 loadEngine();  // paint immediately on load
 setInterval(loadEngine, 60000);  // slow re-fetch — matches bot.py's engine re-poll cadence

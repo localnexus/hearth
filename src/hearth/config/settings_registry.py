@@ -88,7 +88,10 @@ def _effect(restart: str, note: str = "", secret: bool = False) -> dict:
     per-session seam and per-companion backend from that snapshot), and
     MemorySeam.__init__ freezes recall/per_turn values into seam attributes.
     The per-turn gates are CONSULTED every turn (memory_prefetch, chat glue)
-    but never re-read from disk — so nothing under [memory] is hot."""
+    but never re-read from disk — so nothing under [memory] is hot FROM THE
+    FILE. One sanctioned runtime exception: the panel's per-turn-voice pause
+    (POST /memory/per-turn-voice) pokes the live seam's voice gate without
+    touching this file — the file stays the between-sessions truth."""
     x: dict = {"hot_via": None, "effect": restart}
     if note:
         x["effect_note"] = note
@@ -327,7 +330,10 @@ class _MemPerTurn(_Cfg):
     voice: bool = Field(False, description="ALSO run the voice lane (prefetch-behind: recall after turn N, injected before turn N+1); needs enabled=true; ships OFF",
                         json_schema_extra=_effect("bot+facade",
                                                   _PER_TURN_NOTE + "; on the desk pipeline it also "
-                                                  "gates whether the prefetch processor is built at all"))
+                                                  "gates whether the prefetch processor is built at all"
+                                                  " — in a voice-on sitting the panel can pause/resume"
+                                                  " the lane live (runtime-only poke; this file stays"
+                                                  " the between-sessions truth)"))
 
 
 class _MemServe(_Cfg):

@@ -144,6 +144,21 @@ class TestPrefetchLogic(unittest.TestCase):
             self.assertEqual(seam.calls, [])
             self.assertIsNone(proc._pending)
 
+    def test_runtime_poke_off_clears_applied(self):
+        # The panel's per-turn-voice pause (runtime-only poke): gates are read
+        # every turn, and a mid-sitting OFF must stop PAYING — extras already
+        # applied get cleared next turn, and any in-flight recall is superseded
+        # so it cannot overwrite the clear.
+        seam = _FakeSeam()
+        proc, _ = self._proc(seam, _user("a long knight rider question here"))
+        proc._applied_cue = "an earlier question"
+        gen0 = proc._gen
+        seam.per_turn_voice = False  # the poke
+        proc._launch(seam)
+        self.assertEqual(proc._pending, (None, "BASE"))  # clean base next turn
+        self.assertGreater(proc._gen, gen0)              # in-flight result discarded
+        self.assertIsNone(proc._last_launched)
+
     def test_supersede_drops_stale_result(self):
         async def go():
             seam = _FakeSeam()

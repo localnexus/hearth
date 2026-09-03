@@ -288,6 +288,15 @@ On the `floor` backend, which ignores the query, the re-query simply returns the
 same recency digest and dedupes away against the open block — the gate is a no-op
 there rather than a cost.
 
+The extras themselves cost **context** every turn they ride, and that adds up in
+a long sitting. So the voice lane has a live valve: in a sitting that started
+with `voice = true`, the control panel's Memory line shows a **pause/resume
+voice recall** button (`POST /memory/per-turn-voice`). It is a runtime-only
+poke — effect next turn, already-applied extras cleared, nothing written; this
+file stays the between-sessions truth and a restart or live switch returns to
+it. A sitting that started voice-off has no prefetch processor to light, and
+the route says so instead of pretending.
+
 ## The serve facade lane
 
 The `/v1` facade (`config/serve.toml`) is stateless by construction: it resolves

@@ -2018,6 +2018,83 @@ class TestSeamStatus(unittest.TestCase):
             self.assertEqual(seam.status()["turn_recall"], got)
 
 
+class TestPerTurnVoicePoke(unittest.TestCase):
+    """The panel memory tap's ONE runtime knob (decision signed 2026-09-02,
+    runtime-only): POST /memory/per-turn-voice pokes the LIVE seam's voice
+    gate — no file write — and every refusal on the gate ladder is honest
+    (unwired 503, no seam / processor-not-built / chat-gate-off 409s)."""
+
+    def _app_client(self):
+        from aiohttp import web
+        from aiohttp.test_utils import TestClient, TestServer
+
+        from hearth.control.features import memory_status as ms
+
+        app = web.Application()
+        app.add_routes(ms.memory_status_routes(None))
+        return ms, TestClient(TestServer(app))
+
+    def _run(self, coro):
+        return asyncio.run(coro)
+
+    def _seam(self, enabled=True, voice=True):
+        import types
+        return types.SimpleNamespace(
+            per_turn_enabled=enabled, per_turn_voice=voice,
+            status=lambda: {"per_turn": {"chat": enabled, "voice": voice}})
+
+    def _wired(self, ms, seam, built=True):
+        import types
+        ms.attach(types.SimpleNamespace(current_seam=seam), "full",
+                  voice_prefetch_built=built)
+        self.addCleanup(ms.attach, None, None, False)
+
+    def test_unwired_answers_503(self):
+        async def go():
+            ms, client = self._app_client()
+            ms.attach(None, None, False)
+            async with client:
+                self.assertEqual((await client.post(
+                    "/memory/per-turn-voice", json={"on": False})).status, 503)
+        self._run(go())
+
+    def test_gate_ladder_refusals_are_honest(self):
+        async def go():
+            ms, client = self._app_client()
+            async with client:
+                self._wired(ms, seam=None, built=False)
+                r = await client.post("/memory/per-turn-voice", json={"on": False})
+                self.assertEqual(r.status, 409)  # no seam this sitting
+                self._wired(ms, self._seam(), built=False)
+                r = await client.post("/memory/per-turn-voice", json={"on": True})
+                self.assertEqual(r.status, 409)
+                self.assertIn("restart", (await r.json())["error"])  # names the fix
+                self._wired(ms, self._seam(enabled=False), built=True)
+                r = await client.post("/memory/per-turn-voice", json={"on": True})
+                self.assertEqual(r.status, 409)  # chat gate off
+                r = await client.post("/memory/per-turn-voice", json={"on": "yes"})
+                self.assertEqual(r.status, 400)  # bool required, no coercion
+        self._run(go())
+
+    def test_poke_flips_the_live_seam_and_status_reflects_it(self):
+        async def go():
+            ms, client = self._app_client()
+            seam = self._seam(voice=True)
+            async with client:
+                self._wired(ms, seam, built=True)
+                r = await client.post("/memory/per-turn-voice", json={"on": False})
+                self.assertEqual(r.status, 200)
+                d = await r.json()
+                self.assertFalse(seam.per_turn_voice)          # the actual poke
+                self.assertIn("memory.toml unchanged", d["note"])
+                g = await (await client.get("/memory")).json()
+                self.assertTrue(g["voice_prefetch_built"])      # the panel's self-gate
+                r = await client.post("/memory/per-turn-voice", json={"on": True})
+                self.assertEqual(r.status, 200)
+                self.assertTrue(seam.per_turn_voice)            # and back on
+        self._run(go())
+
+
 class TestForkVerb(unittest.TestCase):
     """fork --as/--until: metadata-selected record copy + restamp, identity
     scaffold verified by the startup loaders, source-tier enrollment, opt-in
