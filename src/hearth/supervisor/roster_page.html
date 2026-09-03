@@ -29,6 +29,11 @@
   #roster { font-family: ui-monospace, monospace; font-size: 0.9em; white-space: pre-wrap; }
   #report { font-family: ui-monospace, monospace; font-size: 0.9em;
             white-space: pre-wrap; min-height: 1.5em; }
+  #b-records { font-family: ui-monospace, monospace; font-size: 0.9em;
+               max-height: 14em; overflow-y: auto; margin: 0.5em 0; }
+  #b-records div { padding: 0.15em 0.3em; cursor: pointer; border-radius: 4px; }
+  #b-records div:hover { background: color-mix(in srgb, currentColor 12%, transparent); }
+  #b-records div.picked { background: color-mix(in srgb, currentColor 20%, transparent); }
   .err { color: #c33; }
   .hidden { display: none; }
   a { color: inherit; }
@@ -147,6 +152,31 @@
   </div>
 </div>
 
+<div id="branchcard" class="card hidden">
+  <h2>Branch a character</h2>
+  <p><small>Forks the memory track at a juncture: a new character (persona as it
+     stands <b>today</b>, voices, theme) whose records hold the shared history up
+     to the cut — both lines diverge freely from there, and recall never crosses
+     tracks. Records after the juncture, and the intent slot, stay with the
+     source. Create-only; preview writes nothing.</small></p>
+  <div class="row"><label for="b-char">Source</label>
+    <select id="b-char"></select>
+    <button id="b-load">Load records</button></div>
+  <div id="b-records" class="hidden"></div>
+  <div class="row"><label for="b-name">Fork name</label>
+    <input type="text" id="b-name" autocomplete="off" placeholder="letters, digits, . _ -"></div>
+  <div class="row"><label for="b-until">Juncture</label>
+    <input type="text" id="b-until" autocomplete="off"
+           placeholder="ISO date/time — or click a record above (that session is the last shared one)"></div>
+  <div class="row"><label></label>
+    <label style="min-width:0"><input type="checkbox" id="b-sessions">
+      also copy transcripts started at or before the juncture</label></div>
+  <div class="row">
+    <button id="b-preview">Preview (writes nothing)</button>
+    <button id="b-fork" class="primary" disabled>Fork</button>
+  </div>
+</div>
+
 <div id="report"></div>
 
 <script>
@@ -170,7 +200,7 @@ async function api(path, opts) {
 
 function needToken(prompt) {
   show("tokencard", true); show("rostercard", false); show("wizardcard", false);
-  show("editcard", false); show("voicecard", false);
+  show("editcard", false); show("voicecard", false); show("branchcard", false);
   $("statusline").textContent = prompt || "locked — enter the bearer token";
 }
 
@@ -184,7 +214,7 @@ async function refresh() {
     return;
   }
   show("tokencard", false); show("rostercard", true); show("wizardcard", true);
-  show("editcard", true); show("voicecard", true);
+  show("editcard", true); show("voicecard", true); show("branchcard", true);
   const d = st.data || {};
   roster = d.characters || [];
   fillCharPickers();
@@ -256,7 +286,7 @@ for (const id of ["f-name", "f-persona", "f-tag", "f-license", "f-source", "f-ti
 let roster = [];  // /admin/roster/state characters, kept for the pickers
 
 function fillCharPickers() {
-  for (const id of ["e-char", "v-char"]) {
+  for (const id of ["e-char", "v-char", "b-char"]) {
     const sel = $(id), prev = sel.value;
     sel.textContent = "";
     for (const c of roster) {
@@ -388,6 +418,100 @@ $("v-preview").addEventListener("click", () => voiceSubmit(false));
 $("v-add").addEventListener("click", () => voiceSubmit(true));
 for (const id of ["v-char", "v-tag", "v-license", "v-source", "v-sample"])
   $(id).addEventListener("input", () => { $("v-add").disabled = true; });
+
+// ── branch a character (the fork verb's web skin) ───────────────────────────
+function lockFork() { $("b-fork").disabled = true; }
+
+$("b-load").addEventListener("click", async () => {
+  report("");
+  const character = $("b-char").value;
+  if (!character) { report("pick a source character first", true); return; }
+  let r;
+  try { r = await api("/admin/memory/records?character=" + encodeURIComponent(character)); }
+  catch (e) {
+    if (e.message === "401") { needToken("that token was refused — try again"); return; }
+    report("facade unreachable", true); return;
+  }
+  const d = r.data || {};
+  if (r.status !== 200) { report(d.error || "load failed", true); return; }
+  const box = $("b-records");
+  box.textContent = "";
+  for (const rec of (d.records || [])) {
+    const row = document.createElement("div");
+    row.textContent = (rec.when || "(undated)") + "  " + rec.session_id +
+                      (rec.name ? "  “" + rec.name + "”" : "");
+    if (rec.ended) {
+      row.title = "fork after this session (juncture = " + rec.ended + ")";
+      row.addEventListener("click", () => {
+        $("b-until").value = rec.ended;
+        for (const el of box.children) el.classList.remove("picked");
+        row.classList.add("picked");
+        lockFork();
+      });
+    } else {
+      row.style.opacity = "0.5";
+      row.title = "undated — cannot anchor a juncture";
+    }
+    box.appendChild(row);
+  }
+  if (!box.children.length) box.textContent = "(no records — a fork from here starts amnesiac)";
+  show("b-records", true);
+});
+
+function renderForkPlan(d) {
+  if (d.errors) return d.errors.map(e => "✗ " + e).join("\n");
+  const out = [`fork ${d.source} → ${d.target} at juncture ${d.juncture}`];
+  const recs = d.records || [];
+  out.push(recs.length
+    ? `shared history — ${recs.length} record(s):\n` +
+      recs.map(r => `  ${r.when}  ${r.session_id}` + (r.name ? `  “${r.name}”` : "")).join("\n")
+    : "shared history — NO records at or before the juncture (starts amnesiac)");
+  if (d.left_behind) out.push(`${d.left_behind} record(s) after the juncture stay behind`);
+  if (d.undated) out.push(`${d.undated} undated record(s) stay behind`);
+  out.push(`identity — ${d.identity_files} file(s) · voices: ` +
+           ((d.voices || []).join(", ") || "none"));
+  out.push("sessions — " + (d.sessions ? d.sessions + " transcript(s) copy over"
+                                       : "stay with the source"));
+  out.push(d.intent_note || "");
+  out.push("memory tier — " + (d.tier === null ? "memory disabled, no enrollment" : d.tier));
+  out.push(d.persona_note || "");
+  if (d.memory) out.push("memory: " + d.memory);
+  if (d.confirm) out.push("\n" + d.confirm);
+  if (d.next) out.push("\nNEXT: " + d.next);
+  return out.filter(Boolean).join("\n");
+}
+
+async function forkSubmit(confirmed) {
+  report(confirmed ? "forking…" : "checking…");
+  lockFork();
+  const body = { character: $("b-char").value, as: $("b-name").value.trim(),
+                 until: $("b-until").value.trim(),
+                 include_sessions: $("b-sessions").checked };
+  if (confirmed) body.yes = true;
+  let r;
+  try {
+    r = await api("/admin/roster/fork", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    if (e.message === "401") { needToken("that token was refused — try again"); return; }
+    report("facade unreachable", true); return;
+  }
+  const d = r.data || {};
+  report(renderForkPlan(d), !d.ok);
+  // Fork unlocks only after a clean preview of the SAME inputs (edits re-lock).
+  $("b-fork").disabled = !(d.ok && !d.created);
+  if (d.created) { lockFork(); refresh(); }
+}
+
+$("b-preview").addEventListener("click", () => forkSubmit(false));
+$("b-fork").addEventListener("click", () => forkSubmit(true));
+$("b-char").addEventListener("change", () => {
+  show("b-records", false); $("b-records").textContent = ""; lockFork();
+});
+for (const id of ["b-name", "b-until", "b-sessions"])
+  $(id).addEventListener("input", lockFork);
 
 $("tokenbtn").addEventListener("click", () => {
   try { localStorage.setItem(TOKEN_KEY, $("token").value.trim()); } catch { /* private mode */ }

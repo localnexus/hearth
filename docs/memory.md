@@ -73,6 +73,12 @@ stood at the juncture" is your edit after the fork, not the verb's guess. A
 replayed bank is a faithful *re-reading* of the shared history, not a
 byte-identical copy of the source's index — same records, freshly extracted.
 
+The same verb is reachable from the roster page when the supervisor is
+mounted (`POST /admin/roster/fork`, with a Branch card on `/admin/roster`
+that picks the juncture from the record listing) — identical plan/execute,
+except the replay itself stays a desk command, for the same reason
+`rebuild --clean` does: it runs the extraction model over every record.
+
 ## Forgetting one conversation
 
 There is an undo for a banked conversation. `forget --session <id>` (the id as

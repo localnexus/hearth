@@ -73,6 +73,10 @@ def _record_summary(record) -> dict:
     return {
         "session_id": record.session_id,
         "when": (record.ended or record.started or "")[:16].replace("T", " "),
+        # Full-precision timestamp: the roster page's juncture picker needs the
+        # exact cutoff ("when" is minute-truncated, which would exclude the
+        # picked record itself from a fork's <= comparison).
+        "ended": record.ended or record.started or None,
         "name": record.name or None,
         "user_turns": sum(1 for m in record.messages if m.get("role") == "user"),
         "digest": digest,

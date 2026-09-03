@@ -53,6 +53,15 @@ door, same preview-then-confirm discipline:
   The new tag appears in the switch pickers immediately (choices() reads the
   disk at call time); audition stays yours — your ear decides.
 
+  BRANCH (fork) — the memory CLI's fork verb (hearth/memory/fork.py) behind
+  the same door: a new character whose records hold the source's history up
+  to a juncture (docs/memory.md, "Forking the track at a juncture"). The
+  route is a thin JSON skin over the CLI's own plan/execute pair — identical
+  validation, selection, rollback. ONE deliberate divergence, curation.py's
+  posture verbatim: the backend REPLAY stays at the desk (extraction over
+  every record is minutes, unbounded by request timeouts) — a non-floor fork
+  answers "created" plus the exact rebuild command to run.
+
 API (mounted iff [serve.supervisor] enabled):
     GET  /admin/roster         → the wizard page (static contentless shell,
                                  auth-exempt like /admin/launch; data authed)
@@ -62,6 +71,8 @@ API (mounted iff [serve.supervisor] enabled):
     GET  /admin/roster/persona?character=<c>&persona=<v> → the persona text
     POST /admin/roster/persona → JSON {character, persona?, text, yes?}
     POST /admin/roster/voice   → multipart form; "yes" absent = dry-run report
+    POST /admin/roster/fork    → JSON {character, as, until, include_sessions?,
+                                 yes?}; yes absent = the full plan, nothing written
 """
 
 from __future__ import annotations
@@ -620,6 +631,85 @@ async def _voice_route(request: web.Request) -> web.Response:
                 "— audition by ear before promoting: your ear decides."})
 
 
+# ── branch (fork) a character's memory track at a juncture ───────────────────
+
+def _fork_preview(plan) -> dict:
+    """The plan as JSON — SessionMeta discipline (ids/dates/names, never
+    transcript content), mirroring what the CLI preview prints."""
+    return {
+        "source": plan.source, "target": plan.target, "juncture": plan.cutoff,
+        "records": [{"session_id": r.session_id,
+                     "when": (r.ended or r.started or "")[:16].replace("T", " "),
+                     "name": r.name or None}
+                    for _path, r in plan.records],
+        "left_behind": plan.left_behind, "undated": plan.undated,
+        "identity_files": len(plan.identity), "voices": plan.voices,
+        "sessions": len(plan.sessions), "tier": plan.tier,
+        "persona_note": "persona copies AS IT STANDS TODAY — edit it after "
+                        "the fork if the juncture's differed",
+        "intent_note": "the intent slot never copies (it belongs to the "
+                       "source track)",
+    }
+
+
+async def _fork_route(request: web.Request) -> web.Response:
+    """Preview-then-confirm over the CLI's plan/execute pair. The backend
+    replay deliberately stays at the desk (see the module docstring)."""
+    from hearth.memory import fork as fork_mod
+
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001 — malformed body = an invalid request
+        body = None
+    if not isinstance(body, dict):
+        return web.json_response({"ok": False, "errors": ["JSON body required"]},
+                                 status=400)
+    character = str(body.get("character") or "")
+    target = str(body.get("as") or "")
+    until = str(body.get("until") or "")
+    include_sessions = bool(body.get("include_sessions"))
+    try:
+        plan = await asyncio.to_thread(fork_mod.plan, character, target, until,
+                                       include_sessions)
+    except fork_mod.ForkError as exc:
+        return web.json_response({"ok": False, "errors": [str(exc)]}, status=400)
+
+    preview = _fork_preview(plan)
+    if not bool(body.get("yes")):
+        return web.json_response({
+            "ok": True, "created": False, **preview,
+            "confirm": 'nothing written — repeat with "yes": true to create '
+                       "the fork"})
+    try:
+        result = await asyncio.to_thread(fork_mod.execute, plan)
+    except fork_mod.ForkError as exc:  # plan-to-execute race — create-only stands
+        return web.json_response({"ok": False, "errors": [str(exc)]}, status=409)
+    except Exception as exc:  # noqa: BLE001 — rolled back in execute
+        logger.warning("[roster] fork failed ({})", type(exc).__name__)
+        return web.json_response(
+            {"ok": False, "errors": [f"fork failed ({type(exc).__name__}) — "
+                                     "nothing was kept"]}, status=500)
+    if plan.tier in (None, "floor", "none"):
+        nxt = ("no backend replay needed — the floor reads record files "
+               "directly" if plan.tier == "floor" else
+               "no backend replay needed — no indexed backend for this tier")
+    elif result["enrolled"]:
+        nxt = (f"replay at the desk: `python -m hearth.memory rebuild "
+               f"--character {plan.target}` — it runs the extraction model "
+               "over each record (minutes), so it stays a CLI step; the "
+               "records themselves are already in place")
+    else:
+        nxt = (f"enrollment did not land — enroll {plan.target!r} by hand, "
+               f"then run `python -m hearth.memory rebuild --character "
+               f"{plan.target}` at the desk")
+    logger.info("[roster] forked {} -> {} at {}", plan.source, plan.target,
+                plan.cutoff)
+    return web.json_response({
+        "ok": True, "created": True, **preview,
+        "memory": result["memory"], "loader": "verified (startup loaders ran "
+        "clean)", "next": nxt})
+
+
 def add_routes(app: web.Application) -> None:
     """Called by routes.build_mount — same door, same middleware."""
     app.router.add_get("/admin/roster", _page)
@@ -628,3 +718,4 @@ def add_routes(app: web.Application) -> None:
     app.router.add_get("/admin/roster/persona", _persona_get)
     app.router.add_post("/admin/roster/persona", _persona_post)
     app.router.add_post("/admin/roster/voice", _voice_route)
+    app.router.add_post("/admin/roster/fork", _fork_route)
