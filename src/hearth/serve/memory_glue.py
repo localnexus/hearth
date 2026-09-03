@@ -388,6 +388,21 @@ class ServeMemory:
         seam = MemorySeam(companion, persona, backend, self._cfg)
         return seam, seam.augment(base_instruction)
 
+    # ── curation access (the /admin/memory routes) ───────────────────────────
+
+    def backend_name_for(self, companion: str) -> str:
+        """The backend NAME this facade resolves for a companion — read off the
+        boot-snapshot cfg. Display + curation routing only; builds nothing."""
+        return str(dict(self._cfg.get("companions") or {}).get(
+            companion, self._cfg.get("backend", "floor")))
+
+    def curation_backend(self, companion: str):
+        """The facade's OWN per-companion backend, for the curation verbs —
+        built (and kept, facade-lifetime) exactly as a session would build it,
+        so curation never spawns a second sidecar; None for a companion mapped
+        "none". WORKER THREAD ONLY: a first call may spawn the sidecar."""
+        return self._backend_for(companion)
+
     def _backend_for(self, companion: str):
         """One backend per companion, kept for the facade's life. "none" opts a
         companion out — cached as such, so the answer costs nothing after the

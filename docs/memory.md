@@ -74,6 +74,16 @@ that, every future `forget` is complete on its own. Granularity is the
 session, by design: "forget just this one sentence" is record *editing*, a
 different tool.
 
+The same capability is reachable over the serve facade when the supervisor is
+mounted: `GET /admin/memory` (per-companion record counts), `GET
+/admin/memory/records?character=<c>` (the digest listing), and `POST
+/admin/memory/forget {character, session, yes?}` — the identical
+preview-then-confirm contract and deletion ordering, behind the facade's
+bearer door (`character` is required there; the web has no "active companion"
+in view). `rebuild --clean` stays CLI-only: a wipe-then-replay runs the
+extraction model over every record and belongs at the desk, not on a request
+timeout.
+
 ## Privacy — read this before enabling
 
 Enabling memory **is** the choice to keep a trace. Canonical records contain the

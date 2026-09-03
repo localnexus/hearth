@@ -28,7 +28,11 @@ falling back to the supervised restart otherwise. The optional body key
 "restart" (force the supervised-restart path).
 
 GET /admin/sessions lists the resume shelf (SessionMeta only — ids, names,
-counts, stamps; conversation content is never read out). POST /admin/bot/start
+counts, stamps; conversation content is never read out). /admin/memory is the
+record-level curation surface (curation.py): digest views + a
+preview-then-confirm forget — the memory CLI's web half, living here because
+the write-layer rule (c) puts every memory mutation behind this door.
+POST /admin/bot/start
 and the switch's restart rider accept "memory": full | recall-only | off (the
 sitting's --memory posture); a live handoff never does — the mode is set at
 boot and rides a live switch unchanged.
@@ -55,6 +59,7 @@ from loguru import logger
 
 from .child import STOP_GRACE_S, TERM_GRACE_S, _MEMORY_MODES, BotChild, _now_iso
 from . import actuators as actuators_mod
+from . import curation as curation_mod
 from . import switch as switch_mod
 
 PANEL_URL = "http://127.0.0.1:65000"
@@ -121,6 +126,9 @@ def build_mount(sup_cfg: dict):
         app.router.add_post("/admin/switch", _switch_post)
         app.router.add_get("/admin/actuators", _actuators_get)
         app.router.add_post("/admin/actuators/{name}/run", _actuator_run)
+        # /admin/memory — record-level curation (preview-then-confirm forget +
+        # digest views; the CLI's web half, write-layer rule (c)).
+        curation_mod.add_routes(app)
         # LAST on purpose: registered facade routes always win over the proxy.
         app.router.add_route("*", "/{tail:.*}", _panel_proxy)
         app.on_startup.append(_adopt_on_start)
