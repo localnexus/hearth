@@ -9,9 +9,15 @@ whether the bot is up or down, from any device that can reach the facade (it's p
 WebRTC). Open `http://<facade-host>:65001/admin/launch`; it asks for the serve bearer **once**
 (kept in that browser's localStorage, sent only as an `Authorization` header) and then offers:
 
-- **Start** (bot down): pick the companion (a different companion auto-fills a valid voice and
-  rides `/admin/switch` with `start:true`), pick **— new session —** or a saved session off the
-  shelf, pick the memory posture (default = full; a resumed session keeps its own saved mode).
+- **Companion** — the [shared switch card](companion-switcher.md), the same box the `:65000`
+  panel carries: character · voice · persona · model (● = resident, so the change can go live).
+  It reads **Start** while the bot is down and **Switch** while it is up, which is what makes a
+  **warm** switch possible without walking to the desk — the daemon applies it at the next words
+  when every changed piece has a live path, and warm-restarts otherwise. Both rides are the same
+  `POST /admin/switch`; a down bot gets `start:true`.
+- **Session + Memory** (bot down only): **— new session —** or a saved session off the shelf, and
+  the memory posture (default = full; a resumed session keeps its own saved mode). Both are
+  start-only — a memory change cannot ride a live switch, so the daemon refuses that pairing.
 - The **control panel** link (bot up): the page mints the browser carrier once per load, so
   the proxied `:65000` panel opens by clicking rather than answering `401`. Everything else
   here sends the bearer as a header and never needs the cookie.

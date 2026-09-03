@@ -90,7 +90,15 @@ _OFFLINE_PAGE = """<!doctype html><meta charset="utf-8">
 # The standing launch surface: pure static chrome (no names, no state, no
 # tokens baked in — the serve middleware exempts this ONE page from auth, so
 # it must stay contentless; every fact it shows arrives via authed fetch).
-_LAUNCH_PAGE = (Path(__file__).parent / "launch_page.html").read_text(encoding="utf-8")
+#
+# The companion switcher is SHARED with the control panel: one source file,
+# spliced into both pages at import. A static route would have needed its own
+# auth exemption (a <script src> cannot carry the bearer); splicing keeps the
+# door count where it is and guarantees both surfaces run the same bytes.
+_SWITCH_CARD_JS = (Path(__file__).parent.parent / "ui" /
+                   "switch_card.js").read_text(encoding="utf-8")
+_LAUNCH_PAGE = (Path(__file__).parent / "launch_page.html").read_text(
+    encoding="utf-8").replace("/*SWITCH_CARD_JS*/", _SWITCH_CARD_JS)
 _PAIR_PAGE = (Path(__file__).parent / "pair_page.html").read_text(encoding="utf-8")
 
 # Device pairing. A 64-hex bearer is not something anyone types into a phone,
@@ -145,6 +153,7 @@ def build_mount(sup_cfg: dict):
         # in-flight supervised restart (one at a time).
         app["switch_state"] = {"last": None, "task": None}
         app.router.add_get("/admin/switch", _switch_get)
+        app.router.add_get("/admin/switch/live", _switch_live_get)
         app.router.add_post("/admin/switch", _switch_post)
         app.router.add_get("/admin/actuators", _actuators_get)
         app.router.add_post("/admin/cookie", _cookie)
@@ -483,6 +492,43 @@ async def _switch_get(request: web.Request) -> web.Response:
         "facade": {"identity_pinned": bool(dict(deps.cfg).get("identity")),
                    "character": deps.character},
     })
+
+
+async def _switch_live_get(request: web.Request) -> web.Response:
+    """Read-through to the bot's own GET /switch/live (the switcher's second half).
+
+    The shared switch card needs two things the daemon cannot know by itself:
+    which models the LLM server holds RIGHT NOW (the ● marks — residency is what
+    decides live-vs-restart on a model change) and the moment a live handoff
+    actually lands (the bot applies it at the next turn boundary, not on POST).
+    Both live in the bot's describe(); the panel reads them directly, and this
+    is the same window for every client that can only reach the facade.
+
+    Never an error: a down or older bot answers {"ok": false, "reason": ...} so
+    the card degrades to plain names instead of breaking. Names and states only.
+    """
+    app = request.app
+    deps = app["deps"]
+    if not await app["bot_child"].reconcile():
+        return web.json_response({"ok": False, "reason": "bot is down"})
+    if deps.session is None:
+        return web.json_response({"ok": False, "reason": "no probe session"})
+    try:
+        async with deps.session.get(
+                app["panel_url"] + "/switch/live",
+                timeout=aiohttp.ClientTimeout(total=5)) as r:
+            if r.status == 404:
+                return web.json_response({"ok": False, "reason": "bot has no live-switch route"})
+            try:
+                data = await r.json()
+            except Exception:  # noqa: BLE001 — a non-JSON body is not an answer
+                return web.json_response({"ok": False, "reason": f"bot answered HTTP {r.status}"})
+            if not isinstance(data, dict):
+                return web.json_response({"ok": False, "reason": "malformed bot response"})
+            data.setdefault("ok", r.status == 200)
+            return web.json_response(data)
+    except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as exc:
+        return web.json_response({"ok": False, "reason": f"unreachable ({type(exc).__name__})"})
 
 
 async def _switch_post(request: web.Request) -> web.Response:

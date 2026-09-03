@@ -51,23 +51,26 @@
      code</a> instead of typing the key.</p>
 </div>
 
-<div id="startcard" class="card hidden">
-  <h2>Start</h2>
-  <div class="row"><label for="pick-char">Companion</label>
-    <select id="pick-char"></select></div>
-  <div class="row"><label for="pick-voice">Voice</label>
-    <select id="pick-voice"></select></div>
-  <div class="row"><label for="pick-session">Session</label>
-    <select id="pick-session"></select></div>
-  <div class="row"><label for="pick-memory">Memory</label>
-    <select id="pick-memory">
-      <option value="">default (full · a resumed session keeps its own mode)</option>
-      <option value="full">full — recall and retain</option>
-      <option value="recall-only">recall-only — she remembers, this sitting leaves no record</option>
-      <option value="off">off — a fresh meeting</option>
-    </select></div>
-  <div class="row"><button id="startbtn" class="primary">Start</button>
-    <button id="compactbtn" title="Compact the selected session's transcript with the local model before starting — pick a session above first">Compact selected session</button></div>
+<!-- Selection (companion · voice · persona · model · hold) is built by the SHARED
+     card — ui/switch_card.js, the same file the control panel uses. It serves
+     both states: "Start" when the bot is down, "Switch" when it is up. Session
+     and memory stay here: both are start-only. -->
+<div id="switchcard" class="card hidden">
+  <h2>Companion</h2>
+  <div id="switchmount"></div>
+  <div id="startextras">
+    <div class="row"><label for="pick-session">Session</label>
+      <select id="pick-session"></select></div>
+    <div class="row"><label for="pick-memory">Memory</label>
+      <select id="pick-memory">
+        <option value="">default (full · a resumed session keeps its own mode)</option>
+        <option value="full">full — recall and retain</option>
+        <option value="recall-only">recall-only — she remembers, this sitting leaves no record</option>
+        <option value="off">off — a fresh meeting</option>
+      </select></div>
+    <div class="row">
+      <button id="compactbtn" title="Compact the selected session's transcript with the local model before starting — pick a session above first">Compact selected session</button></div>
+  </div>
 </div>
 
 <div id="stopcard" class="card hidden">
@@ -94,6 +97,9 @@
   <a href="/admin/memory/ui">Memory records</a> — review &amp; prune ·
   <a href="/admin/settings/ui">Settings</a> — every config file</small></p>
 
+<!-- Spliced in at render time from ui/switch_card.js (shared with the panel). -->
+<script>/*SWITCH_CARD_JS*/</script>
+
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
@@ -105,6 +111,7 @@ const el = (tag, cls, text) => {   // nodes, so API text never meets innerHTML
 };
 const TOKEN_KEY = "hearth_admin_token";
 let choices = null;      // /admin/switch payload (current + choices)
+let botUp = false;       // start-only riders ride a cold start, never a warm switch
 let lastBotState = null; // collapse repeated renders
 let busy = false;        // a start/stop is in flight — freeze the cards
 let tick = 0;            // poll counter — actuators refresh on a slower cadence
@@ -137,7 +144,7 @@ function say(text, isErr) {
 function show(id, on) { $(id).classList.toggle("hidden", !on); }
 
 function needToken(prompt) {
-  show("tokencard", true); show("startcard", false); show("stopcard", false);
+  show("tokencard", true); show("switchcard", false); show("stopcard", false);
   show("actuatorcard", false);
   $("statusline").textContent = prompt || "locked — enter the bearer token";
 }
@@ -250,56 +257,62 @@ async function refresh() {
   }
   $("statusline").textContent = bits.join("  ·  ");
 
-  if (busy) return; // don't flip cards under an in-flight action
+  // Never flip cards or re-fill a select under an in-flight action — the card
+  // owns a selection the operator may be part-way through making.
+  if (busy || card.busy()) return;
   const up = bot.state === "running" || bot.state === "starting";
+  botUp = up;
+  show("switchcard", true);   // the companion card serves BOTH states
+  show("startextras", !up);   // session + memory are start-only
   show("stopcard", up);
-  show("startcard", !up);
   if (up) {
     $("runline").textContent = "The voice bot is up" +
       (bot.managed === false ? " (started at the desk — adopted)" : "") + ".";
-  } else if (bot.state !== lastBotState || choices === null) {
-    await loadStartForm(); // (re)populate on each transition into "down"
   }
+  // Repopulate on each transition in EITHER direction: the verb, the hold row
+  // and the current selection all change when the bot comes up or goes down.
+  if (bot.state !== lastBotState || choices === null) await loadStartForm();
   lastBotState = bot.state;
 }
 
-// ── start form ──────────────────────────────────────────────────────────────
+// ── the shared switch card ──────────────────────────────────────────────────
+// Transport is ours (the bearer door); the field set and the live-vs-restart
+// reading belong to the card, so this page and the panel cannot drift. Cold
+// start and warm switch are one POST: the daemon starts a down bot on "start".
+
+const card = window.HearthSwitchCard.mount($("switchmount"), {
+  cls: { row: "row", name: "", btns: "row", state: "state", legend: "note" },
+  selfDies: false,          // the facade outlives the bot it restarts
+  state: async () => {
+    const sw = await api("/admin/switch");
+    if (sw.status !== 200 || !sw.data) return null;
+    choices = sw.data;
+    return sw.data;
+  },
+  live: async () => (await api("/admin/switch/live")).data,
+  submit: (body) => api("/admin/switch", { json: body }),
+  extraBody: () => {
+    // Start-only riders: on a warm switch neither applies, and sending memory
+    // would force the restart path (the daemon 409s it on a live handoff).
+    if (botUp) return {};
+    const sessionId = $("pick-session").value;
+    const memory = $("pick-memory").value;
+    const body = { start: true };
+    if (sessionId) { body.mode = "resume"; body.name = sessionId; }
+    else body.mode = "new";
+    if (memory) body.memory = memory;
+    return body;
+  },
+  onApplied: () => refresh(),
+});
 
 async function loadStartForm() {
-  let sw;
-  try { sw = await api("/admin/switch"); }
-  catch { return; }
-  if (sw.status !== 200 || !sw.data) return;
-  choices = sw.data;
-  const cur = choices.current || {};
-  const chars = (choices.choices && choices.choices.characters) || [];
-  const sel = $("pick-char");
-  sel.innerHTML = "";
-  for (const c of chars) {
-    const o = el("option", "", c.name);
-    o.value = c.name;
-    if (c.name === cur.character) o.selected = true;
-    sel.appendChild(o);
-  }
-  await charPicked();
+  if (!(await card.load())) return;
+  await loadSessions();
 }
 
-function charInfo(name) {
-  const chars = (choices.choices && choices.choices.characters) || [];
-  return chars.find((c) => c.name === name) || { voices: [], personas: [] };
-}
-
-async function charPicked() {
-  const name = $("pick-char").value;
-  const cur = (choices && choices.current) || {};
-  const vs = $("pick-voice");
-  vs.innerHTML = "";
-  for (const v of charInfo(name).voices) {
-    const o = el("option", "", v);
-    o.value = v;
-    if (name === cur.character && v === cur.voice) o.selected = true;
-    vs.appendChild(o);
-  }
+async function loadSessions() {
+  const name = card.character();
   const ss = $("pick-session");
   ss.innerHTML = "<option value=''>— new session —</option>";
   try {
@@ -318,7 +331,7 @@ async function charPicked() {
 }
 
 async function doCompact() {
-  const character = $("pick-char").value;
+  const character = card.character();
   const sessionId = $("pick-session").value;
   if (!sessionId) { say("pick a session above first — compaction needs a target", true); return; }
   busy = true; say("requesting compaction…");
@@ -328,32 +341,6 @@ async function doCompact() {
     else say("refused: " + ((r.data && (r.data.note || r.data.error)) || r.status), true);
   } catch (e) {
     say(e.message === "401" ? "token refused" : "compact failed: " + e.message, true);
-  } finally { busy = false; refresh(); }
-}
-
-async function doStart() {
-  const character = $("pick-char").value;
-  const voice = $("pick-voice").value;
-  const sessionId = $("pick-session").value;
-  const memory = $("pick-memory").value;
-  const cur = (choices && choices.current) || {};
-  const body = {};
-  if (sessionId) { body.mode = "resume"; body.name = sessionId; }
-  else body.mode = "new";
-  if (memory) body.memory = memory;
-  busy = true; say("starting…");
-  try {
-    let r;
-    if (character && (character !== cur.character || voice !== cur.voice)) {
-      r = await api("/admin/switch", { json: Object.assign(
-        { character, voice, start: true }, body) });
-    } else {
-      r = await api("/admin/bot/start", { json: body });
-    }
-    if (r.data && r.data.ok) say("start requested — watch the state line");
-    else say("refused: " + JSON.stringify((r.data && (r.data.errors || r.data.error)) || r.status), true);
-  } catch (e) {
-    say(e.message === "401" ? "token refused" : "start failed: " + e.message, true);
   } finally { busy = false; refresh(); }
 }
 
@@ -378,8 +365,7 @@ $("tokenbtn").addEventListener("click", () => {
   refresh();
 });
 $("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("tokenbtn").click(); });
-$("pick-char").addEventListener("change", charPicked);
-$("startbtn").addEventListener("click", doStart);
+card.onCharacter(loadSessions);   // the session list follows the chosen companion
 $("compactbtn").addEventListener("click", doCompact);
 $("stopbtn").addEventListener("click", doStop);
 

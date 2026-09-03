@@ -192,14 +192,10 @@
      dies with the bot and comes back on its own. -->
 <div id="switcher" class="hidden">
   <div class="kpanel" id="kp-switch">
-    <div class="khead">COMPANION — <span id="sw-current">…</span></div>
-    <div class="klegend">Pick who's live. <b>Switch</b> writes <code>active.toml</code> (previous file kept as <code>.prev</code>) and applies it the lightest way the daemon can: LIVE at your next words when every changed piece has a live path (persona · voice · resident model — the session hands over in-process), otherwise a warm restart of the voice bot. The LLM server is never touched either way. Models marked ● are loaded on the server right now.</div>
-    <div class="krow"><span class="kname">Character</span><select id="sw-char"></select></div>
-    <div class="krow"><span class="kname">Voice</span><select id="sw-voice"></select></div>
-    <div class="krow"><span class="kname">Persona</span><select id="sw-persona"></select></div>
-    <div class="krow"><span class="kname">Model</span><select id="sw-model"></select></div>
-    <label class="krow" id="sw-holdrow" title="drop a hold marker before stopping, so the current session is kept (named) instead of discarded"><input type="checkbox" id="sw-hold"> keep this session (hold)</label>
-    <div class="kbtns"><button id="sw-go">Switch</button> <span id="sw-state"></span></div>
+    <!-- Built by the SHARED switch card (ui/switch_card.js), the same file the
+         facade's launch page uses — the field set and the live-vs-restart
+         reading live there so the two surfaces cannot drift. -->
+    <div id="switchmount"></div>
     <!-- Roster management lives on the FACADE behind the token door (write-layer
          rule (c)): this panel displays and links over. The relative link works
          when the panel is viewed through the facade's proxy — same visibility
@@ -217,6 +213,10 @@
 <div id="dest-manual" class="hidden">
   <div id="mlayout"><nav id="mnav"></nav><div id="mcontent" class="manual"></div></div>
 </div>
+
+<!-- The shared switch card is spliced in here at render time from
+     ui/switch_card.js — the same file the facade's launch page uses. -->
+<script>/*SWITCH_CARD_JS*/</script>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -789,111 +789,37 @@ async function initManual() {
 initManual();
 
 // ── Companion switcher (self-gating: hidden unless GET /companion answers) ────
-// The POST is relayed by features/companion.py to the supervisor daemon, which
-// validates + writes active.toml and then ROUTES it: a LIVE
-// handoff to this bot's /switch/live intent slot when every changed piece has a
-// live path (we then poll /switch/live for the applied moment), otherwise a
-// restart in the background (this page goes down with the bot; we watch the
-// down→up edge, then reload).
+// The card itself is SHARED with the facade's launch page (ui/switch_card.js).
+// Ours is the transport: /companion is an unauthed loopback relay that presents
+// the facade bearer server-side, so the browser never holds it. The daemon
+// validates + writes active.toml and ROUTES the result — a LIVE handoff to this
+// bot's /switch/live slot, or a restart. On a restart THIS page dies with the
+// bot, so we wait for the down→up edge before reloading (selfDies).
+const switchCard = window.HearthSwitchCard.mount($('switchmount'), {
+  cls: {head: 'khead', legend: 'klegend', row: 'krow', name: 'kname', btns: 'kbtns'},
+  selfDies: true,
+  state: async () => {
+    const r = await fetch('/companion');
+    if (!r.ok) return null;
+    return await r.json();
+  },
+  live: async () => {
+    const r = await fetch('/switch/live');
+    return r.ok ? await r.json() : {ok: false};
+  },
+  submit: async (body) => {
+    const r = await fetch('/companion/switch', {method: 'POST',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+    return {status: r.status, data: await r.json()};
+  },
+  alive: async () => (await fetch('/engine')).ok,
+  onApplied: () => location.reload(),
+});
+
+// Self-gating: no /companion route (no daemon, or a LAN-exposed panel) means no
+// switcher — load() answers false and the card stays hidden.
 async function initSwitcher() {
-  let d = null;
-  try { const r = await fetch('/companion'); if (!r.ok) return; d = await r.json(); }
-  catch (e) { return; }
-  if (!d || !d.choices) return;
-  const chars = d.choices.characters || [];
-  const cur = d.current || {};
-  function fill(el, names, want) {
-    el.innerHTML = '';
-    for (const n of names) { const o = document.createElement('option'); o.value = n; o.textContent = n; el.appendChild(o); }
-    if (want && names.includes(want)) el.value = want;
-  }
-  fill($('sw-char'), chars.map(c => c.name), cur.character);
-  fill($('sw-model'), d.choices.models || [], cur.model);
-  // mark models the LLM server actually holds right now (live-swappable).
-  try {
-    const lr = await fetch('/switch/live');
-    if (lr.ok) {
-      const ls = await lr.json();
-      const ids = d.choices.model_ids || {};
-      if (ls.resident_models) {
-        for (const o of $('sw-model').options) {
-          if (ids[o.value] && ls.resident_models.includes(ids[o.value])) o.textContent = o.value + ' \u25cf';
-        }
-      }
-    }
-  } catch (e) { /* older bot / not wired — names stay plain */ }
-  function charInfo() { return chars.find(c => c.name === $('sw-char').value) || {voices: [], personas: ['default']}; }
-  function refreshDependents(keepCurrent) {
-    const c = charInfo();
-    fill($('sw-voice'), c.voices, keepCurrent ? cur.voice : c.voices[0]);
-    fill($('sw-persona'), c.personas, keepCurrent ? (cur.persona || 'default') : 'default');
-  }
-  refreshDependents(true);
-  $('sw-char').addEventListener('change', () => refreshDependents(false));
-  $('sw-current').textContent = cur.character
-    ? cur.character + ' · ' + (cur.voice || '?') + ' · ' + (cur.model || '?')
-    : '(no active.toml yet)';
-  $('switcher').classList.remove('hidden');
-  $('sw-go').addEventListener('click', async () => {
-    const body = { character: $('sw-char').value, voice: $('sw-voice').value,
-                   model: $('sw-model').value, persona: $('sw-persona').value,
-                   hold: $('sw-hold').checked, start: true };
-    $('sw-go').disabled = true;
-    $('sw-state').textContent = 'switching…';
-    let j = null;
-    try {
-      const r = await fetch('/companion/switch', {method: 'POST',
-        headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
-      j = await r.json();
-      if (!r.ok || !j.ok) {
-        $('sw-state').textContent = 'refused: ' + ((j.errors || [j.error || r.status]).join(' · '));
-        $('sw-go').disabled = false;
-        return;
-      }
-    } catch (e) { /* bot may already be going down mid-reply — treat as a restart underway */ }
-    if (j && j.applied === 'live') {
-      // LIVE path: the bot stays up; the swap lands at the next
-      // turn boundary — poll our own /switch/live for the applied moment.
-      $('sw-state').textContent = 'armed — applies the moment you next speak…';
-      const lt0 = Date.now();
-      const lpoll = setInterval(async () => {
-        try {
-          const r = await fetch('/switch/live');
-          if (r.ok) {
-            const st = await r.json();
-            if (!st.armed && st.last && st.last.phase === 'applied') {
-              clearInterval(lpoll); $('sw-state').textContent = 'switched ✓'; location.reload(); return;
-            }
-            if (st.last && st.last.phase === 'failed') {
-              clearInterval(lpoll);
-              $('sw-state').textContent = 'live apply failed — check the terminal / logs';
-              $('sw-go').disabled = false; return;
-            }
-          }
-        } catch (e) { /* transient */ }
-        if (Date.now() - lt0 > 600000) {
-          clearInterval(lpoll);
-          $('sw-state').textContent = 'still armed — it applies whenever you next speak';
-          $('sw-go').disabled = false;
-        }
-      }, 2000);
-      return;
-    }
-    $('sw-state').textContent = 'restarting — this page comes back on its own (≈10–30 s)…';
-    const t0 = Date.now();
-    let wentDown = false;   // wait for the down→up edge, never reload into the dying bot
-    const poll = setInterval(async () => {
-      try {
-        const r = await fetch('/engine');
-        if (r.ok && wentDown) { clearInterval(poll); location.reload(); }
-      } catch (e) { wentDown = true; }
-      if (Date.now() - t0 > 120000) {
-        clearInterval(poll);
-        $('sw-state').textContent = 'still down after 120 s — check the terminal / logs/bot.log';
-        $('sw-go').disabled = false;
-      }
-    }, 2000);
-  });
+  if (await switchCard.load()) $('switcher').classList.remove('hidden');
 }
 initSwitcher();
 

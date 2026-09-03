@@ -394,6 +394,13 @@ class _FakePanel:
         self.response: tuple = ({"ok": True, "armed": True,
                                  "changed": ["persona"],
                                  "applies": "at the next turn boundary"}, 200)
+        # The bot's describe(): what GET /switch/live answers. The shared card
+        # reads residency (the ● marks) and the applied moment from here.
+        self.describe: tuple = ({"ok": True, "armed": False, "pending": None,
+                                 "current": {"character": "testchar"},
+                                 "last": {"phase": "applied"},
+                                 "resident_models": ["some/model-id"]}, 200)
+        self.describe_calls = 0
         self.runner = None
         self.port = None
 
@@ -405,7 +412,13 @@ class _FakePanel:
             body, status = self.response
             return web.json_response(body, status=status)
 
+        async def describe(_req: web.Request) -> web.Response:
+            self.describe_calls += 1
+            body, status = self.describe
+            return web.json_response(body, status=status)
+
         app.router.add_post("/switch/live", arm)
+        app.router.add_get("/switch/live", describe)
         self.runner = web.AppRunner(app)
         await self.runner.setup()
         site = web.TCPSite(self.runner, "127.0.0.1", 0)
@@ -415,6 +428,7 @@ class _FakePanel:
     async def stop(self):
         if self.runner is not None:
             await self.runner.cleanup()
+            self.runner = None   # idempotent: a test may stop it, teardown repeats
 
 
 class SwitchRouting(_SwitchHarness):
@@ -431,6 +445,38 @@ class SwitchRouting(_SwitchHarness):
     async def asyncTearDown(self):
         await self.panel.stop()
         await super().asyncTearDown()
+
+    # ── GET /admin/switch/live: the shared card's second window ──────────────
+    # Residency (the ● marks) and the applied moment are facts only the BOT
+    # holds. The panel reads them directly; every other client reads them here.
+
+    async def test_switch_live_reads_through_to_the_bot(self):
+        resp = await self.client.get("/admin/switch/live", headers=self.BEARER)
+        self.assertEqual(resp.status, 200, await resp.text())
+        data = await resp.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["resident_models"], ["some/model-id"])
+        self.assertEqual(data["last"]["phase"], "applied")
+        self.assertEqual(self.panel.describe_calls, 1)
+
+    async def test_switch_live_answers_honestly_when_the_bot_is_down(self):
+        self.child.state = "down"
+        self.child.pid = None
+        resp = await self.client.get("/admin/switch/live", headers=self.BEARER)
+        # Never an error: the card degrades to plain names, it does not break.
+        self.assertEqual(resp.status, 200)
+        data = await resp.json()
+        self.assertFalse(data["ok"])
+        self.assertIn("down", data["reason"])
+        self.assertEqual(self.panel.describe_calls, 0, "must not ask a dead bot")
+
+    async def test_switch_live_survives_an_unreachable_bot(self):
+        await self.panel.stop()
+        resp = await self.client.get("/admin/switch/live", headers=self.BEARER)
+        self.assertEqual(resp.status, 200)
+        data = await resp.json()
+        self.assertFalse(data["ok"])
+        self.assertIn("reason", data)
 
     async def test_live_handoff_taken(self):
         resp = await self.client.post("/admin/switch", headers=self.BEARER,

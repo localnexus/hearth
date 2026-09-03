@@ -26,3 +26,21 @@ Tick **keep this session** to drop a hold marker first, so the current session i
 for a recall-only sitting the marker is what keeps the transcript) — honored on BOTH paths. The box hides
 itself when the daemon isn't configured, isn't reachable, or the panel is LAN-exposed
 (`WEB_HOST` not loopback — use the facade's authed `/admin/switch` directly there).
+
+## The same box on the facade
+
+The switcher is **one implementation** (`src/hearth/ui/switch_card.js`), spliced into both the
+panel page and the facade's [launch page](launch-page.md) at import. Same fields, same body,
+same live-vs-restart reading — the daemon does the routing either way, so the two surfaces
+cannot answer differently. What each host still owns is only what genuinely differs: the
+transport (the panel's unauthed loopback relay vs. the facade's bearer), the start-only riders
+(session + memory-mode, which the launch page adds on a cold start), and the aftermath — the
+panel dies with a restarting bot and waits for its own return, while the facade page stays up.
+
+On the launch page the same box reads **Start** while the bot is down and **Switch** while it is
+up, so a warm switch no longer needs the desk. `tests/supervisor/test_shared_switch_card.py`
+guards the sharing: it fails if either page rebuilds the pickers locally.
+
+| Route | What |
+|---|---|
+| `GET /admin/switch/live` | Read-through to the bot's own `GET /switch/live` — model **residency** (the ● marks) and the moment a live handoff actually lands, both facts only the bot holds. Never an error: a down, older, or unreachable bot answers `{"ok": false, "reason": …}` and the card degrades to plain names. Names and states only. |

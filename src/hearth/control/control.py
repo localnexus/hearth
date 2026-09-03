@@ -129,7 +129,13 @@ async def fetch_engine_info(base_url: str, token: str, target_model: str | None 
 # highlighting). Read ONCE at
 # import (same lifetime as the old module-level string literal); served verbatim
 # by the "/" route below.
-_HTML = (Path(__file__).parent / "control_page.html").read_text(encoding="utf-8")
+# The companion switcher itself is SHARED with the facade's launch page — one
+# source file (ui/switch_card.js), spliced into both at import, so the two
+# surfaces offer the same fields and read live-vs-restart the same way.
+_SWITCH_CARD_JS = (Path(__file__).parent.parent / "ui" /
+                   "switch_card.js").read_text(encoding="utf-8")
+_HTML = (Path(__file__).parent / "control_page.html").read_text(
+    encoding="utf-8").replace("/*SWITCH_CARD_JS*/", _SWITCH_CARD_JS)
 
 
 # ── Route handlers ─────────────────────────────────────────────────────────────
