@@ -24,10 +24,18 @@ import time
 import wave
 from pathlib import Path
 
+import unittest
+
 from pipecat.frames.frames import TTSAudioRawFrame
 
-# Import after environment is active (transformers==5.5.0 must be on path)
-from hearth.tts.mlx_tts_service import MLXAudioTTSService, SAMPLE_RATE
+# Import after environment is active (transformers==5.5.0 must be on path).
+# mlx is an optional, platform-specific extra: a venv without it must SKIP this
+# module, not error out of discovery. An unimportable test file that reports as
+# a failure is noise in the baseline, and noise is where real regressions hide.
+try:
+    from hearth.tts.mlx_tts_service import MLXAudioTTSService, SAMPLE_RATE
+except ImportError as exc:
+    raise unittest.SkipTest(f"mlx runtime not installed ({exc})") from exc
 
 TEST_TEXT = (
     "Hi, this is a step one unit test of the in process streaming T T S."

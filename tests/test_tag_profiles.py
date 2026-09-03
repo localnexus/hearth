@@ -5,6 +5,8 @@ plus synthetic tables for the validation edges.
 
 Run: .venv/bin/python test_tag_profiles.py   (exit 0 = all pass)
 """
+import unittest
+
 from hearth.tts import tag_profiles as TP
 
 _PASS = 0
@@ -105,4 +107,14 @@ check(out is plain, "untagged input -> same payload object (no copy)")
 print("\n" + "=" * 66)
 print(f"  {_PASS} passed, {_FAIL} failed")
 print("=" * 66)
-raise SystemExit(1 if _FAIL else 0)
+# Discovery runs the checks above at import; this turns their tally into a real
+# verdict. Kept as a script too — `.venv/bin/python tests/test_tag_profiles.py` still exits
+# non-zero on failure, which is how this file has always been used.
+class TagProfileMatrix(unittest.TestCase):
+    def test_every_check_passed(self):
+        self.assertEqual(_FAIL, 0,
+                         f"{_FAIL} of {_PASS + _FAIL} checks failed — detail printed above")
+
+
+if __name__ == "__main__":
+    raise SystemExit(1 if _FAIL else 0)

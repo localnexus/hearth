@@ -141,13 +141,26 @@ class SessionSchema(unittest.TestCase):
 
 class PersonaVariants(unittest.TestCase):
     def test_variant_paths(self):
-        cdir = cl.character_dir("example")
-        self.assertEqual(cl.persona_path("example"), cdir / "persona.md")
-        self.assertEqual(cl.persona_path("example", "default"), cdir / "persona.md")
-        self.assertEqual(cl.persona_path("example", "night"), cdir / "persona.night.md")
-        for bad in ("../x", "a/b", ".hidden", "sp ace"):
-            with self.assertRaises(cl.ConfigError):
-                cl.persona_path("example", bad)
+        # Pin the data root, like every sibling here. This asserts how a variant
+        # NAME becomes a path — it must not consult whatever companions happen
+        # to be installed. Unpinned it read the operator's live data root, so
+        # the verdict depended on the machine rather than on the code.
+        orig = cl._DATA
+        with tempfile.TemporaryDirectory() as d:
+            cl._DATA = Path(d)
+            try:
+                cd = Path(d) / "characters" / "example"
+                cd.mkdir(parents=True)
+                (cd / "persona.md").write_text("## IDENTITY\nx\n")
+                self.assertEqual(cl.character_dir("example"), cd)
+                self.assertEqual(cl.persona_path("example"), cd / "persona.md")
+                self.assertEqual(cl.persona_path("example", "default"), cd / "persona.md")
+                self.assertEqual(cl.persona_path("example", "night"), cd / "persona.night.md")
+                for bad in ("../x", "a/b", ".hidden", "sp ace"):
+                    with self.assertRaises(cl.ConfigError):
+                        cl.persona_path("example", bad)
+            finally:
+                cl._DATA = orig
 
     def test_variant_composes(self):
         orig = cl._DATA

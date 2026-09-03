@@ -2,6 +2,8 @@
 
 Run: .venv/bin/python test_paralinguistics.py   (exit 0 = all pass)
 """
+import unittest
+
 from hearth.tts import paralinguistics as P
 
 _PASS = 0
@@ -201,4 +203,14 @@ for src, _ in REPAIR + STRIP + BOLD:
 print("\n" + "=" * 66)
 print(f"  {_PASS} passed, {_FAIL} failed")
 print("=" * 66)
-raise SystemExit(1 if _FAIL else 0)
+# Discovery runs the checks above at import; this turns their tally into a real
+# verdict. Kept as a script too — `.venv/bin/python tests/test_paralinguistics.py` still exits
+# non-zero on failure, which is how this file has always been used.
+class ParalinguisticMatrix(unittest.TestCase):
+    def test_every_check_passed(self):
+        self.assertEqual(_FAIL, 0,
+                         f"{_FAIL} of {_PASS + _FAIL} checks failed — detail printed above")
+
+
+if __name__ == "__main__":
+    raise SystemExit(1 if _FAIL else 0)
