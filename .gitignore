@@ -17,6 +17,10 @@ captures/
 transcripts/
 logs/
 characters/**/memory/
+# auto-compaction state (maintenance locks + close-time requests) — lands at
+# the data root, which is this tree under bare public defaults
+locks/
+ops/compact-queue/
 
 # Runtime droppings that can land inside the code tree — content-bearing, never committed
 # (src/hearth/tts/logs/ covers strip logs written by pre-2026-09-02 builds)

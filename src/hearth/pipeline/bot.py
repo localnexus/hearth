@@ -89,7 +89,7 @@ from hearth.measurement.measurement_taps import (
     TurnState,
 )
 from hearth.session.token_meter import TokenMeter
-from hearth.session import session_store
+from hearth.session import compact_trigger, maintenance_lock, session_store
 from hearth.config import config_loader
 from hearth.config import config_reload
 from hearth.bridges import openclaw_bridge
@@ -663,6 +663,15 @@ async def main(
                 print(f"[session] {status}", flush=True)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("[session] finalize failed: {}", type(exc).__name__)
+            else:
+                # Auto-compaction safety net: a HELD session past the trigger
+                # drops a request for the facade's compact watch. The meter's
+                # last per-turn prompt count (the server's own held-in-ctx
+                # number) beats the file-size estimate when it is larger.
+                note = compact_trigger.maybe_request(
+                    store_now, live_tokens=meter.last_prompt or None)
+                if note:
+                    print(f"[session] {note}", flush=True)
 
 
 # ── Session resolution ─────────────────────────────────────────────────────────
@@ -714,6 +723,18 @@ if __name__ == "__main__":
         "Flag absent, a resumed session keeps the mode it was saved under.",
     )
     args = parser.parse_args()
+
+    # Session-store maintenance lock (design: auto-compaction-on-close). The
+    # bot holds the active character's lock for the life of the process — the
+    # kernel releases it on ANY death — so offline compaction and a live
+    # session can never overlap. Held = a compaction (or another bot) owns
+    # the store right now: refuse fast, before any model load.
+    if not maintenance_lock.hold(_CFG.character, op="session"):
+        _busy = maintenance_lock.probe(_CFG.character) or {}
+        print(f"[session] {_CFG.character}'s session store is busy "
+              f"({maintenance_lock.describe(_busy)}) — try again in a few "
+              "minutes.", flush=True)
+        raise SystemExit(2)
 
     _store, _resume_messages, _session_desc = resolve_session(
         args, LM_MODEL, VOICE_TAG, PROMPT_FINGERPRINT,

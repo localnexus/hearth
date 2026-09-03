@@ -59,9 +59,11 @@ from loguru import logger
 
 from .child import STOP_GRACE_S, TERM_GRACE_S, _MEMORY_MODES, BotChild, _now_iso
 from . import actuators as actuators_mod
+from . import compact_watch
 from . import curation as curation_mod
 from . import roster as roster_mod
 from . import switch as switch_mod
+from hearth.session import maintenance_lock
 
 PANEL_URL = "http://127.0.0.1:65000"
 
@@ -136,6 +138,11 @@ def build_mount(sup_cfg: dict):
         # LAST on purpose: registered facade routes always win over the proxy.
         app.router.add_route("*", "/{tail:.*}", _panel_proxy)
         app.on_startup.append(_adopt_on_start)
+        # The auto-compaction watch (design: auto-compaction-on-close) — runs
+        # queued close-time requests once no bot is alive; lock-arbitrated.
+        if bool(sup_cfg.get("compact_watch", True)):
+            app.on_startup.append(compact_watch.start)
+            app.on_cleanup.append(compact_watch.stop)
         app.on_cleanup.append(_release)
         logger.info("[supervisor] daemon face mounted (panel {})", app["panel_url"])
 
@@ -192,6 +199,9 @@ async def _state(request: web.Request) -> web.Response:
         "externals": results,
         "switch": app["switch_state"]["last"],
         "actuators": app["actuators"].names(),  # names only; details on /admin/actuators
+        # Held session-maintenance locks (op/character/session/started — names
+        # only): the launch page renders in-progress compactions from this.
+        "maintenance": maintenance_lock.held_locks(),
     })
 
 
@@ -273,6 +283,18 @@ async def _bot_start(request: web.Request) -> web.Response:
         body = await request.json()
     except Exception:  # empty body = defaults
         body = {}
+    # Start-door guard (design: auto-compaction-on-close): while any
+    # compaction holds a maintenance lock, refuse with the holder's info.
+    # Advisory UX — the bot's own lock acquire at startup is the arbiter.
+    busy = maintenance_lock.held_locks(op="compact")
+    if busy:
+        return web.json_response({
+            "ok": False,
+            "error": (f"{maintenance_lock.describe(busy[0])} "
+                      f"({busy[0].get('character', '?')}) — "
+                      "try again in a few minutes"),
+            "maintenance": busy,
+        }, status=409)
     result = await request.app["bot_child"].start(
         mode=str(body.get("mode") or "new"),
         name=(str(body["name"]) if body.get("name") else None),

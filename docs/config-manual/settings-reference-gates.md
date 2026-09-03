@@ -54,6 +54,7 @@ All keys below live under the `[serve]` table.
 | `supervisor.env` | map(str → str) | — |  | — | extra child env for the spawned bot (e.g. LM_PROVIDER) — values never printed |
 | `supervisor.watch` | tables | — |  | — | extra watched externals probed on /admin/state (watched, never owned) |
 | `supervisor.actuators` | tables | — |  | — | declared external actuators: operator-fixed commands behind the door, never children |
+| `supervisor.compact_watch` | bool | `true` |  | — | run the auto-compaction watch: close-time compaction requests (DATA/ops/compact-queue) execute once no bot is alive, arbitrated by the per-character maintenance lock |
 
 ## `config/memory.toml` — The memory-seam gate
 

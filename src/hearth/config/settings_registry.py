@@ -256,6 +256,7 @@ class _ServeSupervisor(_Cfg):
     env: dict[str, str] = Field(default_factory=dict, description="extra child env for the spawned bot (e.g. LM_PROVIDER) — values never printed")
     watch: dict[str, _SupWatch] = Field(default_factory=dict, description="extra watched externals probed on /admin/state (watched, never owned)")
     actuators: dict[str, _SupActuator] = Field(default_factory=dict, description="declared external actuators: operator-fixed commands behind the door, never children")
+    compact_watch: bool = Field(True, description="run the auto-compaction watch: close-time compaction requests (DATA/ops/compact-queue) execute once no bot is alive, arbitrated by the per-character maintenance lock")
 
 
 class ServeTable(_Cfg):

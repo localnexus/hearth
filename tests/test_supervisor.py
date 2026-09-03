@@ -189,6 +189,7 @@ class AdminRoutes(AioHTTPTestCase):
         mount = supervisor.build_mount({
             "enabled": True, "panel_url": "http://127.0.0.1:1",
             "watch": {"myservice": {"url": "http://127.0.0.1:1/"}},
+            "compact_watch": False,  # unit tests never scan the real queue
         })
         mount(app)
 
@@ -352,6 +353,7 @@ class RegistryParity(unittest.TestCase):
         self.assertEqual(sup.model_fields["term_grace_s"].default, child_mod.TERM_GRACE_S)
         self.assertEqual(sup.model_fields["panel_url"].default, routes_mod.PANEL_URL)
         self.assertFalse(sup.model_fields["enabled"].default)
+        self.assertTrue(sup.model_fields["compact_watch"].default)  # watch ships ON
         self.assertIsNone(sr.ServeTable.model_fields["supervisor"].default)
 
     def test_supervisor_block_validates(self):
@@ -496,7 +498,8 @@ class CurationRoutes(AioHTTPTestCase):
             memory=None,  # per-test: a _FakeGlue or None
         )
         mount = supervisor.build_mount({"enabled": True,
-                                        "panel_url": "http://127.0.0.1:1"})
+                                        "panel_url": "http://127.0.0.1:1",
+                                        "compact_watch": False})
         mount(app)
         return app
 
@@ -694,7 +697,8 @@ class RosterRoutes(AioHTTPTestCase):
             lm_base_url="http://127.0.0.1:1/v1",
             lm_token="none", session=None, memory=None)
         supervisor.build_mount({"enabled": True,
-                                "panel_url": "http://127.0.0.1:1"})(app)
+                                "panel_url": "http://127.0.0.1:1",
+                                "compact_watch": False})(app)
         return app
 
     async def asyncSetUp(self):
@@ -852,6 +856,183 @@ class RosterRoutes(AioHTTPTestCase):
         self.assertIn("memory.toml absent", data["memory"])
         self.assertTrue((self.root / "characters" / "zz-roster-nomem"
                          / "persona.md").is_file())
+
+
+# ── auto-compaction: the compact watch + the start-door guard ────────────────
+
+class CompactWatchTick(unittest.IsolatedAsyncioTestCase):
+    """compact_watch.tick against a scratch DATA root and a dict app."""
+
+    def setUp(self):
+        from unittest import mock
+        from hearth.config import config_loader
+        from hearth.session import maintenance_lock
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+        patch = mock.patch.object(config_loader, "DATA_DIR", self.root)
+        patch.start()
+        self.addCleanup(patch.stop)
+        maintenance_lock._HELD.clear()
+        self.addCleanup(lambda: [maintenance_lock.drop(c)
+                                 for c in list(maintenance_lock._HELD)])
+        self.qdir = self.root / "ops" / "compact-queue"
+
+    def _app(self, bot_state="stopped"):
+        return {"bot_child": SimpleNamespace(status=lambda: {"state": bot_state})}
+
+    def _request(self, char="example", session="long-run"):
+        self.qdir.mkdir(parents=True, exist_ok=True)
+        req = self.qdir / f"{char}.{session}.request"
+        req.write_text(json.dumps({"character": char, "session": session,
+                                   "est_tokens": 50_000}))
+        return req
+
+    def _script(self):
+        script = self.root / "ops" / "compact-companion-session.sh"
+        script.parent.mkdir(parents=True, exist_ok=True)
+        script.write_text("#!/bin/sh\n"
+                          f"printf '%s\\n' \"$@\" > '{self.root}/spawn-args.txt'\n")
+        script.chmod(0o755)
+        return script
+
+    async def test_noop_when_bot_up_or_queue_absent(self):
+        from hearth.supervisor import compact_watch
+        self.assertIsNone(await compact_watch.tick(self._app()))  # no queue dir
+        req = self._request()
+        self.assertIsNone(await compact_watch.tick(self._app("running")))
+        self.assertTrue(req.exists())  # untouched while a bot is up
+
+    async def test_parked_without_compactor(self):
+        from hearth.supervisor import compact_watch
+        req = self._request()
+        app = self._app()
+        self.assertIsNone(await compact_watch.tick(app))
+        self.assertTrue(req.exists())
+        self.assertTrue(app.get("compact_watch_no_script_logged"))
+
+    async def test_fires_and_claims(self):
+        from hearth.supervisor import compact_watch
+        self._request()
+        self._script()
+        app = self._app()
+        note = await compact_watch.tick(app)
+        self.assertEqual(note, "started example/long-run")
+        running = self.qdir / "example.long-run.running"
+        self.assertTrue(running.exists())
+        self.assertIn("claimed_ts", json.loads(running.read_text()))
+        args_file = self.root / "spawn-args.txt"
+        for _ in range(40):  # detached child — give it a beat
+            if args_file.exists():
+                break
+            await asyncio.sleep(0.05)
+        argv = args_file.read_text().split()
+        self.assertEqual(argv[0], "long-run")
+        self.assertIn("--character", argv)
+        self.assertIn("example", argv)
+        self.assertIn("--yes", argv)
+        self.assertIn("--request-file", argv)
+        # a fresh young claim (lock free, just claimed) is left alone
+        self.assertIsNone(await compact_watch.tick(app))
+
+    async def test_manual_compaction_lock_blocks_firing(self):
+        from hearth.session import maintenance_lock
+        from hearth.supervisor import compact_watch
+        req = self._request()
+        self._script()
+        maintenance_lock.hold("other", op="compact", session="desk-run")
+        try:
+            self.assertIsNone(await compact_watch.tick(self._app()))
+            self.assertTrue(req.exists())
+        finally:
+            maintenance_lock.drop("other")
+
+    async def test_stale_running_reclaimed_as_failed(self):
+        from hearth.supervisor import compact_watch
+        self.qdir.mkdir(parents=True, exist_ok=True)
+        stale = self.qdir / "example.long-run.running"
+        stale.write_text(json.dumps({"character": "example", "session": "long-run",
+                                     "claimed_ts": 1.0}))  # epoch — long dead
+        note = await compact_watch.tick(self._app())
+        self.assertEqual(note, "reclaimed example.long-run.failed")
+        self.assertTrue((self.qdir / "example.long-run.failed").exists())
+        self.assertFalse(stale.exists())
+
+    async def test_unreadable_request_failed(self):
+        from hearth.supervisor import compact_watch
+        self.qdir.mkdir(parents=True, exist_ok=True)
+        (self.qdir / "example.bad.request").write_text("not json")
+        self._script()
+        note = await compact_watch.tick(self._app())
+        self.assertEqual(note, "bad request example.bad.request")
+        self.assertTrue((self.qdir / "example.bad.failed").exists())
+
+
+class MaintenanceStartGuard(AioHTTPTestCase):
+    """/admin/bot/start refuses 409 while a compaction lock is held, and
+    /admin/state lists held maintenance locks."""
+
+    BEARER = {"Authorization": "Bearer test-bearer"}
+
+    async def get_application(self) -> web.Application:
+        from hearth.serve import app as serve_app
+
+        app = web.Application(middlewares=[serve_app._auth])
+        app["deps"] = SimpleNamespace(
+            bearer="test-bearer", cfg={}, lm_base_url="http://127.0.0.1:1/v1",
+            lm_token="none", session=None)
+        supervisor.build_mount({"enabled": True,
+                                "panel_url": "http://127.0.0.1:1",
+                                "compact_watch": False})(app)
+        return app
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        from unittest import mock
+        from hearth.config import config_loader
+        from hearth.session import maintenance_lock
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        patch = mock.patch.object(config_loader, "DATA_DIR",
+                                  Path(self._tmp.name))
+        patch.start()
+        self.addCleanup(patch.stop)
+        maintenance_lock._HELD.clear()
+        self.app["bot_child"].close()
+        self.app["bot_child"] = _fake(GRACEFUL)
+
+    async def asyncTearDown(self):
+        from hearth.session import maintenance_lock
+        for c in list(maintenance_lock._HELD):
+            maintenance_lock.drop(c)
+        await self.app["bot_child"].stop()
+        self.app["bot_child"].close()
+        await super().asyncTearDown()
+
+    async def test_start_409_while_compacting_then_ok(self):
+        from hearth.session import maintenance_lock
+        maintenance_lock.hold("example", op="compact", session="long-run")
+        resp = await self.client.post("/admin/bot/start", headers=self.BEARER)
+        data = await resp.json()
+        self.assertEqual(resp.status, 409)
+        self.assertIn("compaction of long-run", data["error"])
+        self.assertIn("try again in a few minutes", data["error"])
+        # state surfaces it too (names only)
+        st = await (await self.client.get("/admin/state",
+                                          headers=self.BEARER)).json()
+        self.assertEqual(st["maintenance"][0]["character"], "example")
+        self.assertEqual(st["maintenance"][0]["op"], "compact")
+        maintenance_lock.drop("example")
+        resp = await self.client.post("/admin/bot/start", headers=self.BEARER)
+        self.assertEqual(resp.status, 200, await resp.text())
+
+    async def test_session_lock_does_not_block_start(self):
+        from hearth.session import maintenance_lock
+        # An op=session lock (an adopted bot's own) must not 409 the door —
+        # the child's double-start refusal and the bot's own acquire govern.
+        maintenance_lock.hold("example", op="session")
+        resp = await self.client.post("/admin/bot/start", headers=self.BEARER)
+        self.assertEqual(resp.status, 200, await resp.text())
 
 
 if __name__ == "__main__":

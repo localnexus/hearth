@@ -138,6 +138,14 @@ async function refresh() {
   for (const k of Object.keys(ext))
     bits.push(k + (ext[k] === true ? " ✓" : ext[k] === false ? " ✗" : " ?"));
   if (sw && sw.phase) bits.push("switch: " + sw.phase + (sw.error ? " (" + sw.error + ")" : ""));
+  // In-progress session maintenance (compaction): visible state instead of a
+  // mystery 409 — the page polls, so the start button simply works once free.
+  const maint = (st.data && st.data.maintenance) || [];
+  for (const m of maint) {
+    if (m.op === "compact")
+      bits.push("compacting " + (m.session || "?") + " (" + m.character + ")" +
+                (m.started ? " since " + m.started.slice(11, 16) : ""));
+  }
   $("statusline").textContent = bits.join("  ·  ");
 
   if (busy) return; // don't flip cards under an in-flight action

@@ -44,7 +44,7 @@ import aiohttp
 from loguru import logger
 
 from hearth.config import config_loader
-from hearth.session import session_store
+from hearth.session import compact_trigger, maintenance_lock, session_store
 from hearth.supervisor import switch as switch_mod
 
 # Provider aliases for the residency probe — mirrors
@@ -214,6 +214,19 @@ class LiveSwitcher:
             if errors:
                 return {"ok": False, "code": 400, "errors": list(errors)}
 
+            # Maintenance lock: a character switch takes the TARGET's session-
+            # store lock now (kernel-atomic — held means an offline compaction
+            # or another bot owns that store). Idempotent per character, so a
+            # re-arm of the same target passes; the old character's lock is
+            # released only after the old-side finalize completes.
+            if "character" in changed:
+                if not maintenance_lock.hold(target["character"], op="session"):
+                    busy = maintenance_lock.probe(target["character"]) or {}
+                    return {"ok": False, "code": 409, "errors": [
+                        f"{target['character']}'s session store is busy "
+                        f"({maintenance_lock.describe(busy)}) — try again in "
+                        "a few minutes"]}
+
             def _load_target():
                 model = config_loader.load_model(target["model"])
                 voice = config_loader.load_voice(target["character"], target["voice"])
@@ -317,8 +330,13 @@ class LiveSwitcher:
                 await asyncio.to_thread(_attach_and_resolve))
 
             prior, self._pending = self._pending, None
-            if prior is not None and prior.get("seam") is not None:
-                await asyncio.to_thread(prior["seam"].close)  # superseded — release it
+            if prior is not None:
+                if prior.get("seam") is not None:
+                    await asyncio.to_thread(prior["seam"].close)  # superseded — release it
+                pchar = prior["selection"]["character"]
+                if (pchar != self._current["selection"]["character"]
+                        and pchar != target["character"]):
+                    maintenance_lock.drop(pchar)  # superseded target's lock
             self._pending = {
                 "selection": target, "changed": changed, "mode": mode,
                 "model_id": new_model_id,
@@ -464,9 +482,11 @@ class LiveSwitcher:
         # 8. Old-side finalize in the background: memory record + consolidate
         #    + the store's delete-decision (graceful-stop parity, incl. hold).
         loop = asyncio.get_running_loop()
+        release_char = (old_sel["character"]
+                        if old_sel["character"] != sel["character"] else None)
         task = loop.create_task(asyncio.to_thread(
             self._finalize_old, old_store, old_seam, old_msgs,
-            p["hold"], p["hold_name"]))
+            p["hold"], p["hold_name"], release_char))
         status = {"phase": "applied", "at": _now_iso(), "from": old_sel,
                   "to": dict(sel), "voice": voice_note,
                   "warnings": p["warnings"], "old_session": "finalizing"}
@@ -489,11 +509,15 @@ class LiveSwitcher:
                 "reasoning_effort": p["reasoning_effort"]}
 
     @staticmethod
-    def _finalize_old(store, seam, messages, hold: bool, hold_name) -> str:
+    def _finalize_old(store, seam, messages, hold: bool, hold_name,
+                      release_char=None) -> str:
         """Graceful-stop parity for the OLD session, off the event loop.
         Memory record FIRST (it must precede the store's keep-decision),
         then the delete-decision — hold honored via the same marker stop.sh
-        uses. Returns a short human status; never raises."""
+        uses. A character swap passes ``release_char``: the old character's
+        maintenance lock is released only HERE, after their store's last
+        write, so a compaction can never start against a store still being
+        finalized. Returns a short human status; never raises."""
         try:
             parts = []
             if hold and store is not None:
@@ -503,9 +527,15 @@ class LiveSwitcher:
                 seam.close()
             if store is not None:
                 parts.append(session_store.finalize(store, messages))
+                note = compact_trigger.maybe_request(store)
+                if note:
+                    parts.append(note)
             return " · ".join(x for x in parts if x) or "no session"
         except Exception as exc:  # noqa: BLE001 — background tidy must never raise
             return f"finalize failed ({type(exc).__name__})"
+        finally:
+            if release_char:
+                maintenance_lock.drop(release_char)
 
     # ── shutdown hygiene ─────────────────────────────────────────────────────
 
@@ -523,8 +553,12 @@ class LiveSwitcher:
     def close_pending(self) -> None:
         """Release an armed-but-never-applied intent's prepared seam."""
         p, self._pending = self._pending, None
-        if p is not None and p.get("seam") is not None:
-            try:
-                p["seam"].close()
-            except Exception:  # noqa: BLE001
-                pass
+        if p is not None:
+            if p.get("seam") is not None:
+                try:
+                    p["seam"].close()
+                except Exception:  # noqa: BLE001
+                    pass
+            pchar = p["selection"]["character"]
+            if pchar != self._current["selection"]["character"]:
+                maintenance_lock.drop(pchar)  # armed-but-never-applied target
