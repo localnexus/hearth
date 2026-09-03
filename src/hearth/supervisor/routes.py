@@ -197,6 +197,9 @@ async def _state(request: web.Request) -> web.Response:
         probes.setdefault(name, _http_alive(deps.session, url))
     results = dict(zip(probes, await asyncio.gather(*probes.values())))
     panel = results.pop("panel")
+    # Process truth, not cached truth: a desk-started bot appears (adopted) and
+    # a desk-stopped adopted bot disappears within one poll of the launch page.
+    await app["bot_child"].reconcile()
     return web.json_response({
         "supervisor": True,
         "bot": app["bot_child"].status(),
@@ -376,6 +379,7 @@ async def _switch_get(request: web.Request) -> web.Response:
     current, err = switch_mod.read_selection()
     sel = ({k: current[k] for k in switch_mod.SELECTION_KEYS if k in current}
            if current else None)
+    await app["bot_child"].reconcile()  # the page gates "live vs restart" on this
     return web.json_response({
         "supervisor": True,
         "current": sel,
@@ -424,7 +428,9 @@ async def _switch_post(request: web.Request) -> web.Response:
     except (ValueError, OSError) as exc:
         return web.json_response({"ok": False, "errors": [str(exc)]}, status=409)
     child = app["bot_child"]
-    running = child.state in ("starting", "running") or await child.adopt()
+    # reconcile, not adopt: a stale "running" (adopted bot stopped at the desk)
+    # would otherwise route a live-apply at a dead pid.
+    running = await child.reconcile()
     # Stroke 3 routing: the registry consult. Live only when the bot is up and
     # every CHANGED field declares a live path; "apply" steers ("auto" default).
     apply_mode = str(body.get("apply") or "auto").lower()

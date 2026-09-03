@@ -105,6 +105,28 @@ class BotChild:
         logger.info("[supervisor] adopted a running bot (pid {}, unmanaged)", self.pid)
         return True
 
+    async def reconcile(self) -> bool:
+        """Re-anchor to process truth; True iff a bot is live. The status-poll hook.
+
+        Two staleness directions, both adopted-only (a managed spawn has a
+        reaper): a bot started at the desk AFTER the last adopt sweep (state
+        still "down"), and an adopted bot stopped at the desk (state still
+        "running" on a dead pid — nothing reaps a process we never spawned).
+        "starting"/"stopping" are mid-transition on our own paths: left alone.
+        """
+        if self.state == "down":
+            return await self.adopt()
+        if self.state == "running" and not self.managed and self.pid is not None:
+            if not await self._alive(self.pid):
+                self.last_exit = {"code": None, "at": _now_iso()}  # adopted: code unknowable
+                self.state = "down"
+                self.pid = None
+                logger.info("[supervisor] adopted bot is gone — marked down")
+                # stop.sh + start.sh can both land between polls: sweep again
+                # so a replacement desk bot is picked up in the same breath.
+                return await self.adopt()
+        return self.state in ("starting", "running")
+
     # ── lifecycle ─────────────────────────────────────────────────────────────
 
     async def start(self, mode: str = "new", name: Optional[str] = None,

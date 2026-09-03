@@ -152,6 +152,43 @@ class ChildLifecycle(unittest.IsolatedAsyncioTestCase):
             if ext.poll() is None:
                 ext.kill()
 
+    async def test_reconcile_tracks_desk_lifecycle(self):
+        mark = f"hearth-reconcile-test-{os.getpid()}"
+        src = f"mark = '{mark}'\nimport time\nwhile True: time.sleep(0.1)\n"
+        c = BotChild(pattern=mark, stop_grace_s=5.0, term_grace_s=1.0)
+        # nothing running: reconcile reports not-live, state stays down
+        self.assertFalse(await c.reconcile())
+        self.assertEqual(c.state, "down")
+        # a bot appears at the desk AFTER the daemon came up: the poll adopts it
+        ext = subprocess.Popen([_PY, "-c", src])
+        self.addCleanup(ext.wait)
+        try:
+            await asyncio.sleep(0.3)  # let pgrep see it
+            self.assertTrue(await c.reconcile())
+            self.assertEqual(c.pid, ext.pid)
+            self.assertFalse(c.managed)
+            # it dies at the desk: the poll notices the dead pid and marks down
+            ext.kill()
+            ext.wait()
+            self.assertFalse(await c.reconcile())
+            self.assertEqual(c.state, "down")
+            self.assertIsNone(c.pid)
+            self.assertIsNone(c.last_exit["code"])  # adopted: code unknowable
+            c.close()
+        finally:
+            if ext.poll() is None:
+                ext.kill()
+
+    async def test_reconcile_leaves_managed_alone(self):
+        c = _fake(GRACEFUL)
+        self.assertTrue((await c.start())["ok"])
+        await asyncio.sleep(0.4)  # let the child install its SIGINT handler
+        self.assertTrue(await c.reconcile())
+        self.assertTrue(c.managed)
+        self.assertEqual(c.state, "running")
+        await c.stop()
+        c.close()
+
     async def test_memory_mode_validated_and_forwarded(self):
         c = _fake(GRACEFUL)
         res = await c.start(memory="bogus")
