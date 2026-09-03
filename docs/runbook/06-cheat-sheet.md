@@ -11,6 +11,16 @@
 ./stop.sh           stop the loop from any shell (your LLM server is left running)
 ```
 
+**Session continuity flags** (both scripts forward these — sessions save by default; full story in [§3.5](03.5-session-continuity.md)):
+```
+./start.sh --resume [file|name]   resume a saved session (bare --resume = metadata picker)
+./start.sh --new                   force a fresh session, skipping the interactive chooser
+./start.sh --memory <mode>         this sitting's posture: full | recall-only | off
+./stop.sh --hold [name]            stop and NAME this session (sticky, sweep-exempt)
+./stop.sh --discard-held <name>    true-delete one held session
+./stop.sh --discard-held --all     true-delete ALL held sessions (irreversible — requires typing HEARTH)
+```
+
 Manual equivalent:
 ```
 ONLINE   preflight (§1) → cd <the tree> → .venv/bin/python -m hearth.pipeline.bot

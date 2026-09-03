@@ -17,15 +17,17 @@ Each entry is a one-liner: **term** — expansion (for acronyms) — what it mea
 
 ## Index (quick jump)
 
-- **A–M** — A2DP · active.toml · airgap · barge-in · Chatterbox-Turbo · character · cold vs warm ·
-  conditionals · config_loader · config_reload · context-budget gauge / zones · CoT · ephemeral session ·
-  forget (memory verb) · fp16 · FREE tier · held session · held-in-ctx · HFP · HIDEABLE tier · hold-request marker ·
+- **A–M** — A2DP · active.toml · airgap · auto-compaction-on-close · barge-in · Chatterbox-Turbo ·
+  character · cold vs warm · conditionals · config_loader · config_reload · context-budget gauge / zones ·
+  CoT · ephemeral session · facade · forget (memory verb) · fork (memory verb) · fp16 · FREE tier ·
+  held session · held-in-ctx · HFP · HIDEABLE tier · hold-request marker ·
   in-process · KV cache · launch page · live-config · llama-server · LLM · LM Studio · logs/ · loopback-only ·
-  mlx-audio · mlx_lm.server · MLX-Whisper · MoE · MTP
+  memory curation pane · mlx-audio · mlx_lm.server · MLX-Whisper · MoE · MTP
 - **N–Z** — `--new` guard · NLTK · orphan(ed) session · overrides.toml · paralinguistic / voiced-breath
-  cues · paralinguistic tag repair / normalization · paralinguistic strip log · persona · phantom-phrase ·
-  PTT · rebuild / --clean · reliable_context · resume · RSS · RTF ·
-  S3Gen · session snapshot · Silero · Smart Turn · STT · TCC · "the box" · TPS · TTFA · TTFT · TTS ·
+  cues · paralinguistic tag repair / normalization · paralinguistic strip log · persona ·
+  per-turn voice (pause/resume valve) · phantom-phrase ·
+  PTT · rebuild / --clean · reliable_context · resume · roster (wizard) · RSS · RTF ·
+  S3Gen · session snapshot · settings (forms) · Silero · Smart Turn · STT · TCC · "the box" · TPS · TTFA · TTFT · TTS ·
   VAD · voice descriptor / voice bundle / voice.toml · WER · WSOLA
 
 ## See also

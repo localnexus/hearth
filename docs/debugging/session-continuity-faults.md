@@ -5,7 +5,7 @@
 **Symptom:** no-flag `./start.sh` shows a numbered **menu**, or **exits 2** without loading the model.
 
 **By design:**
-- **Interactive terminal:** a metadata-only chooser — `0. new session` + each saved session (named ones tagged `[HELD]`). Number = resume · `0` = fresh · **Enter/Ctrl-C = cancel** (nothing started or discarded).
+- **Interactive terminal, ≥1 resumable session:** a metadata-only chooser — `0. new session` + each saved session (named ones tagged `[HELD]`). Number = resume · `0` = fresh · **Enter/Ctrl-C = cancel** (nothing started or discarded). With zero saved sessions (fresh install) there's nothing to choose from — it starts fresh with no menu, same as `--new`.
 - **Non-interactive** (launchd / web / piped stdin): starts fresh without discarding anything; the hard **guard** exits 2 only when a **recall-only leftover** (a crashed `--memory recall-only` sitting's file) is present, so automation never silently deletes the privacy tier's one recovery chance — re-run with `--resume <name>` or `--new`.
 
 > Sessions save by default; `0` / `--new` sweep only recall-only leftovers. Saved and held sessions are never removed by a fresh start — only `./stop.sh --discard-held` (or deleting the file) removes them.

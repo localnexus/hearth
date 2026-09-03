@@ -53,6 +53,9 @@ Hearth is designed to run on hardware **you** control. Two tiers are supported:
 Provider and cloud chat APIs are **not** a supported tier. Hearth is a local companion; a
 managed API in the loop would defeat the point.
 
+Sizing detail (memory floor, disk, measured latency, which chips are fast enough) lives in
+[Hardware requirements](docs/HARDWARE-REQUIREMENTS.md).
+
 ## Quickstart (shape)
 
 > These are the shape of the steps, not a turnkey script — see the guides under `docs/` for
@@ -118,6 +121,8 @@ Three things Hearth deliberately does **not** bundle:
 
 - [Installing Hearth](docs/installing.md) — every prerequisite, the speech-model fetch, the
   voice-engine smoke test, first launch, updating.
+- [Hardware requirements](docs/HARDWARE-REQUIREMENTS.md) — the two tiers in detail: memory
+  floor, disk, measured latency, and what lowers the floor.
 - [Authoring a character](docs/authoring-a-character.md) — write a persona, lay out a
   character directory.
 - [Bring your own voice](docs/bring-your-own-voice.md) — add a reference clip and a voice
@@ -126,6 +131,10 @@ Three things Hearth deliberately does **not** bundle:
   themselves, and which one you never print.
 - [Memory](docs/memory.md) — cross-session continuity: the memory seam, the zero-dependency
   floor, adopted backends, and what enabling it means for what's kept on disk.
+- [Component licensing](docs/COMPONENT-LICENSING.md) — every integrated component and its
+  license, and what that means for running or redistributing Hearth.
+- [Glossary](docs/glossary/README.md) — plain-language decoder for this project's acronyms
+  and shorthand.
 
 ## License
 

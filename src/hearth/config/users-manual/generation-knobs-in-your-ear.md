@@ -10,15 +10,18 @@ How Hearth turns your words into *the companion's* words has two families of set
 A common trap is reaching for a dial to fix something the prompt owns. Length and "takes their time" are the
 prompt's job; the dials can't buy them. Keep that split in mind and the rest is easy.
 
-> **What you can touch today:** `temperature` is owned by Hearth — it starts in
-> `config/models/<model>/model.toml` and the panel can move it live (that's what it writes into
-> `config/overrides.toml`). The word-net knobs (`top_p/top_k/min_p`, `repeat_penalty`) and `max_tokens` are
-> left to **your LLM server's** defaults — set them where that server takes them (`llama-server`
-> command-line flags; LM Studio's GUI, if that's what you run). The length rule is prompt-side and live now.
+> **What you can touch today:** `temperature` and `reasoning_effort` are owned by Hearth — both start in
+> `config/models/<model>/model.toml` and the panel's **CHARACTER** box can move them live (that's what it
+> writes into `config/overrides.toml`). The word-net knobs (`top_p/top_k/min_p`, `repeat_penalty`) and
+> `max_tokens` are left to **your LLM server's** defaults — set them where that server takes them
+> (`llama-server` command-line flags; LM Studio's GUI, if that's what you run). The length rule is
+> prompt-side and live now. How the panel's Save/Load/Reset around these knobs works is
+> [The live knobs panel](the-live-knobs-panel.md).
 
-> **Don't confuse this temperature with the voice's.** The one on this page decides *which words*.
-> There's a second, unrelated temperature in `config/tts/<engine>/tts.toml` that decides *how the words are
-> spoken* — see [The config layers](the-config-layers.md).
+> **Don't confuse this temperature with the voice's.** The one on this page decides *which words*. There's
+> a second, unrelated temperature that decides *how the words are spoken* — it's also panel-live now, under
+> the **VOICE** box — see [The voice delivery knobs](the-voice-delivery-knobs.md) and
+> [The config layers](the-config-layers.md).
 
 ---
 
@@ -36,6 +39,24 @@ words that don't quite fit.
 
 **Net:** the spontaneity-vs-reliability dial. 0.7 is a sane middle; nudging toward ~0.9 is the first thing to
 try when the companion feels lifeless.
+
+## reasoning_effort — how long the companion thinks before answering  · *live today*
+
+**What it is:** how much internal deliberation the model does before it starts speaking — `none`, `low`,
+`medium`, or `high`.
+
+**In your ear:** at `none` the companion answers instinctively — fast, but more likely to skim past a
+subtlety in what you said. Turned up, the reply takes a beat longer to start (and costs more tokens you
+don't hear) but tends to track a fiddly question, a multi-part ask, or a callback to something said several
+turns back more reliably. Past a point it doesn't make the companion *wiser*, just slower to start talking —
+this is a floor-raiser for hard turns, not a warmth dial.
+
+**Turn it up when** the companion is missing the actual question, tangling a multi-part request, or losing
+a thread it should be tracking. **Down when** replies feel sluggish to start and the conversation is plainly
+casual.
+
+**Net:** reach for this when the companion seems to be *misunderstanding*, not when it seems flat or
+robotic — that's `temperature`'s job, above. `none` or `low` suits most companion chatter.
 
 ## top_p / top_k / min_p — the word-net  · *your LLM server's, not Hearth's*
 
@@ -110,6 +131,7 @@ dir, and `active.toml` picks which one is live.
 | Feels vanilla even when lively | loosen the net (**top_p/top_k ↑**) |
 | Won't say your name / feels slippery | **repeat_penalty ↓** (toward 1.0–1.05) |
 | Repeats the same phrases, loops | **repeat_penalty ↑** |
+| Missing the actual question / losing a thread | **reasoning_effort ↑** |
 | Too short / won't take their time | **the length rule** (prompt) — *not* a dial |
 | Cut off mid-word | **max_tokens ↑** (it's too low) |
 

@@ -41,11 +41,11 @@ secret you only ever manage, never read.
 | Layer | Who writes it | You do… | Cross-reference |
 |---|---|---|---|
 | **`config/active.toml`** | **You** (operator) | Edit the `character` / `model` / `voice` selection (and an optional `persona` variant), then restart | [Switching who's live](switching-who-is-live.md) · `docs/config-manual/llm.md` |
-| **`config/overrides.toml`** | **The :65000 panel** (live knobs) | **Don't hand-edit.** Read it to understand a sticky setting; let the panel manage it | `docs/config-manual/README.md` · `docs/runbook/02.5-control-panel.md` |
+| **`config/overrides.toml`** | **The :65000 panel** (live knobs) | **Don't hand-edit.** Read it to understand a sticky setting; let the panel manage it | `docs/config-manual/README.md` · `docs/runbook/02.5-control-panel.md` · [The live knobs panel](the-live-knobs-panel.md) |
 | **`config/models/<model>/`** | **You** | Edit `model.toml` load facts + `system-prompt-template.md` | `docs/config-manual/llm.md` |
 | **`config/serve.toml`** | **You** — but it holds a **bearer** | Manage the gate; **never print its contents** | This page, below · `config/serve.toml.example` |
-| **`config/tts/<engine>/tts.toml`**, **`config/vad.toml`** | **Shipped baselines** (calibrated) | Leave alone unless you're re-calibrating by ear/mic; the panel's `overrides.toml` layers over them. A copy under your data root replaces the shipped file whole | `docs/config-manual/voice-tts.md` · `docs/config-manual/listening-vad-barge-in.md` |
-| **`characters/<name>/profile.toml`**, **`…/overrides.toml`** (and per voice) | **The panel** | The companion's saved knob preset, and a live mirror of its identity-scope knobs — they travel with the companion. Hands off | `docs/config-manual/README.md` |
+| **`config/tts/<engine>/tts.toml`**, **`config/vad.toml`** | **Shipped baselines** (calibrated) | Leave alone unless you're re-calibrating by ear/mic — or use the panel's **VOICE** / **LISTENING** boxes, which layer live values over these from `overrides.toml`. A copy under your data root replaces the shipped file whole | `docs/config-manual/voice-tts.md` · `docs/config-manual/listening-vad-barge-in.md` · [The live knobs panel](the-live-knobs-panel.md) |
+| **`characters/<name>/profile.toml`**, **`…/overrides.toml`** (and per voice) | **The panel** | The companion's saved knob preset, and a live mirror of its identity-scope knobs — they travel with the companion. Hands off | `docs/config-manual/README.md` · [The live knobs panel](the-live-knobs-panel.md) |
 | **`config/memory.toml`**, **`config/openclaw.toml`** | **You** | Two more gates, both OFF by default: cross-session memory, and the companion's dispatch "hands" | `docs/memory.md` · `docs/config-manual/settings-reference-gates.md` |
 
 ---
@@ -62,8 +62,11 @@ With the supervisor daemon on, that same file is written *for* you by one press 
 
 ## `overrides.toml` — the panel's layer (hands off)
 
-This is where the **:65000 control panel** writes the live knobs you turn while the companion is running (temperature,
-and when you audition a voice, a `[voice] ref_wav`). The rule:
+This is where the **:65000 control panel** writes every live knob you turn while the companion is running:
+`[llm]` temperature and reasoning_effort (the **CHARACTER** box), `[tts]` temperature/top_p/top_k/
+repetition_penalty (the **VOICE** box), `[vad]` confidence/start_secs/stop_secs/min_volume (the
+**LISTENING** box), and — when you audition a voice — `[voice] ref_wav`. Mechanics for all four boxes are
+in [The live knobs panel](the-live-knobs-panel.md). The rule:
 
 > **Operators don't hand-edit `overrides.toml`.** The panel owns it. Its live values **override
 > `active.toml` every turn** while set — which is exactly why a voice pick can seem "stuck": a leftover
@@ -117,7 +120,10 @@ Both ship **off**, and both are byte-identical no-ops while off — the same hou
   the conversation, and at the next session start the companion opens already knowing the shape of the last
   ones. `[memory.companions]` sets it **per companion**, so one can remember and another can be a stranger
   every time. The felt difference is the whole point — read `docs/memory.md` before enabling it, and
-  remember a record is a file you can delete.
+  remember a record is a file you can delete. Once it's on, the panel's status block grows a **Memory**
+  line showing it live — see [Reading the panel](reading-the-panel.md). That line's one button (pause/resume
+  voice recall) is the single exception to "this file decides": it's a runtime-only poke that never writes
+  back to `memory.toml`.
 - **`config/openclaw.toml`** gives the companion two narrow tools for dispatching work to an OpenClaw agent.
   One gate drives both the tools and the prompt paragraph that mentions them, so capability and prompt can
   never disagree. (Unrelated to [The OpenClaw voice lane](the-openclaw-voice-lane.md), which is about

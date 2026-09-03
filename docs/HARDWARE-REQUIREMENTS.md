@@ -55,10 +55,10 @@ Add the LLM's KV cache (1–5 GB in a typical session; the loaded context window
 
 - Time-to-first-audio (TTS): **~0.42 s**
 - Time-to-first-token (LLM): **~0.21 s**
-- TTS real-time factor: **~0.24** (roughly 3x faster than playback)
+- TTS real-time factor: **~0.24** (roughly 4x faster than playback)
 - LLM throughput: **~92 tokens/s**
 
-RTF must stay **< 1.0** for gapless streaming — the ~3x headroom above is what absorbs a slower chip. Earlier / smaller M-series chips will run the stack but slower, especially on TTS (MLX Metal performance scales with GPU generation); they have not been formally characterized.
+RTF must stay **< 1.0** for gapless streaming — the ~4x headroom above is what absorbs a slower chip. Earlier / smaller M-series chips will run the stack but slower, especially on TTS (MLX Metal performance scales with GPU generation); they have not been formally characterized.
 
 ### Disk
 

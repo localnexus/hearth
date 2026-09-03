@@ -107,7 +107,7 @@ def test_fence():
 def test_real_pages():
     print("test_real_pages")
     pages = m.list_pages()
-    check("ten pages listed", len(pages) == 10)
+    check("fourteen pages listed", len(pages) == 14)
     check("README pinned first", pages[0]["name"] == "README.md")
     check("every title parsed (no filename fallbacks)",
           all(p["title"] and p["title"] != p["name"] for p in pages))

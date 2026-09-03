@@ -32,13 +32,17 @@ source of truth** (`docs/config-manual/`, `docs/runbook/`, `docs/bring-your-own-
 
 | Page | Translates |
 |---|---|
-| [`generation-knobs-in-your-ear.md`](generation-knobs-in-your-ear.md) | The LLM sampling + length knobs (temperature, top_p/top_k/min_p, repeat_penalty, max_tokens) and the prompt-side length rule — how each reshapes how the companion *talks*. |
+| [`generation-knobs-in-your-ear.md`](generation-knobs-in-your-ear.md) | The LLM sampling + length knobs (temperature, reasoning_effort, top_p/top_k/min_p, repeat_penalty, max_tokens) and the prompt-side length rule — how each reshapes how the companion *talks*. |
+| [`the-voice-delivery-knobs.md`](the-voice-delivery-knobs.md) | The panel's **VOICE** box (temperature, top_p, top_k, repetition_penalty) — how each reshapes how the cloned voice *sounds*, as distinct from the LLM knobs above. |
+| [`the-listening-calibration.md`](the-listening-calibration.md) | The panel's **LISTENING** box (confidence, start_secs, stop_secs, min_volume) — per-room/mic calibration for how surely and how fast Hearth notices you're talking. |
 
 ### Process chapters — how you do it
 
 | Chapter | Walks you through |
 |---|---|
 | [`the-map-of-doors.md`](the-map-of-doors.md) | Every port on one page — owner, bind, auth, and the read-only health check for each, plus what a deployment tends to add around them. Start here when you're lost about which thing is on which port. |
+| [`reading-the-panel.md`](reading-the-panel.md) | What's actually on the :65000 panel — text/mute/PTT, the Record button, and every line of the status block, including the Memory line's live pause/resume button. Start here when you're lost about what's *on the page*. |
+| [`the-live-knobs-panel.md`](the-live-knobs-panel.md) | How the panel's CHARACTER / VOICE / LISTENING boxes actually work — effective values, Save/Load/Reset, and why an auditioned voice can't outlive the session. |
 | [`switching-who-is-live.md`](switching-who-is-live.md) | The hand ritual to change character / voice / model / persona: edit `active.toml` → check no live session → restart the lane → confirm by name, log, and ear. |
 | [`the-one-button-switch.md`](the-one-button-switch.md) | The same switch as one press: turning on the supervisor daemon, the panel's **COMPANION** box, and how to tell a live swap from a warm restart. |
 | [`the-phone-lane-away-mode.md`](the-phone-lane-away-mode.md) | ⚠️ **A deployment, not the shipped install** — away mode from the server side: overlay-network-only exposure, the TURN-over-TCP workaround, the fragile insecure-origin flag, and the reboot-durability gap. |
