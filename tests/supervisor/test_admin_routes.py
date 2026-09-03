@@ -181,6 +181,7 @@ class AdminRoutes(AioHTTPTestCase):
         text = await resp.text()
         self.assertIn("Hearth", text)
         self.assertIn("/admin/state", text)  # it drives the authed API
+        self.assertIn("/admin/actuators", text)  # and offers the bring-up controls
         # … and therefore must carry ZERO state: no bearer, no names.
         self.assertNotIn("test-bearer", text, "the shell must never embed the token")
         # Also fine with the bearer (same page either way).

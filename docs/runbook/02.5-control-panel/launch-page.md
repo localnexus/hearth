@@ -15,6 +15,12 @@ WebRTC). Open `http://<facade-host>:65001/admin/launch`; it asks for the serve b
 - **Stop** (bot up): one button — the session saves by default; an optional *name this session*
   field is the "name it now" ergonomic. Plus a link into the proxied control panel.
 - A live state line (bot / pid / uptime / externals / switch phase, polled every few seconds).
+- **Externals** (only when actuators are declared): one row per
+  `[serve.supervisor.actuators.<name>]` with its note, its reachability probe, and the last
+  run's outcome — plus a **Run** button. The request holds until the command finishes, so a
+  slow bring-up simply keeps the button disabled; `409` means it is already running. This is
+  what makes a session-launched external (the away-voice server and its web client)
+  recoverable from a phone instead of only from the desk.
 
 The page never bounces the facade itself — it starts and stops the **bot** only. First supervised
 spawn on a fresh macOS install is a desk moment (the mic permission attributes to the daemon).

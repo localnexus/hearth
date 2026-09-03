@@ -28,6 +28,9 @@
   #statusline { font-family: ui-monospace, monospace; font-size: 0.9em;
                 opacity: 0.85; }
   #msg { min-height: 1.5em; font-size: 0.9em; white-space: pre-wrap; }
+  .grow { flex: 1; }
+  .note { opacity: 0.75; font-size: 0.9em; }
+  .state { font-family: ui-monospace, monospace; font-size: 0.85em; opacity: 0.85; }
   .err { color: #c33; }
   .hidden { display: none; }
   a { color: inherit; }
@@ -76,6 +79,13 @@
   </div>
 </div>
 
+<div id="actuatorcard" class="card hidden">
+  <h2>Externals</h2>
+  <p class="note">Declared bring-up commands. Each run holds until the command
+     finishes — the wait <em>is</em> the spinner.</p>
+  <div id="actuators"></div>
+</div>
+
 <div id="msg"></div>
 
 <p><small><a href="/admin/roster">Manage the roster</a> — onboard a new companion ·
@@ -85,10 +95,18 @@
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => {   // nodes, so API text never meets innerHTML
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+};
 const TOKEN_KEY = "hearth_admin_token";
 let choices = null;      // /admin/switch payload (current + choices)
 let lastBotState = null; // collapse repeated renders
 let busy = false;        // a start/stop is in flight — freeze the cards
+let tick = 0;            // poll counter — actuators refresh on a slower cadence
+const actBusy = new Set(); // actuator runs in flight — never re-render under one
 
 function token() { try { return localStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; } }
 
@@ -117,7 +135,75 @@ function show(id, on) { $(id).classList.toggle("hidden", !on); }
 
 function needToken(prompt) {
   show("tokencard", true); show("startcard", false); show("stopcard", false);
+  show("actuatorcard", false);
   $("statusline").textContent = prompt || "locked — enter the bearer token";
+}
+
+// ── declared actuators (bring-up commands for the watched externals) ─────────
+
+function actState(a) {
+  const bits = [];
+  if (a.probe === true) bits.push("up ✓");
+  else if (a.probe === false) bits.push("down ✗");
+  if (a.running) bits.push("running…");
+  const last = a.last;
+  if (last) {
+    bits.push("last " + (last.ok ? "ok" : last.timed_out ? "timed out"
+                         : "exit " + last.exit) + " · " + last.duration_s + "s");
+  }
+  return bits.join("  ·  ");
+}
+
+async function loadActuators() {
+  if (actBusy.size) return;   // a run is holding the request — leave the rows be
+  let r;
+  try { r = await api("/admin/actuators"); } catch { return; }
+  const acts = (r.data && r.data.actuators) || {};
+  const names = Object.keys(acts).sort();
+  show("actuatorcard", names.length > 0);
+  const host = $("actuators");
+  host.innerHTML = "";        // rebuilt from nodes below — never from API text
+  for (const n of names) {
+    const a = acts[n];
+    const left = el("div", "grow", n);
+    if (a.note) left.appendChild(el("div", "note", a.note));
+    left.appendChild(el("div", "state", actState(a)));
+    const btn = el("button", "", "Run");
+    btn.disabled = !!a.running;
+    btn.addEventListener("click", () => runActuator(n, btn));
+    const row = el("div", "row");
+    row.appendChild(left); row.appendChild(btn);
+    host.appendChild(row);
+  }
+}
+
+async function runActuator(name, btn) {
+  actBusy.add(name);
+  btn.disabled = true;
+  btn.textContent = "running…";
+  say("running " + name + " — this holds until the command finishes");
+  try {
+    const r = await api("/admin/actuators/" + encodeURIComponent(name) + "/run",
+                        { method: "POST" });
+    if (r.status === 409) say(name + " is already running", true);
+    else if (r.status === 404) say("unknown actuator: " + name, true);
+    else if (r.data && r.data.ok) say(name + " ok in " + r.data.duration_s + "s");
+    else {
+      const d = r.data || {};
+      // exit === null is a spawn that never happened (bad path, permissions) —
+      // a different failure from a command that ran and returned non-zero.
+      const why = d.timed_out ? "timed out"
+                : d.exit === null || d.exit === undefined ? "could not start"
+                : "exit " + d.exit;
+      say(name + " failed: " + why + " — the log is on the machine", true);
+    }
+  } catch (e) {
+    say(e.message === "401" ? "token refused" : name + " failed: " + e.message, true);
+  } finally {
+    actBusy.delete(name);
+    btn.textContent = "Run"; btn.disabled = false;
+    loadActuators();
+  }
 }
 
 // ── state poll ──────────────────────────────────────────────────────────────
@@ -132,6 +218,9 @@ async function refresh() {
     return;
   }
   show("tokencard", false);
+  // Externals move on their own clock (and each probe costs a request), so the
+  // actuator card refreshes every fourth poll rather than every one.
+  if (tick++ % 4 === 0) loadActuators();
   const bot = (st.data && st.data.bot) || {};
   const sw = st.data && st.data.switch;
   const ext = (st.data && st.data.externals) || {};
