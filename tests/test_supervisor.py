@@ -920,6 +920,205 @@ class RosterRoutes(AioHTTPTestCase):
         self.assertTrue((self.root / "characters" / "zz-roster-nomem"
                          / "persona.md").is_file())
 
+    # ── the editing half: persona editor ─────────────────────────────────────
+
+    NEW_PERSONA = ("## IDENTITY\n\nAn edited test companion.\n\n"
+                   "## SOUL\n\nBrighter now.\n")
+
+    async def _create(self, name="zz-roster-test"):
+        resp = await self.client.post("/admin/roster/onboard", headers=self.BEARER,
+                                      data=self._form(name=name, yes="true"))
+        self.assertEqual(resp.status, 200, await resp.text())
+
+    async def test_persona_editor_auth_and_validation(self):
+        self.assertEqual((await self.client.get(
+            "/admin/roster/persona?character=x")).status, 401)
+        self.assertEqual((await self.client.post(
+            "/admin/roster/persona", json={})).status, 401)
+        resp = await self.client.get("/admin/roster/persona?character=zz-nope",
+                                     headers=self.BEARER)
+        self.assertEqual(resp.status, 404)
+        resp = await self.client.post(
+            "/admin/roster/persona", headers=self.BEARER,
+            json={"character": "example", "text": "## IDENTITY\n\nhalf only\n"})
+        self.assertEqual(resp.status, 400)
+        self.assertIn("SOUL", json.dumps(await resp.json()))
+        resp = await self.client.post(
+            "/admin/roster/persona", headers=self.BEARER,
+            json={"character": "example", "persona": "../evil",
+                  "text": self.NEW_PERSONA})
+        self.assertEqual(resp.status, 400)
+
+    async def test_persona_edit_data_character_with_backup(self):
+        await self._create()
+        target = self.root / "characters" / "zz-roster-test" / "persona.md"
+        # Read shows the created text; preview writes nothing.
+        resp = await self.client.get(
+            "/admin/roster/persona?character=zz-roster-test", headers=self.BEARER)
+        data = await resp.json()
+        self.assertEqual(resp.status, 200, data)
+        self.assertEqual(data["text"], self.PERSONA)
+        self.assertEqual(data["root"], "data")
+        body = {"character": "zz-roster-test", "text": self.NEW_PERSONA}
+        resp = await self.client.post("/admin/roster/persona",
+                                      headers=self.BEARER, json=body)
+        data = await resp.json()
+        self.assertEqual(resp.status, 200, data)
+        self.assertFalse(data["written"])
+        self.assertEqual(target.read_text(), self.PERSONA)  # untouched
+        # Confirm: written atomically, one .prev backup, effect time stated.
+        resp = await self.client.post("/admin/roster/persona", headers=self.BEARER,
+                                      json={**body, "yes": True})
+        data = await resp.json()
+        self.assertEqual(resp.status, 200, data)
+        self.assertTrue(data["written"])
+        self.assertEqual(target.read_text(), self.NEW_PERSONA)
+        prev = target.with_name("persona.md.prev")
+        self.assertEqual(prev.read_text(), self.PERSONA)
+        self.assertIn("characters/zz-roster-test/persona.md.prev", data["backup"])
+        self.assertIn("live-switch", data["effect"])
+
+    async def test_persona_shipped_character_copies_on_write(self):
+        # "example" resolves to the shipped root; editing must create a DATA
+        # overlay and NEVER touch the shipped file.
+        from hearth.config import config_loader
+
+        shipped = config_loader._ROOT / "characters" / "example" / "persona.md"
+        shipped_text = shipped.read_text()
+        resp = await self.client.get(
+            "/admin/roster/persona?character=example", headers=self.BEARER)
+        data = await resp.json()
+        self.assertEqual(data["root"], "shipped")
+        self.assertIn("DATA", data["editable_note"] or "")
+        resp = await self.client.post(
+            "/admin/roster/persona", headers=self.BEARER,
+            json={"character": "example", "text": self.NEW_PERSONA, "yes": True})
+        data = await resp.json()
+        self.assertEqual(resp.status, 200, data)
+        self.assertTrue(data["written"])
+        self.assertIsNone(data["backup"])  # fresh overlay — nothing to back up
+        overlay = self.root / "characters" / "example" / "persona.md"
+        self.assertEqual(overlay.read_text(), self.NEW_PERSONA)
+        self.assertEqual(shipped.read_text(), shipped_text)  # sacred
+        # The overlay now shadows: a fresh GET reads it back as root=data.
+        resp = await self.client.get(
+            "/admin/roster/persona?character=example", headers=self.BEARER)
+        data = await resp.json()
+        self.assertEqual((data["root"], data["text"]), ("data", self.NEW_PERSONA))
+
+    async def test_persona_new_variant_created_and_listed(self):
+        await self._create()
+        resp = await self.client.post(
+            "/admin/roster/persona", headers=self.BEARER,
+            json={"character": "zz-roster-test", "persona": "bright",
+                  "text": self.NEW_PERSONA, "yes": True})
+        data = await resp.json()
+        self.assertEqual(resp.status, 200, data)
+        self.assertIn("variant", data["action"])
+        vfile = (self.root / "characters" / "zz-roster-test"
+                 / "persona.bright.md")
+        self.assertEqual(vfile.read_text(), self.NEW_PERSONA)
+        # The switch enumeration picks the variant up at call time.
+        resp = await self.client.get("/admin/roster/state", headers=self.BEARER)
+        entry = next(c for c in (await resp.json())["characters"]
+                     if c["name"] == "zz-roster-test")
+        self.assertIn("bright", entry["personas"])
+
+    # ── the editing half: add-a-voice ────────────────────────────────────────
+
+    def _voice_form(self, **over):
+        fields = {"character": "zz-roster-test", "voice_tag": "second",
+                  "license": "personal-use-only",
+                  "source": "recorded by me for the test"}
+        fields.update(over)
+        fd = aiohttp.FormData()
+        for k, v in fields.items():
+            if v is not None:
+                fd.add_field(k, v)
+        if over.get("_sample", True):
+            fd.add_field("sample", self.wav.read_bytes(),
+                         filename="clip.wav", content_type="audio/wav")
+        return fd
+
+    async def test_add_voice_validation(self):
+        self.assertEqual((await self.client.post("/admin/roster/voice")).status, 401)
+        await self._create()
+        cases = (
+            ({"character": "zz-nope"}, "unknown character"),
+            ({"voice_tag": "bad/tag"}, "invalid voice tag"),
+            ({"voice_tag": "default"}, "already exists"),  # per-tag create-only
+            ({"source": ""}, "source attestation"),
+        )
+        for over, want in cases:
+            resp = await self.client.post("/admin/roster/voice",
+                                          headers=self.BEARER,
+                                          data=self._voice_form(**over))
+            self.assertEqual(resp.status, 400, want)
+            self.assertIn(want, json.dumps(await resp.json()))
+
+    async def test_add_voice_preview_then_create_appends_provenance(self):
+        await self._create()
+        resp = await self.client.post("/admin/roster/voice", headers=self.BEARER,
+                                      data=self._voice_form())
+        data = await resp.json()
+        self.assertEqual(resp.status, 200, data)
+        self.assertFalse(data["created"])
+        vdir = (self.root / "characters" / "zz-roster-test" / "voices" / "second")
+        self.assertFalse(vdir.exists())  # preview persisted nothing
+        resp = await self.client.post("/admin/roster/voice", headers=self.BEARER,
+                                      data=self._voice_form(yes="true"))
+        data = await resp.json()
+        self.assertEqual(resp.status, 200, data)
+        self.assertTrue(data["created"])
+        self.assertIn("verified", data["loader"])
+        self.assertIn("switch pickers", data["next"])
+        self.assertTrue((vdir / "voice.toml").is_file())
+        self.assertTrue((vdir / "sample.wav").is_file())
+        # Provenance appended to the character's ONE record, both tags present.
+        vs = (self.root / "characters" / "zz-roster-test" / "VOICE-SOURCE.md")
+        text = vs.read_text()
+        self.assertIn("default", text)
+        self.assertIn("## second — added", text)
+        # And the enumeration sees the new tag immediately.
+        resp = await self.client.get("/admin/roster/state", headers=self.BEARER)
+        entry = next(c for c in (await resp.json())["characters"]
+                     if c["name"] == "zz-roster-test")
+        self.assertEqual(sorted(entry["voices"]), ["default", "second"])
+        # Create-only per tag: a repeat is refused with the bundle intact.
+        resp = await self.client.post("/admin/roster/voice", headers=self.BEARER,
+                                      data=self._voice_form(yes="true"))
+        self.assertEqual(resp.status, 400)
+        self.assertTrue((vdir / "voice.toml").is_file())
+
+    async def test_add_voice_to_shipped_character_lands_in_data(self):
+        # example's persona lives in the shipped root; the new bundle must land
+        # under DATA (voice_dir's per-voice lookup), shipped tree untouched.
+        resp = await self.client.post(
+            "/admin/roster/voice", headers=self.BEARER,
+            data=self._voice_form(character="example", voice_tag="zz-extra",
+                                  yes="true"))
+        data = await resp.json()
+        self.assertEqual(resp.status, 200, data)
+        vdir = self.root / "characters" / "example" / "voices" / "zz-extra"
+        self.assertTrue((vdir / "voice.toml").is_file())
+        # A DATA-side provenance record was started for the new clip.
+        self.assertTrue((self.root / "characters" / "example"
+                         / "VOICE-SOURCE.md").is_file())
+        from hearth.config import config_loader
+        self.assertFalse((config_loader._ROOT / "characters" / "example"
+                          / "voices" / "zz-extra").exists())
+
+    async def test_add_voice_garbage_clip_rolls_back_voice_dir_only(self):
+        await self._create()
+        self.wav.write_bytes(b"this is not audio at all")
+        resp = await self.client.post("/admin/roster/voice", headers=self.BEARER,
+                                      data=self._voice_form(yes="true"))
+        self.assertEqual(resp.status, 422)
+        cdir = self.root / "characters" / "zz-roster-test"
+        self.assertFalse((cdir / "voices" / "second").exists())  # rolled back
+        self.assertTrue((cdir / "persona.md").is_file())  # character untouched
+        self.assertTrue((cdir / "voices" / "default" / "voice.toml").is_file())
+
 
 # ── auto-compaction: the compact watch + the start-door guard ────────────────
 

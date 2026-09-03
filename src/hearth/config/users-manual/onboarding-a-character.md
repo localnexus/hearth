@@ -13,8 +13,16 @@ wizard** do the mechanical steps for you — `/admin/roster` on the serve facade
 (behind the bearer door, when the supervisor is mounted) scaffolds the
 directories, conditions the clip, writes `voice.toml` + `VOICE-SOURCE.md` from
 one set of answers, and verifies the bundle with the same loaders startup
-uses. What it never does: touch an existing character, or promote a voice —
+uses. What it never does: overwrite an existing bundle, or promote a voice —
 steps 5–6 below stay yours either way.
+
+The same page also covers a **living** character: an **Edit a persona** card
+(rewrites `persona.md` or a variant, verified with the composition path, one
+`.prev` backup kept — a shipped persona is copied-on-write into your data
+root, never edited in place) and an **Add a voice** card (the wizard's clip
+pipeline pointed at an existing character; create-only per tag, provenance
+appended to `VOICE-SOURCE.md`). New tags and variants show in the switch
+pickers immediately; composition still happens at startup or a live switch.
 
 ---
 

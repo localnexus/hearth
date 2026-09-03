@@ -99,6 +99,53 @@
   </div>
 </div>
 
+<div id="editcard" class="card hidden">
+  <h2>Edit a persona</h2>
+  <p><small>Rewrites <code>persona.md</code> (or a variant) for an existing
+     character. Writes land in your data root — a shipped persona is
+     copied-on-write, never touched — with one <code>.prev</code> backup kept.
+     Composition happens at bot start / live switch, never mid-sitting.</small></p>
+  <div class="row"><label for="e-char">Character</label>
+    <select id="e-char"></select></div>
+  <div class="row"><label for="e-variant">Persona</label>
+    <select id="e-variant"></select>
+    <input type="text" id="e-newvariant" class="hidden" autocomplete="off"
+           placeholder="new variant name (letters, digits, . _ -)"></div>
+  <div class="row"><button id="e-load">Load</button></div>
+  <textarea id="e-text" class="hidden"></textarea>
+  <div class="row">
+    <button id="e-preview" class="hidden">Preview (writes nothing)</button>
+    <button id="e-save" class="primary hidden" disabled>Save</button>
+  </div>
+</div>
+
+<div id="voicecard" class="card hidden">
+  <h2>Add a voice</h2>
+  <p><small>A new voice bundle for an existing character — create-only per tag,
+     written to your data root (works for shipped characters too). The new tag
+     shows in the switch pickers immediately; audition stays yours:
+     <b>your ear decides</b>.</small></p>
+  <div class="row"><label for="v-char">Character</label>
+    <select id="v-char"></select></div>
+  <div class="row"><label for="v-tag">Voice tag</label>
+    <input type="text" id="v-tag" autocomplete="off" placeholder="letters, digits, . _ -"></div>
+  <div class="row"><label for="v-sample">Sample</label>
+    <input type="file" id="v-sample" accept="audio/*"></div>
+  <div class="row"><label for="v-license">License</label>
+    <select id="v-license">
+      <option value="personal-use-only" selected>personal-use-only (the conservative default)</option>
+      <option value="public-domain">public-domain</option>
+      <option value="owned">owned — my own recording / rights cleared</option>
+    </select></div>
+  <div class="row"><label for="v-source">Source</label>
+    <input type="text" id="v-source" autocomplete="off"
+           placeholder="where the clip came from — required, this cannot be mechanized"></div>
+  <div class="row">
+    <button id="v-preview">Preview (writes nothing)</button>
+    <button id="v-add" class="primary" disabled>Add voice</button>
+  </div>
+</div>
+
 <div id="report"></div>
 
 <script>
@@ -122,6 +169,7 @@ async function api(path, opts) {
 
 function needToken(prompt) {
   show("tokencard", true); show("rostercard", false); show("wizardcard", false);
+  show("editcard", false); show("voicecard", false);
   $("statusline").textContent = prompt || "locked — enter the bearer token";
 }
 
@@ -135,7 +183,10 @@ async function refresh() {
     return;
   }
   show("tokencard", false); show("rostercard", true); show("wizardcard", true);
+  show("editcard", true); show("voicecard", true);
   const d = st.data || {};
+  roster = d.characters || [];
+  fillCharPickers();
   const lines = (d.characters || []).map(c => {
     const bits = [c.name];
     if (d.active && d.active.character === c.name) bits.push("● live");
@@ -199,6 +250,143 @@ $("previewbtn").addEventListener("click", () => submit(false));
 $("createbtn").addEventListener("click", () => submit(true));
 for (const id of ["f-name", "f-persona", "f-tag", "f-license", "f-source", "f-tier", "f-sample"])
   $(id).addEventListener("input", () => { $("createbtn").disabled = true; });
+
+// ── persona editor + add-a-voice (the editing half) ─────────────────────────
+let roster = [];  // /admin/roster/state characters, kept for the pickers
+
+function fillCharPickers() {
+  for (const id of ["e-char", "v-char"]) {
+    const sel = $(id), prev = sel.value;
+    sel.textContent = "";
+    for (const c of roster) {
+      const o = document.createElement("option");
+      o.value = c.name; o.textContent = c.name;
+      sel.appendChild(o);
+    }
+    if (prev && roster.some(c => c.name === prev)) sel.value = prev;
+  }
+  fillVariantPicker();
+}
+
+function fillVariantPicker() {
+  const c = roster.find(x => x.name === $("e-char").value);
+  const sel = $("e-variant"), prev = sel.value;
+  sel.textContent = "";
+  for (const p of (c ? c.personas : ["default"])) {
+    const o = document.createElement("option");
+    o.value = p; o.textContent = p;
+    sel.appendChild(o);
+  }
+  const nv = document.createElement("option");
+  nv.value = "__new__"; nv.textContent = "new variant…";
+  sel.appendChild(nv);
+  if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
+  show("e-newvariant", sel.value === "__new__");
+}
+
+function editVariant() {
+  const v = $("e-variant").value;
+  return v === "__new__" ? $("e-newvariant").value.trim() : v;
+}
+
+function lockSave() { $("e-save").disabled = true; }
+
+$("e-char").addEventListener("change", () => { fillVariantPicker(); lockSave(); });
+$("e-variant").addEventListener("change", () => {
+  show("e-newvariant", $("e-variant").value === "__new__"); lockSave();
+});
+$("e-newvariant").addEventListener("input", lockSave);
+$("e-text").addEventListener("input", lockSave);
+
+$("e-load").addEventListener("click", async () => {
+  report("");
+  const character = $("e-char").value, variant = editVariant();
+  if ($("e-variant").value === "__new__") {
+    // A new variant starts from the scaffold — nothing to load.
+    $("e-text").value = "## IDENTITY\n\n\n\n## SOUL\n\n\n";
+    show("e-text", true); show("e-preview", true); show("e-save", true); lockSave();
+    report(variant ? "new variant “" + variant + "” — write it, then Preview"
+                   : "name the new variant first", !variant);
+    return;
+  }
+  let r;
+  try { r = await api("/admin/roster/persona?character=" + encodeURIComponent(character) +
+                      "&persona=" + encodeURIComponent(variant)); }
+  catch (e) {
+    if (e.message === "401") { needToken("that token was refused — try again"); return; }
+    report("facade unreachable", true); return;
+  }
+  const d = r.data || {};
+  if (r.status !== 200) { report(d.error || "load failed", true); return; }
+  $("e-text").value = d.text || "";
+  show("e-text", true); show("e-preview", true); show("e-save", true); lockSave();
+  report(d.editable_note || "");
+});
+
+async function personaSubmit(confirmed) {
+  report(confirmed ? "saving…" : "checking…");
+  lockSave();
+  const body = { character: $("e-char").value, persona: editVariant(),
+                 text: $("e-text").value };
+  if (confirmed) body.yes = true;
+  let r;
+  try {
+    r = await api("/admin/roster/persona", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    if (e.message === "401") { needToken("that token was refused — try again"); return; }
+    report("facade unreachable", true); return;
+  }
+  const d = r.data || {};
+  if (d.errors) { report(d.errors.map(x => "✗ " + x).join("\n"), true); return; }
+  if (!confirmed) {
+    report((d.action || "write") + " → " + (d.target || "") + " (" + d.chars +
+           " chars)\n" + (d.confirm || ""));
+    $("e-save").disabled = !d.ok;
+    return;
+  }
+  report((d.action || "written") + " → " + (d.target || "") +
+         (d.backup ? "\nbackup: " + d.backup : "") +
+         "\n" + (d.effect || ""), !d.ok);
+  if (d.written) refresh();
+}
+
+$("e-preview").addEventListener("click", () => personaSubmit(false));
+$("e-save").addEventListener("click", () => personaSubmit(true));
+
+function voiceForm(confirmed) {
+  const fd = new FormData();
+  fd.append("character", $("v-char").value);
+  fd.append("voice_tag", $("v-tag").value.trim());
+  fd.append("license", $("v-license").value);
+  fd.append("source", $("v-source").value.trim());
+  if (confirmed) fd.append("yes", "true");
+  const file = $("v-sample").files[0];
+  if (file) fd.append("sample", file, file.name);
+  return fd;
+}
+
+async function voiceSubmit(confirmed) {
+  report(confirmed ? "adding…" : "checking…");
+  $("v-add").disabled = true;
+  let r;
+  try { r = await api("/admin/roster/voice", { method: "POST", body: voiceForm(confirmed) }); }
+  catch (e) {
+    if (e.message === "401") { needToken("that token was refused — try again"); return; }
+    report("facade unreachable", true); return;
+  }
+  const d = r.data || {};
+  report(renderReport(d), !d.ok);
+  $("v-add").disabled = !(d.ok && !d.created);
+  if (d.created) { $("v-add").disabled = true; refresh(); }
+}
+
+$("v-preview").addEventListener("click", () => voiceSubmit(false));
+$("v-add").addEventListener("click", () => voiceSubmit(true));
+for (const id of ["v-char", "v-tag", "v-license", "v-source", "v-sample"])
+  $(id).addEventListener("input", () => { $("v-add").disabled = true; });
 
 $("tokenbtn").addEventListener("click", () => {
   try { localStorage.setItem(TOKEN_KEY, $("token").value.trim()); } catch { /* private mode */ }
