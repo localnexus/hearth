@@ -228,5 +228,115 @@ class TestHindsightSidecar(unittest.TestCase):
             self.assertIsNone(b._log)
             self.assertFalse(b._drain.is_alive() if b._drain else False)
 
+class TestOrphanSweep(unittest.TestCase):
+    """The orphan sweep (2026-09-03): a sidecar outlives an ungraceful host
+    death, because it holds its own process group so only close() ends it.
+
+    Ten survivors (9.4 GB) were found after a day of bot startup crashes. These
+    tests pin the sweep's SAFETY rule, not its plumbing: it must only ever
+    signal processes whose parent is already gone.
+    """
+
+    _RUNNER = "/opt/hearth/src/hearth/memory/sidecar_runner.py"
+
+    def _sweep(self, pgrep_stdout: str, kill=None):
+        """Run the sweep against a canned pgrep result; returns (n, killed)."""
+        import hearth.memory.backend_hindsight as hs
+
+        killed: list = []
+
+        def _kill(pid, sig):
+            killed.append((pid, sig))
+            if kill is not None:
+                kill(pid)
+
+        completed = mock.Mock(stdout=pgrep_stdout)
+        with mock.patch.object(hs.subprocess, "run", return_value=completed) as run, \
+                mock.patch.object(hs.os, "kill", side_effect=_kill):
+            n = hs._reap_orphaned_sidecars(self._RUNNER)
+        self.argv = list(run.call_args.args[0])
+        return n, killed
+
+    def test_sweep_is_scoped_to_parentless_processes(self):
+        """THE safety property. ``-P 1`` is what makes this safe to run while a
+        bot and the facade are both live: their sidecars are parented to them,
+        so only an abandoned one is ever matched. Do not 'simplify' this away."""
+        self._sweep("")
+        self.assertIn("-P", self.argv)
+        self.assertEqual(self.argv[self.argv.index("-P") + 1], "1",
+                         "the sweep must only ever match processes reparented "
+                         "to launchd — without -P 1 it would kill LIVE sidecars")
+        self.assertIn(self._RUNNER, self.argv,
+                      "matching is on the runner path — another checkout's "
+                      "sidecars are that install's business")
+
+    def test_sweep_signals_every_orphan_once(self):
+        import signal as sig_mod
+
+        n, killed = self._sweep("111\n222\n333\n")
+        self.assertEqual(n, 3)
+        self.assertEqual([p for p, _ in killed], [111, 222, 333])
+        self.assertEqual({s for _, s in killed}, {sig_mod.SIGTERM},
+                         "SIGTERM only — the orphan must get to close its pg0 "
+                         "connection; a straggler is the next sweep's problem")
+
+    def test_sweep_never_signals_itself(self):
+        n, killed = self._sweep(f"111\n{os.getpid()}\n222\n")
+        self.assertEqual(n, 2)
+        self.assertNotIn(os.getpid(), [p for p, _ in killed])
+
+    def test_sweep_tolerates_a_pid_that_already_exited(self):
+        def _gone(pid):
+            if pid == 222:
+                raise ProcessLookupError
+
+        n, _ = self._sweep("111\n222\n333\n", kill=_gone)
+        self.assertEqual(n, 2, "a pid that died between pgrep and kill is not "
+                               "an error, and must not stop the sweep")
+
+    def test_sweep_survives_a_missing_pgrep(self):
+        """Best-effort: a sweep that cannot run must never fail a session start."""
+        import hearth.memory.backend_hindsight as hs
+
+        with mock.patch.object(hs.subprocess, "run", side_effect=OSError), \
+                mock.patch.object(hs.os, "kill") as kill:
+            self.assertEqual(hs._reap_orphaned_sidecars(self._RUNNER), 0)
+        kill.assert_not_called()
+
+    def test_start_sidecar_sweeps_before_spawning(self):
+        """Ordering is the point — sweeping after the spawn would reclaim
+        nothing for the session that just paid to start."""
+        import hearth.memory.backend_hindsight as hs
+
+        order: list = []
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            runner = tmp / "stub.py"
+            runner.write_text(
+                "import time\n"
+                "print('HINDSIGHT_URL=http://127.0.0.1:59999', flush=True)\n"
+                "time.sleep(60)\n", encoding="utf-8")
+            backend = hs.HindsightBackend(
+                {"mode": "sidecar", "python": sys.executable, "runner": str(runner),
+                 "llm_model": "m", "log_file": str(tmp / "logs" / "s.log")})
+            real_popen = hs.subprocess.Popen
+
+            def _popen(*a, **kw):
+                order.append("spawn")
+                return real_popen(*a, **kw)
+
+            with mock.patch.object(hs, "_reap_orphaned_sidecars",
+                                   side_effect=lambda r: order.append(("sweep", r))), \
+                    mock.patch.object(hs.subprocess, "Popen", side_effect=_popen):
+                backend._start_sidecar()
+            try:
+                self.assertEqual([o[0] if isinstance(o, tuple) else o for o in order],
+                                 ["sweep", "spawn"])
+                self.assertEqual(order[0][1], str(runner),
+                                 "the sweep must match OUR runner path")
+            finally:
+                backend.close()
+
+
 if __name__ == "__main__":
     unittest.main()
