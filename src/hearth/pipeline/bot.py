@@ -480,8 +480,11 @@ async def build_pipeline(
         assistant_agg,
     ])
 
+    # memory_prefetch_proc rides out because main() reports it to the panel tap
+    # (voice_prefetch_built) — it is built here, so it can only be known there.
     return (pipeline, transport, context, mute_gate, speaking_tap, measure_observer,
-            recorder, memory_seam, live_switcher, system_instruction)
+            recorder, memory_seam, live_switcher, system_instruction,
+            memory_prefetch_proc)
 
 
 async def main(
@@ -500,7 +503,8 @@ async def main(
     await recording_repair_routing()
 
     (pipeline, transport, context, mute_gate, speaking_tap, measure_observer,
-     recorder, memory_seam, live_switcher, system_instruction) = await build_pipeline(
+     recorder, memory_seam, live_switcher, system_instruction,
+     memory_prefetch_proc) = await build_pipeline(
         dump_dir, resume_messages=resume_messages, store=store,
         memory_mode=memory_mode,
     )
