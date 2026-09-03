@@ -74,3 +74,16 @@ That's it — Hearth prepares the clip at startup and the character speaks in th
 A character can hold several voice bundles side by side under `voices/`. Switch between them
 by changing `voice` in `config/active.toml` (and restarting), or audition them live from the
 control panel.
+
+Once you have auditioned your way to a keeper, name it in her own `profile.toml` so the
+switch pickers reach for it instead of whichever bundle happens to sort first:
+
+```toml
+# characters/yourname/profile.toml
+voice = "myvoice"
+```
+
+One line, at the top of the file (a bare key written after a `[llm]` table would belong to
+that table). It changes nothing about who is live — `active.toml` remains the selection —
+only what the picker offers the moment you move *to* her. An absent or stale pin falls back
+to first-in-list, so nothing breaks if you rename a bundle.

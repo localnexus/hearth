@@ -147,12 +147,16 @@ window.HearthSwitchCard = (function () {
 
     // Voice + persona belong to the chosen character: re-derive on every change,
     // but keep the CURRENT values while the character is still the current one.
+    // Moving to a different character reaches for HER remembered voice
+    // (default_voice, the `voice` pin in her profile.toml) — first-in-list only
+    // when she has no pin, which is what everyone got before the pin existed.
     function dependents(keepCurrent) {
       const name = selects.character.value;
       const current = (choices && choices.current) || {};
       const info = charInfo(name);
       const same = keepCurrent && name === current.character;
-      fill(selects.voice, info.voices, same ? current.voice : info.voices[0]);
+      const preferred = info.default_voice || info.voices[0];
+      fill(selects.voice, info.voices, same ? current.voice : preferred);
       fill(selects.persona, info.personas.length ? info.personas : ["default"],
            same ? (current.persona || "default") : "default");
     }

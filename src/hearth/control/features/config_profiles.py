@@ -38,6 +38,11 @@ WHAT A PROFILE HOLDS
     overrides): an empty profile == baseline. Saving with nothing dialed away writes a
     baseline preset (a valid "reset-to-default" preset), which is fine.
 
+    A character profile may additionally carry ONE selection key, `voice` — the bundle
+    the switch pickers reach for when you move to her (config_loader.preferred_voice).
+    Nothing here writes it: it is an operator hand-edit, and save/load/reset leave it
+    exactly where it is (the save carries it through rather than erasing it).
+
 API  (all bodies JSON; scopes: "character" | "voice" | "all")
     GET  /config/profiles
         → {ok, active:{character,voice,model,engine}, defaults:{llm,tts},
@@ -156,10 +161,35 @@ def _atomic_write(path: Path, text: str) -> None:
 
 # ── pure compose helpers (testable; no IO of the live file) ────────────────────────
 
-def _snapshot(scope: str, current: dict) -> dict:
-    """The tier slice of the current overrides to persist as a profile."""
+def _snapshot(scope: str, current: dict, existing: dict | None = None) -> dict:
+    """The tier slice of the current overrides to persist as a profile.
+
+    A character profile may also carry `voice` — the remembered voice bundle the
+    switch pickers reach for (config_loader.preferred_voice). That is a SELECTION,
+    not a knob, and nothing here ever sets it; `existing` carries it through so a
+    knob save does not silently erase what a hand-edit put there."""
     section = _SCOPE_SECTIONS[scope]
-    return {section: dict(current.get(section, {}))}
+    kept = (existing or {}).get("voice")
+    snap: dict = {}
+    if scope == "character" and isinstance(kept, str) and kept:
+        snap["voice"] = kept  # first: a bare key after a [table] header joins that table
+    snap[section] = dict(current.get(section, {}))
+    return snap
+
+
+def _dump_profile(data: dict) -> str:
+    """Serialize a profile: the selection scalar, then the knob tiers.
+
+    ck._dump knows only the knob sections, so it would drop `voice` on the floor;
+    it is written here instead, AHEAD of the tables (TOML reads a bare key after a
+    `[llm]` header as `llm.voice`)."""
+    tiers = ck._dump({k: v for k, v in data.items() if k != "voice"})
+    voice = data.get("voice")
+    if not voice:
+        return tiers
+    head, bracket, tables = tiers.partition("\n[")
+    line = f"voice = {ck._fmt_scalar(voice)}\n"
+    return head.rstrip("\n") + "\n" + line + (("\n" + bracket.lstrip("\n") + tables) if bracket else "")
 
 
 def _compose_load(scope: str, current: dict, profile: dict,
@@ -280,10 +310,10 @@ def config_profile_routes(ctx: PanelContext) -> web.RouteTableDef:  # noqa: ARG0
                 current = ck._read()
             except Exception as exc:
                 return web.json_response({"ok": False, "error": f"overrides unparseable: {exc}"}, status=409)
-            data = _snapshot(scope, current)
             path = _char_path(character) if scope == "character" else _voice_path(character, voice)
+            data = _snapshot(scope, current, existing=_read_profile(path))
             try:
-                _atomic_write(path, ck._dump(data))
+                _atomic_write(path, _dump_profile(data))
             except Exception as exc:  # noqa: BLE001
                 logger.warning("config_profiles: save failed ({})", type(exc).__name__)
                 return web.json_response({"ok": False, "error": f"save failed: {exc}"}, status=500)

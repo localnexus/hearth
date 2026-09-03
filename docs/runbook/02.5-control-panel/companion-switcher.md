@@ -21,6 +21,17 @@ lightest way it can:
   the restart path: the bot warm-restarts (your LLM server is never touched), the page goes
   down with it and reloads itself when the new one is up (≈10–30 s).
 
+**Which voice a character comes up in.** Voice and persona belong to the character, so picking
+a different one re-derives both. Staying on the current character keeps what is live; moving to
+another reaches for **her remembered voice** — `voice = "<bundle>"` at the top of
+`characters/<c>/profile.toml`, a hand-edit you make once (see
+[bring-your-own-voice.md](../../bring-your-own-voice.md), "Multiple voices"). Without a pin the
+picker offers whichever bundle sorts first, which is only right by luck once a character holds
+a dozen auditions and the keeper is the last of them. The pin is a picker default and nothing more: `active.toml`
+is still the selection, a save from the panel's preset buttons carries the key through
+untouched, and a pin naming a bundle that has been renamed away falls back to first-in-list
+rather than pre-selecting a voice that cannot load.
+
 Tick **keep this session** to drop a hold marker first, so the current session is kept as a
 **named (held)** one (the `stop.sh --hold` semantics; sessions save by default either way, and
 for a recall-only sitting the marker is what keeps the transcript) — honored on BOTH paths. The box hides

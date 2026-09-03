@@ -412,6 +412,9 @@ class OpenclawTable(_Cfg):
 # ── characters/<c>[/voices/<v>]/profile.toml (+ overrides.toml mirrors) ──────
 
 class ProfileFile(_Cfg):
+    voice: Optional[str] = Field(None, pattern=_NAME,
+                                 description="character scope only: her remembered voice bundle — what the "
+                                             "switch pickers offer when you move to her (else first-in-list)")
     llm: Optional[_OvLLM] = Field(None, description="character preset: deltas from the model baseline")
     tts: Optional[_OvTTS] = Field(None, description="voice preset: deltas from the engine baseline")
 
@@ -477,7 +480,10 @@ REGISTRY: dict[str, FileEntry] = {e.kind: e for e in (
     FileEntry("profile", ProfileFile, "Companion knob presets", "characters/<c>[/voices/<v>]/profile.toml (+ overrides.toml mirrors)",
               "preset", "panel", "identity", "none",
               note="PANEL-MANAGED snapshots of the override deltas for one companion or voice; "
-                   "they travel with the companion's directory. An empty preset == baseline."),
+                   "they travel with the companion's directory. An empty preset == baseline. One "
+                   "key is yours, not the panel's: `voice` in a CHARACTER profile pins the bundle "
+                   "the switch pickers offer when you move to her — hand-edit it, and a panel save "
+                   "carries it through untouched."),
 )}
 
 

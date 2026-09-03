@@ -164,6 +164,8 @@ def choices() -> dict:
     config_loader lookup rule, applied to enumeration). Names only, never
     contents: a character is a dir keyed on persona.md, a model on model.toml,
     a voice on voice.toml; persona variants are the persona.<name>.md siblings.
+
+    Each character also carries `default_voice` — her remembered bundle, or None.
     """
     roots = []
     # _DATA/_ROOT are read at CALL time (unittest patches _DATA; DATA_DIR is import-bound)
@@ -184,6 +186,9 @@ def choices() -> dict:
                     entry["personas"].add(middle)
     for entry in characters.values():
         entry["voices"] = config_loader.list_voices(entry["name"])
+        # The remembered voice, when she has one — the picker's default on a
+        # character change (see config_loader.preferred_voice). None is normal.
+        entry["default_voice"] = config_loader.preferred_voice(entry["name"])
         entry["personas"] = sorted(entry["personas"])
     models = set()
     model_ids = {}

@@ -157,6 +157,7 @@ class SelectionHelpers(_FixtureBase):
         tc = next(c for c in ch["characters"] if c["name"] == "testchar")
         self.assertEqual(tc["voices"], ["v1"])
         self.assertEqual(tc["personas"], ["alt", "default"])
+        self.assertIsNone(tc["default_voice"])  # unpinned; the pin is test_profile_voice_pin's
         self.assertIn("m1", ch["models"])
 
 

@@ -133,6 +133,25 @@ def list_voices(character: str) -> list:
     return sorted(names)
 
 
+def preferred_voice(character: str) -> str | None:
+    """The character's remembered voice bundle: `voice = "<name>"` at the top of
+    characters/<character>/profile.toml (DATA, else ROOT) — what the switch pickers
+    offer when you move TO her, instead of whichever bundle sorts first.
+
+    None when unset, unreadable, or naming a bundle that isn't there. The pin is a
+    convenience, never a gate: a stale name falls back to first-in-list rather than
+    pre-selecting a voice that cannot load. active.toml stays the selection record —
+    this only says what to reach for when the selection changes character."""
+    try:
+        with open(_lookup(f"characters/{character}/profile.toml"), "rb") as f:
+            name = tomllib.load(f).get("voice")
+    except (OSError, tomllib.TOMLDecodeError):
+        return None
+    if not isinstance(name, str) or not _NAME_RE.match(name):
+        return None
+    return name if name in list_voices(character) else None
+
+
 def baseline_path(rel: str) -> Path:
     """A shipped calibration file (config/tts/<engine>/tts.toml, config/vad.toml): the
     DATA copy wins whole-file when present; otherwise the ROOT baseline."""
