@@ -1,0 +1,73 @@
+<!doctype html>
+<!-- pair_page.html — one-time device pairing (served at /admin/pair/ui).
+
+     SECURITY CONTRACT: served WITHOUT auth, like the other static shells, so it
+     must stay pure chrome. It carries no token and no state; the six digits are
+     typed by the operator, and the bearer only ever arrives in the response to
+     a correct claim. The code is single-use, expires in minutes, and dies after
+     three wrong guesses — see routes.py for the store. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hearth — pair this device</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; max-width: 26em; margin: 3em auto;
+         padding: 0 1em; line-height: 1.5; }
+  h1 { font-size: 1.3em; }
+  input { font: inherit; font-size: 1.6em; letter-spacing: 0.25em; width: 100%;
+          padding: 0.3em 0.4em; text-align: center; }
+  button { font: inherit; padding: 0.5em 1.4em; margin-top: 0.8em; cursor: pointer;
+           font-weight: 600; }
+  #msg { min-height: 1.5em; margin-top: 0.8em; font-size: 0.9em; }
+  .err { color: #c33; }
+</style>
+</head>
+<body>
+<h1>Pair this device</h1>
+<p>Enter the six-digit code shown on the machine running Hearth. It is good for
+   a few minutes, works once, and this device then remembers the key itself.</p>
+<input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6"
+       placeholder="000000" autofocus>
+<button id="go">Pair</button>
+<div id="msg"></div>
+<script>
+"use strict";
+const TOKEN_KEY = "hearth_admin_token";
+
+async function claim() {
+  const code = document.getElementById("code").value.replace(/\D/g, "");
+  const msg = document.getElementById("msg");
+  msg.className = ""; msg.textContent = "pairing…";
+  try {
+    const r = await fetch("/admin/pair/claim", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+    const data = await r.json().catch(() => null);
+    if (r.status === 200 && data && data.token) {
+      try { localStorage.setItem(TOKEN_KEY, data.token); } catch {}
+      // Mint the browser carrier too, so links (the control panel) work here.
+      await fetch("/admin/cookie", {
+        method: "POST", headers: { "Authorization": "Bearer " + data.token },
+      }).catch(() => {});
+      msg.textContent = "paired — opening…";
+      location.replace("/admin/launch");
+      return;
+    }
+    msg.className = "err";
+    msg.textContent = (data && data.error) || "that code was refused";
+  } catch (e) {
+    msg.className = "err";
+    msg.textContent = "could not reach the facade — check the address";
+  }
+}
+
+document.getElementById("go").addEventListener("click", claim);
+document.getElementById("code").addEventListener("keydown",
+  (e) => { if (e.key === "Enter") claim(); });
+</script>
+</body>
+</html>

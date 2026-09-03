@@ -189,6 +189,48 @@ class AdminRoutes(AioHTTPTestCase):
         resp = await self.client.get("/admin/launch", headers=self.BEARER)
         self.assertEqual(resp.status, 200)
 
+    async def _mint(self):
+        resp = await self.client.post("/admin/pair", headers=self.BEARER)
+        self.assertEqual(resp.status, 200)
+        return (await resp.json())["code"]
+
+    async def _claim(self, code):
+        return await self.client.post("/admin/pair/claim", json={"code": code})
+
+    async def test_pairing_hands_over_the_bearer_exactly_once(self):
+        """A 64-hex key is not typeable on a phone; six digits are."""
+        # Minting is the desk's move, so it needs the key.
+        resp = await self.client.post("/admin/pair")
+        self.assertEqual(resp.status, 401)
+
+        code = await self._mint()
+        self.assertRegex(code, r"^\d{6}$")
+
+        # The shell that types it is unauthed chrome, and carries nothing.
+        resp = await self.client.get("/admin/pair/ui")
+        self.assertEqual(resp.status, 200)
+        self.assertNotIn("test-bearer", await resp.text())
+
+        resp = await self._claim(code)
+        self.assertEqual(resp.status, 200)
+        self.assertEqual((await resp.json())["token"], "test-bearer")
+
+        # Burned on use: the same code never works twice.
+        self.assertEqual((await self._claim(code)).status, 401)
+
+    async def test_pairing_code_dies_after_three_wrong_guesses(self):
+        code = await self._mint()
+        wrong = "%06d" % ((int(code) + 1) % 1000000)
+        for _ in range(3):
+            self.assertEqual((await self._claim(wrong)).status, 401)
+        # …and the RIGHT code is refused too: the window is gone, not just wrong.
+        self.assertEqual((await self._claim(code)).status, 401)
+
+    async def test_pairing_code_expires(self):
+        code = await self._mint()
+        self.app["pair"]["expires"] = 0.0     # the clock, moved rather than waited on
+        self.assertEqual((await self._claim(code)).status, 401)
+
     async def test_cookie_carrier_mints_and_stands_in_for_the_header(self):
         """A navigation can't carry a header, so a browser gets a cookie instead."""
         from hearth.serve import app as serve_app

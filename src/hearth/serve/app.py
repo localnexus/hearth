@@ -137,8 +137,12 @@ def _resolve_lm_token(passed: str, cfg: dict) -> str:
 # whose every data call comes back through this middleware with the bearer.
 # Nothing else is ever exempted; when the supervisor isn't mounted, the /admin
 # pages are 404s.
+# The pairing pair: the shell a new device opens, and the one route that can
+# hand out the bearer — guarded by a short-lived, single-use, three-strikes code
+# the operator mints at the desk (supervisor/routes.py), not by this middleware.
 _AUTH_EXEMPT = frozenset({"/health", "/admin/launch", "/admin/roster",
-                          "/admin/memory/ui", "/admin/settings/ui"})
+                          "/admin/memory/ui", "/admin/settings/ui",
+                          "/admin/pair/ui", "/admin/pair/claim"})
 
 
 # The browser carrier. A top-level navigation cannot attach an Authorization

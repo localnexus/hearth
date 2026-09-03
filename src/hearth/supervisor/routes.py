@@ -49,7 +49,10 @@ deliberately pressed actuator (§4).
 from __future__ import annotations
 
 import asyncio
+import hmac
 import os
+import secrets
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -88,6 +91,19 @@ _OFFLINE_PAGE = """<!doctype html><meta charset="utf-8">
 # tokens baked in — the serve middleware exempts this ONE page from auth, so
 # it must stay contentless; every fact it shows arrives via authed fetch).
 _LAUNCH_PAGE = (Path(__file__).parent / "launch_page.html").read_text(encoding="utf-8")
+_PAIR_PAGE = (Path(__file__).parent / "pair_page.html").read_text(encoding="utf-8")
+
+# Device pairing. A 64-hex bearer is not something anyone types into a phone,
+# and file transfer to a hardened handset is its own adventure — so the desk
+# mints a six-digit code and the device trades it for the key, once.
+#
+# What keeps a six-digit secret on an UNAUTHED route honest: at most one code
+# exists at a time, it exists only in the minutes after the operator asked for
+# it, it is burned on first use, and THREE wrong guesses burn it too. An
+# attacker who is already inside the trust boundary gets three tries in a
+# million during a window the operator opened deliberately.
+_PAIR_TTL_S = 300.0
+_PAIR_MAX_TRIES = 3
 
 
 def build_mount(sup_cfg: dict):
@@ -132,6 +148,11 @@ def build_mount(sup_cfg: dict):
         app.router.add_post("/admin/switch", _switch_post)
         app.router.add_get("/admin/actuators", _actuators_get)
         app.router.add_post("/admin/cookie", _cookie)
+        # One active code, mutated in place (the app mapping freezes at startup).
+        app["pair"] = {"code": "", "expires": 0.0, "tries": 0}
+        app.router.add_post("/admin/pair", _pair_mint)
+        app.router.add_post("/admin/pair/claim", _pair_claim)
+        app.router.add_get("/admin/pair/ui", _pair_ui)
         app.router.add_post("/admin/actuators/{name}/run", _actuator_run)
         # /admin/memory — record-level curation (preview-then-confirm forget +
         # digest views; the CLI's web half, write-layer rule (c)).
@@ -267,6 +288,51 @@ async def _cookie(request: web.Request) -> web.Response:
         max_age=30 * 24 * 3600, httponly=True, samesite="Lax", path="/",
     )
     return resp
+
+
+async def _pair_mint(request: web.Request) -> web.Response:
+    """Open a pairing window (authed — this is the desk asking).
+
+    Replaces any code already outstanding: one device at a time, deliberately.
+    """
+    code = f"{secrets.randbelow(1000000):06d}"
+    request.app["pair"] = {"code": code, "expires": time.monotonic() + _PAIR_TTL_S,
+                           "tries": 0}
+    logger.info("[supervisor] pairing window open for {}s", int(_PAIR_TTL_S))
+    return web.json_response({"code": code, "expires_in": int(_PAIR_TTL_S)})
+
+
+async def _pair_claim(request: web.Request) -> web.Response:
+    """Trade a live code for the bearer, once (UNAUTHED — that is the point).
+
+    Every failure answers the same way and says nothing about which part was
+    wrong. A correct claim burns the code before returning; so does the third
+    wrong guess.
+    """
+    pair = request.app["pair"]
+    refused = web.json_response({"error": "that code was refused"}, status=401)
+    if not pair["code"] or time.monotonic() > pair["expires"]:
+        pair["code"] = ""
+        return refused
+    try:
+        supplied = str((await request.json()).get("code") or "")
+    except Exception:  # noqa: BLE001 — a malformed body is just a bad claim
+        supplied = ""
+    if not hmac.compare_digest(supplied.encode(), pair["code"].encode()):
+        pair["tries"] += 1
+        if pair["tries"] >= _PAIR_MAX_TRIES:
+            pair["code"] = ""
+            logger.warning("[supervisor] pairing code burned after {} wrong claims",
+                           _PAIR_MAX_TRIES)
+        return refused
+    pair["code"] = ""       # single use, burned before the answer leaves
+    logger.info("[supervisor] device paired")
+    return web.json_response({"token": request.app["deps"].bearer})
+
+
+async def _pair_ui(request: web.Request) -> web.Response:
+    """The pairing shell — static chrome, like the launch page."""
+    return web.Response(text=_PAIR_PAGE, content_type="text/html")
 
 
 async def _launch(request: web.Request) -> web.Response:
