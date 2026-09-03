@@ -464,6 +464,22 @@ class _FakeCurationBackend:
         return self.result
 
 
+class _FakeCountingBackend(_FakeCurationBackend):
+    """A curation backend that also exposes the optional fact_count capability."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.counted: list[str] = []
+        self.count_result: dict = {"facts": 7, "capped": False}
+        self.raise_on_count = False
+
+    def fact_count(self, companion):  # noqa: ANN001
+        if self.raise_on_count:
+            raise RuntimeError("backend down")
+        self.counted.append(companion)
+        return self.count_result
+
+
 class _FakeGlue:
     """The two ServeMemory methods /admin/memory uses, nothing more."""
 
@@ -544,7 +560,54 @@ class CurationRoutes(AioHTTPTestCase):
         self.assertEqual(
             (await self.client.get("/admin/memory/records?character=x")).status, 401)
         self.assertEqual(
+            (await self.client.get("/admin/memory/facts?character=x")).status, 401)
+        self.assertEqual(
             (await self.client.post("/admin/memory/forget", json={})).status, 401)
+
+    async def test_pane_shell_is_unauthed_static_chrome(self):
+        resp = await self.client.get("/admin/memory/ui")  # no bearer
+        self.assertEqual(resp.status, 200)
+        text = await resp.text()
+        self.assertIn("memory", text.lower())
+        self.assertNotIn("test-bearer", text)
+        self.assertNotIn(self.CHAR, text)  # chrome carries no names
+
+    async def test_facts_lazy_gauge(self):
+        backend = _FakeCountingBackend()
+        self.app["deps"].memory = _FakeGlue(backend)
+        url = f"/admin/memory/facts?character={self.CHAR}"
+        resp = await self.client.get(url, headers=self.BEARER)
+        self.assertEqual(resp.status, 200, await resp.text())
+        data = await resp.json()
+        self.assertEqual(data["facts"], 7)
+        self.assertFalse(data["capped"])
+        self.assertEqual(data["backend"], "fakehs")
+        self.assertEqual(backend.counted, [self.CHAR])
+        # Backend without the capability (the floor) → honest null + note.
+        self.app["deps"].memory = _FakeGlue(_FakeCurationBackend())
+        data = await (await self.client.get(url, headers=self.BEARER)).json()
+        self.assertIsNone(data["facts"])
+        self.assertIn("no fact index", data["note"])
+        # Companion mapped "none" → null, backend named honestly.
+        self.app["deps"].memory = _FakeGlue(None)
+        data = await (await self.client.get(url, headers=self.BEARER)).json()
+        self.assertIsNone(data["facts"])
+        self.assertEqual(data["backend"], "none")
+        # Lane down → null + the lane note; the view still answers 200.
+        self.app["deps"].memory = None
+        data = await (await self.client.get(url, headers=self.BEARER)).json()
+        self.assertIsNone(data["facts"])
+        self.assertIn("memory lane", data["note"])
+        # Unknown character → 404; backend failure → 502 with the type name.
+        resp = await self.client.get("/admin/memory/facts?character=zz-nope",
+                                     headers=self.BEARER)
+        self.assertEqual(resp.status, 404)
+        failing = _FakeCountingBackend()
+        failing.raise_on_count = True
+        self.app["deps"].memory = _FakeGlue(failing)
+        resp = await self.client.get(url, headers=self.BEARER)
+        self.assertEqual(resp.status, 502)
+        self.assertIn("RuntimeError", (await resp.json())["error"])
 
     async def test_overview_counts_and_lane_flag(self):
         backend = _FakeCurationBackend()

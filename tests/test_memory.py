@@ -1597,6 +1597,34 @@ class TestHindsightRecentBoost(unittest.TestCase):
         self.assertEqual(calls, [])
 
 
+class TestHindsightFactCount(unittest.TestCase):
+    """fact_count — the curation pane's lazy gauge: valid-only, one bounded
+    page, capped honestly instead of paging."""
+
+    def _backend(self, memories):  # noqa: ANN001
+        from hearth.memory.backend_hindsight import HindsightBackend
+
+        b = HindsightBackend({"mode": "sidecar", "llm_model": "m"})
+        b._ensure = lambda: None
+        b._client = _BoostClient([], memories)
+        return b
+
+    def test_counts_valid_only(self):
+        memories = [{"text": "a", "state": "valid"},
+                    {"text": "b", "state": "invalidated"},
+                    {"text": "c"}]  # absent state reads as valid
+        self.assertEqual(self._backend(memories).fact_count("c"),
+                         {"facts": 2, "capped": False})
+
+    def test_capped_at_one_page(self):
+        from hearth.memory import backend_hindsight as bh
+
+        memories = [{"text": str(i), "state": "valid"}
+                    for i in range(bh._FACT_COUNT_LIMIT + 5)]
+        out = self._backend(memories).fact_count("c")
+        self.assertEqual(out, {"facts": bh._FACT_COUNT_LIMIT, "capped": True})
+
+
 
 class _CueBackend:
     """Standing query recalls the open set; a 'knight' cue surfaces more."""

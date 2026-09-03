@@ -84,6 +84,14 @@ in view). `rebuild --clean` stays CLI-only: a wipe-then-replay runs the
 extraction model over every record and belongs at the desk, not on a request
 timeout.
 
+For a browser, `GET /admin/memory/ui` serves the **review-and-prune pane** —
+a static shell (auth-exempt like the launch and roster pages; every fact
+arrives via the authed routes) that renders the companions with their record
+counts, each companion's record digests, and the bank's indexed-fact count
+(`GET /admin/memory/facts?character=<c>` — fetched once per selection, since
+a count is a real backend call), with the same preview-then-confirm forget
+per record. The control panel's Memory status line links over to it.
+
 ## Privacy — read this before enabling
 
 Enabling memory **is** the choice to keep a trace. Canonical records contain the

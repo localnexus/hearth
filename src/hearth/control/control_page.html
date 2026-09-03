@@ -138,7 +138,11 @@
 <div id="s-engine">Engine | …</div>
 <div id="s-agent">Agent  | …</div>
 <div id="s-misc">Misc   | …</div>
-<div id="s-memory" class="hidden">Memory | …</div>
+<!-- Curation lives on the FACADE behind the token door (write-layer rule (c)):
+     this panel displays and links over; the relative link works when the panel
+     is viewed through the facade's proxy — same gate as the roster link. -->
+<div id="s-memory" class="hidden"><span id="s-memory-txt">Memory | …</span>
+  · <a href="/admin/memory/ui">review &amp; prune</a></div>
 </div>
 <div id="leak" class="hidden">⚠ reasoning tokens leaked</div>
 <div id="ctxwarn" class="hidden">⚠ approaching reliable context line — consider wrapping or consolidating this session</div>
@@ -424,7 +428,7 @@ async function pollMemory() {
       ? `${fmt(s.open_recall.count)} at open via ${s.open_recall.source || DASH}` : DASH;
     const turn = s.turn_recall
       ? `${fmt(s.turn_recall.extras)} extra(s) via ${s.turn_recall.source || DASH}` : DASH;
-    el.textContent =
+    $('s-memory-txt').textContent =
       `Memory | ${s.backend || DASH}${s.retain === false ? ' (recall-only)' : ''} · per-turn: ${ptTxt} · recalled: ${open} · last turn: ${turn}`;
     el.classList.remove('hidden');
   } catch(e) { el.classList.add('hidden'); }

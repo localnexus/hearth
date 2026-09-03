@@ -67,6 +67,7 @@ os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
 
 _MAX_RETAIN_CHARS_DEFAULT = 6000
 _RECENT_BOOST_DEFAULT = 3  # newest facts appended past semantic rank (0 = off)
+_FACT_COUNT_LIMIT = 1000   # fact_count's one-page bound (a gauge, not a census)
 _SIDECAR_START_TIMEOUT_S = 180.0  # cold pg0 init + model load can be slow once
 
 # Same permission discipline as records.py: the sidecar log carries startup
@@ -468,6 +469,23 @@ class HindsightBackend:
                 type(exc).__name__,
             )
         return out
+
+    def fact_count(self, companion: str) -> dict:
+        """Valid-fact gauge for the bank: {"facts": n, "capped": bool}.
+
+        An optional capability (the curation pane consumes it via getattr —
+        backends without a separate index simply lack the method). Bounded to
+        one ``list_memories`` page: past _FACT_COUNT_LIMIT the count answers
+        capped=True instead of paging — this is a curation gauge, not a
+        census, and each page is a real backend round-trip."""
+        self._ensure()
+        result = self._call(
+            self._client.list_memories, bank_id=companion, limit=_FACT_COUNT_LIMIT
+        )
+        items = list(getattr(result, "items", None) or [])
+        valid = sum(1 for e in items
+                    if str(dict(e).get("state") or "valid") == "valid")
+        return {"facts": valid, "capped": len(items) >= _FACT_COUNT_LIMIT}
 
     def store(self, companion: str, record: SessionRecord) -> None:
         transcript = _render_transcript(

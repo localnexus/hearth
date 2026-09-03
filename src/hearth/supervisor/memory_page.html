@@ -1,0 +1,262 @@
+<!doctype html>
+<!-- memory_page.html — the memory review-and-prune pane (served at /admin/memory/ui).
+
+     SECURITY CONTRACT: this file is served WITHOUT auth (a static-chrome
+     exemption beside /admin/launch and /admin/roster), so it must stay pure
+     chrome — no names, no state, no tokens baked in. Every fact on screen
+     arrives via an authed fetch; the bearer is entered once, kept in this
+     browser's localStorage (shared with the launch and roster pages), sent
+     only as a header. Record names and digests are rendered with textContent
+     exclusively — they are data, never markup. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hearth — memory</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; max-width: 44em; margin: 3em auto;
+         padding: 0 1em; line-height: 1.5; }
+  h1 { font-size: 1.4em; }
+  h2 { font-size: 1.1em; }
+  .card { border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+          border-radius: 8px; padding: 1em 1.2em; margin: 1em 0; }
+  .row { margin: 0.5em 0; display: flex; gap: 0.6em; align-items: center;
+         flex-wrap: wrap; }
+  button { font: inherit; padding: 0.3em 0.9em; cursor: pointer; }
+  button.primary { font-weight: 600; }
+  button.danger { color: #c33; }
+  .comp { display: block; width: 100%; text-align: left; background: none;
+          border: none; padding: 0.25em 0.3em; font: inherit;
+          font-family: ui-monospace, monospace; font-size: 0.9em;
+          border-radius: 4px; }
+  .comp:hover { background: color-mix(in srgb, currentColor 10%, transparent); }
+  .comp.sel { background: color-mix(in srgb, currentColor 16%, transparent); }
+  .rec { border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent);
+         padding: 0.5em 0.2em; }
+  .rec .head { display: flex; gap: 0.6em; align-items: baseline; flex-wrap: wrap;
+               font-family: ui-monospace, monospace; font-size: 0.9em; }
+  .rec .head .sid { font-weight: 600; }
+  .rec .digest { font-size: 0.9em; opacity: 0.8; margin: 0.2em 0 0; }
+  #facts { font-size: 0.9em; opacity: 0.85; }
+  #report { font-family: ui-monospace, monospace; font-size: 0.9em;
+            white-space: pre-wrap; min-height: 1.5em; }
+  .err { color: #c33; }
+  .hidden { display: none; }
+  a { color: inherit; }
+  small { opacity: 0.75; }
+</style>
+</head>
+<body>
+<h1>Hearth — memory</h1>
+<div id="statusline">connecting…</div>
+
+<div id="tokencard" class="card hidden">
+  <p>This surface needs the serve bearer token (asked once; kept only in this
+     browser — shared with the launch and roster pages).</p>
+  <div class="row">
+    <input type="password" id="token" autocomplete="off" placeholder="bearer token">
+    <button id="tokenbtn" class="primary">Unlock</button>
+  </div>
+</div>
+
+<div id="compcard" class="card hidden">
+  <h2>Companions</h2>
+  <div id="companions">…</div>
+  <p><small>Records are the canonical substrate (one per kept session);
+     the fact count is what the backend's index distilled from them.
+     Forgetting deletes both — permanently.</small></p>
+  <p><a href="/admin/launch">Launch page</a> ·
+     <a href="/admin/roster">Roster</a> ·
+     <a href="/">Control panel</a></p>
+</div>
+
+<div id="reccard" class="card hidden">
+  <h2 id="rechead">…</h2>
+  <div id="facts"></div>
+  <div id="records"></div>
+</div>
+
+<div id="confirmcard" class="card hidden">
+  <h2>Forget this session?</h2>
+  <div id="preview" style="font-family: ui-monospace, monospace; font-size: 0.9em;
+       white-space: pre-wrap;"></div>
+  <p><small>Deletes the record AND the session's indexed facts, permanently.</small></p>
+  <div class="row">
+    <button id="confirmbtn" class="primary danger">Forget — permanently</button>
+    <button id="cancelbtn">Cancel</button>
+  </div>
+</div>
+
+<div id="report"></div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const TOKEN_KEY = "hearth_admin_token";  // shared with the launch + roster pages
+
+let selected = null;                     // character whose records are open
+let pending = null;                      // {character, session} awaiting confirm
+
+function token() { try { return localStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; } }
+function show(id, on) { $(id).classList.toggle("hidden", !on); }
+function report(text, isErr) { $("report").textContent = text || ""; $("report").className = isErr ? "err" : ""; }
+
+async function api(path, opts) {
+  const o = Object.assign({ headers: {} }, opts || {});
+  o.headers["Authorization"] = "Bearer " + token();
+  const r = await fetch(path, o);
+  if (r.status === 401) throw new Error("401");
+  let data = null;
+  try { data = await r.json(); } catch { /* non-JSON */ }
+  return { status: r.status, data };
+}
+
+function needToken(prompt) {
+  show("tokencard", true); show("compcard", false);
+  show("reccard", false); show("confirmcard", false);
+  $("statusline").textContent = prompt || "locked — enter the bearer token";
+}
+
+function clearPending() { pending = null; show("confirmcard", false); }
+
+async function refresh() {
+  if (!token()) { needToken(); return; }
+  let st;
+  try { st = await api("/admin/memory"); }
+  catch (e) {
+    if (e.message === "401") { needToken("that token was refused — try again"); return; }
+    $("statusline").textContent = "facade unreachable — retrying…";
+    return;
+  }
+  show("tokencard", false); show("compcard", true);
+  const d = st.data || {};
+  const box = $("companions");
+  box.textContent = "";
+  for (const c of d.companions || []) {
+    const b = document.createElement("button");
+    b.className = "comp" + (c.character === selected ? " sel" : "");
+    b.textContent = c.character + "  ·  " + c.records + " record(s)" +
+      (c.backend ? "  ·  " + c.backend : "");
+    b.addEventListener("click", () => select(c.character));
+    box.appendChild(b);
+  }
+  if (!(d.companions || []).length) box.textContent = "(no characters found)";
+  $("statusline").textContent = (d.companions || []).length + " companion(s)" +
+    (d.memory_lane ? "" : "  ·  memory lane disabled — views only, forget needs the desk CLI");
+}
+
+async function select(character) {
+  selected = character;
+  clearPending(); report("");
+  refresh();  // repaint selection highlight (fire-and-forget)
+  $("rechead").textContent = character;
+  $("facts").textContent = "counting facts…";
+  $("records").textContent = "…";
+  show("reccard", true);
+  let r;
+  try { r = await api("/admin/memory/records?character=" + encodeURIComponent(character)); }
+  catch (e) {
+    if (e.message === "401") { needToken("that token was refused — try again"); return; }
+    $("records").textContent = "facade unreachable"; return;
+  }
+  renderRecords((r.data || {}).records || []);
+  // The lazy fact count — one deliberate backend call, only on selection.
+  try {
+    const f = await api("/admin/memory/facts?character=" + encodeURIComponent(character));
+    const d = f.data || {};
+    if (typeof d.facts === "number")
+      $("facts").textContent = d.facts + (d.capped ? "+" : "") +
+        " indexed fact(s) · backend: " + (d.backend || "—");
+    else
+      $("facts").textContent = "facts: — (" + (d.note || d.error || "no count") + ")";
+  } catch { $("facts").textContent = "facts: —"; }
+}
+
+function renderRecords(records) {
+  const box = $("records");
+  box.textContent = "";
+  if (!records.length) { box.textContent = "(no memory records)"; return; }
+  for (const rec of records) {
+    const row = document.createElement("div"); row.className = "rec";
+    const head = document.createElement("div"); head.className = "head";
+    const sid = document.createElement("span"); sid.className = "sid";
+    sid.textContent = rec.session_id;
+    const meta = document.createElement("span");
+    meta.textContent = (rec.when || "—") + " · " + rec.user_turns + " user turn(s)" +
+      (rec.name && rec.name !== rec.session_id ? " · “" + rec.name + "”" : "");
+    const btn = document.createElement("button"); btn.className = "danger";
+    btn.textContent = "Forget…";
+    btn.addEventListener("click", () => askForget(rec.session_id));
+    head.append(sid, meta, btn);
+    const dig = document.createElement("p"); dig.className = "digest";
+    dig.textContent = rec.digest || "";
+    row.append(head, dig);
+    box.appendChild(row);
+  }
+}
+
+async function askForget(session) {
+  report("");
+  let r;
+  try {
+    r = await api("/admin/memory/forget", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ character: selected, session }),
+    });
+  } catch (e) {
+    if (e.message === "401") { needToken("that token was refused — try again"); return; }
+    report("facade unreachable", true); return;
+  }
+  const d = r.data || {};
+  if (!d.ok) { report(d.error || "preview failed", true); return; }
+  pending = { character: selected, session };
+  const p = d.preview || {};
+  $("preview").textContent =
+    (p.when || "—") + "  " + (p.session_id || session) +
+    (p.name ? "  “" + p.name + "”" : "") + "\n" + (p.digest || "");
+  show("confirmcard", true);
+}
+
+async function confirmForget() {
+  if (!pending) return;
+  const { character, session } = pending;
+  report("forgetting…");
+  let r;
+  try {
+    r = await api("/admin/memory/forget", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ character, session, yes: true }),
+    });
+  } catch (e) {
+    if (e.message === "401") { needToken("that token was refused — try again"); return; }
+    report("facade unreachable", true); return;
+  }
+  clearPending();
+  const d = r.data || {};
+  if (!d.ok) { report(d.error || "forget failed — record kept", true); }
+  else {
+    let line = "forgot " + session;
+    if (d.index === "excised") line += " — record deleted, facts excised from " + (d.backend || "backend");
+    else if (d.index === "none") line += " — record deleted (no index existed)";
+    else if (d.index === "leftover-facts") line += " — record deleted; " + (d.hint || "");
+    report(line, d.index === "leftover-facts");
+  }
+  if (selected === character) select(character); else refresh();
+}
+
+$("confirmbtn").addEventListener("click", confirmForget);
+$("cancelbtn").addEventListener("click", () => { clearPending(); report(""); });
+
+$("tokenbtn").addEventListener("click", () => {
+  try { localStorage.setItem(TOKEN_KEY, $("token").value.trim()); } catch { /* private mode */ }
+  $("token").value = "";
+  refresh();
+});
+$("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("tokenbtn").click(); });
+
+refresh();
+setInterval(refresh, 60000);
+</script>
+</body>
+</html>

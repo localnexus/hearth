@@ -31,8 +31,15 @@ detects pre-keyed leftovers, exactly as the CLI does.
 API (mounted by routes.build_mount iff [serve.supervisor] enabled; authed):
     GET  /admin/memory                       → per-companion record counts (+ backend map)
     GET  /admin/memory/records?character=<c> → one companion's records, digest view
+    GET  /admin/memory/facts?character=<c>   → the bank's indexed-fact count (lazy:
+         one deliberate backend call — the count parked off the display routes
+         lands here, where a curation view justifies it; null when the lane is
+         down, the companion maps "none", or the backend keeps no index)
     POST /admin/memory/forget {character, session, yes?}
          yes absent/false → preview only; yes true → backend facts, then the record
+    GET  /admin/memory/ui                    → the review-and-prune pane (static
+         chrome, auth-exempt beside /admin/launch and /admin/roster — every fact
+         it shows arrives via the authed routes above)
 """
 
 from __future__ import annotations
@@ -40,10 +47,13 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from pathlib import Path
 
 from aiohttp import web
 
 from . import switch as switch_mod
+
+_PAGE = (Path(__file__).parent / "memory_page.html").read_text(encoding="utf-8")
 
 # Record files are <session_id>.json — the id must stay a bare filename.
 _SESSION_RE = re.compile(r"^[A-Za-z0-9._-]+$")
@@ -109,6 +119,45 @@ async def _records(request: web.Request) -> web.Response:
 
     return web.json_response({"character": character,
                               "records": await asyncio.to_thread(_list)})
+
+
+async def _facts(request: web.Request) -> web.Response:
+    """One companion's indexed-fact count — the lazy gauge. Costs a real
+    backend call (thread hop), so it lives on its own route the pane hits only
+    on a deliberate selection, never on a poll. Honest nulls everywhere a
+    count doesn't exist; a backend without the capability (the floor derives
+    from records directly — there IS no separate index) answers null too."""
+    character = request.query.get("character") or ""
+    if character not in _known_characters():
+        return web.json_response({"error": f"unknown character {character!r}"},
+                                 status=404)
+    base = {"character": character, "facts": None}
+    glue = request.app["deps"].memory
+    if glue is None:
+        return web.json_response(
+            {**base, "note": "facade memory lane disabled ([memory.serve])"})
+    backend = await asyncio.to_thread(glue.curation_backend, character)
+    if backend is None:
+        return web.json_response(
+            {**base, "backend": "none", "note": "companion mapped \"none\" — no index"})
+    counter = getattr(backend, "fact_count", None)
+    if counter is None:
+        return web.json_response(
+            {**base, "backend": backend.name,
+             "note": f"backend {backend.name!r} keeps no fact index"})
+    try:
+        counted = await asyncio.to_thread(counter, character)
+    except Exception as exc:  # noqa: BLE001 — a failed count is a note, not a crash
+        return web.json_response(
+            {**base, "backend": backend.name,
+             "error": f"fact count failed ({type(exc).__name__})"}, status=502)
+    return web.json_response({**base, "backend": backend.name, **dict(counted)})
+
+
+async def _page(_req: web.Request) -> web.Response:
+    """The review-and-prune pane — static chrome (see memory_page.html's
+    security contract; the serve middleware exempts exactly this path)."""
+    return web.Response(text=_PAGE, content_type="text/html")
 
 
 async def _forget(request: web.Request) -> web.Response:
@@ -188,4 +237,6 @@ def add_routes(app: web.Application) -> None:
     """Called by routes.build_mount — same door, same middleware."""
     app.router.add_get("/admin/memory", _overview)
     app.router.add_get("/admin/memory/records", _records)
+    app.router.add_get("/admin/memory/facts", _facts)
+    app.router.add_get("/admin/memory/ui", _page)
     app.router.add_post("/admin/memory/forget", _forget)
