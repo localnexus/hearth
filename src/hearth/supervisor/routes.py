@@ -62,6 +62,7 @@ from . import actuators as actuators_mod
 from . import compact_watch
 from . import curation as curation_mod
 from . import roster as roster_mod
+from . import settings as settings_mod
 from . import switch as switch_mod
 from hearth.session import maintenance_lock
 
@@ -136,6 +137,9 @@ def build_mount(sup_cfg: dict):
         # /admin/roster — the onboarding wizard (create-only; facade-hosted
         # operator-layer writes per rule (c); page shell exempt like /admin/launch).
         roster_mod.add_routes(app)
+        # /admin/settings — the generated settings forms (schema-driven step 2:
+        # registry-declared knobs, preview-then-confirm scalar writes, rule (c)).
+        settings_mod.add_routes(app)
         # LAST on purpose: registered facade routes always win over the proxy.
         app.router.add_route("*", "/{tail:.*}", _panel_proxy)
         app.on_startup.append(_adopt_on_start)

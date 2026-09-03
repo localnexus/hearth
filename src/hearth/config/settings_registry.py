@@ -11,8 +11,10 @@ consumers derive from it so they cannot drift:
   2. `python -m hearth.config.check` — strict whole-install validation, plus
      the GENERATED settings reference (docs config-manual) and the JSON
      Schema bundle. A test keeps the generated page byte-synced.
-  3. (step 2, unbuilt) the panel's generated settings forms — json_schema()
-     is that contract, carrying an `x-hearth` extra per live-tunable field.
+  3. the generated settings forms (supervisor/settings.py, /admin/settings/ui)
+     — json_schema() is that contract, carrying an `x-hearth` extra per field:
+     a live path (`hot_via`), an effect-time stamp (`effect`/`effect_note`),
+     or a `secret` marker (value redacted on read, refused on write).
 
 Derived surfaces (derive-knobs stroke, 2026-09-01): the honored-surface
 constants now DERIVE from this registry — config_knobs' schema/ranges,
@@ -68,7 +70,14 @@ def _live(hot_via: str, status: str | None = None) -> dict:
     return {"x-hearth": {"hot_via": hot_via, "status_source": status}}
 
 
-def _effect(restart: str, note: str = "") -> dict:
+def _secret() -> dict:
+    """x-hearth extra for a field whose VALUE must never leave the file through
+    a display surface (paths and key names are fine; values are not). The
+    settings routes redact these on read and refuse to write them."""
+    return {"x-hearth": {"secret": True}}
+
+
+def _effect(restart: str, note: str = "", secret: bool = False) -> dict:
     """x-hearth extra for a field with NO live path: the effect-time stamp
     (audit 2026-09-02) — what must relaunch for a persisted edit to land.
     Vocabulary matches FileEntry.restart ("bot+facade" | "facade" | ...).
@@ -83,6 +92,8 @@ def _effect(restart: str, note: str = "") -> dict:
     x: dict = {"hot_via": None, "effect": restart}
     if note:
         x["effect_note"] = note
+    if secret:
+        x["secret"] = True
     return {"x-hearth": x}
 
 
@@ -253,7 +264,8 @@ class _ServeSupervisor(_Cfg):
     panel_url: str = Field("http://127.0.0.1:65000", description="the bot's control panel — proxy target + reachability probe")
     stop_grace_s: float = Field(15.0, gt=0.0, description="seconds after SIGINT before escalating (memory-consolidation headroom)")
     term_grace_s: float = Field(5.0, gt=0.0, description="seconds after SIGTERM before SIGKILL")
-    env: dict[str, str] = Field(default_factory=dict, description="extra child env for the spawned bot (e.g. LM_PROVIDER) — values never printed")
+    env: dict[str, str] = Field(default_factory=dict, description="extra child env for the spawned bot (e.g. LM_PROVIDER) — values never printed",
+                                json_schema_extra=_secret())
     watch: dict[str, _SupWatch] = Field(default_factory=dict, description="extra watched externals probed on /admin/state (watched, never owned)")
     actuators: dict[str, _SupActuator] = Field(default_factory=dict, description="declared external actuators: operator-fixed commands behind the door, never children")
     compact_watch: bool = Field(True, description="run the auto-compaction watch: close-time compaction requests (DATA/ops/compact-queue) execute once no bot is alive, arbitrated by the per-character maintenance lock")
@@ -341,7 +353,7 @@ class _MemHindsight(_Cfg):
     llm_model: Optional[str] = Field(None, description="REQUIRED when any companion selects hindsight: local extraction model",
                                      json_schema_extra=_effect("bot+facade", _SIDECAR_NOTE))
     llm_api_key: str = Field("", description="provider key if the local server wants one",
-                             json_schema_extra=_effect("bot+facade", _SIDECAR_NOTE))
+                             json_schema_extra=_effect("bot+facade", _SIDECAR_NOTE, secret=True))
     db_url: str = Field("pg0", description="backend store — pg0 = bundled embedded PostgreSQL",
                         json_schema_extra=_effect("bot+facade", _SIDECAR_NOTE))
     retain_max_chars: int = Field(6000, ge=0, description="transcript tail handed to extraction at stop",
@@ -355,7 +367,7 @@ class _MemHindsight(_Cfg):
     start_timeout_s: Optional[float] = Field(None, gt=0.0, description="sidecar start timeout override, seconds",
                                              json_schema_extra=_effect("bot+facade", _SIDECAR_NOTE))
     env: dict[str, str] = Field(default_factory=dict, description="extra environment for the server (setdefault; shell wins)",
-                                json_schema_extra=_effect("bot+facade", _SIDECAR_NOTE))
+                                json_schema_extra=_effect("bot+facade", _SIDECAR_NOTE, secret=True))
 
 
 class MemoryTable(_Cfg):

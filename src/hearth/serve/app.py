@@ -131,12 +131,13 @@ def _resolve_lm_token(passed: str, cfg: dict) -> str:
 # ── auth middleware ───────────────────────────────────────────────────────────
 
 # Unauthed paths: liveness, plus the supervisor's static SHELLS — the launch
-# page, the roster wizard, and the memory review-and-prune pane: contentless
-# chrome (no names, no state, no tokens baked in) whose every data call comes
-# back through this middleware with the bearer. Nothing else is ever exempted;
-# when the supervisor isn't mounted, the /admin pages are 404s.
+# page, the roster wizard, the memory review-and-prune pane, and the generated
+# settings forms: contentless chrome (no names, no state, no tokens baked in)
+# whose every data call comes back through this middleware with the bearer.
+# Nothing else is ever exempted; when the supervisor isn't mounted, the /admin
+# pages are 404s.
 _AUTH_EXEMPT = frozenset({"/health", "/admin/launch", "/admin/roster",
-                          "/admin/memory/ui"})
+                          "/admin/memory/ui", "/admin/settings/ui"})
 
 
 @web.middleware
