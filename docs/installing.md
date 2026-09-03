@@ -144,6 +144,8 @@ afplay /tmp/hearth-tts-check.wav
 
 **What good looks like** (run 1, on a high-end M-series chip): first audio well under a
 second, **RTF ≈ 0.35**, more than one chunk, and the file sounds like the reference clip.
+(That bar is for this standalone script; the in-process service settles lower, ~0.24 — see
+the hardware-requirements doc.)
 RTF is wall time divided by audio duration — it must stay **below 1.0** or playback will have
 gaps. Slower chips run higher; ~0.6 is still fine.
 
