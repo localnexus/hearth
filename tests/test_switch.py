@@ -177,6 +177,16 @@ class _FakeChild:
     async def adopt(self):
         return self.state == "running"
 
+    async def reconcile(self):
+        """Mirrors BotChild.reconcile: re-anchor to truth, True iff a bot is live.
+
+        Deliberately NOT recorded in ``calls`` — it is a status-poll hook, not an
+        operator intent, and every routing test asserts that list exactly.
+        """
+        if self.state == "down":
+            return await self.adopt()
+        return self.state in ("starting", "running")
+
     async def stop(self, hold=False, name=None):
         self.calls.append(("stop", hold, name))
         if self.stop_gate is not None:
