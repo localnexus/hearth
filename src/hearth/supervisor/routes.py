@@ -120,6 +120,7 @@ def build_mount(sup_cfg: dict):
         app.router.add_get("/admin/sessions", _sessions)
         app.router.add_post("/admin/bot/start", _bot_start)
         app.router.add_post("/admin/bot/stop", _bot_stop)
+        app.router.add_post("/admin/compact", _compact_start)
         app.router.add_post("/admin/daemon/restart", _daemon_restart)
         # Mutated IN PLACE at runtime (the app mapping is frozen after startup):
         # last = the most recent switch-intent's phase/outcome; task = the
@@ -261,6 +262,13 @@ async def _sessions(request: web.Request) -> web.Response:
             {"error": f"cannot resolve the active companion ({type(exc).__name__})"},
             status=409)
     metas = session_store.list_sessions(sdir)
+
+    def _est_tokens(session_id: str):
+        try:  # bytes/4 — the same estimator the compaction trigger uses
+            return (sdir / f"{session_id}.json").stat().st_size // 4
+        except OSError:
+            return None
+
     return web.json_response({
         "character": character or sdir.parent.name,
         "sessions": [{
@@ -274,6 +282,7 @@ async def _sessions(request: web.Request) -> web.Response:
             "memory_mode": m.memory_mode,
             "model": m.model,
             "voice": m.voice,
+            "est_tokens": _est_tokens(m.session_id),
         } for m in metas],
     })
 
@@ -313,6 +322,36 @@ async def _bot_stop(request: web.Request) -> web.Response:
         name=(str(body["name"]) if body.get("name") else None),
     )
     return web.json_response(result, status=200 if result.get("ok") else 500)
+
+
+async def _compact_start(request: web.Request) -> web.Response:
+    """POST /admin/compact {character, session}: manual compaction initiation
+    (design: auto-compaction-on-close, the :65001 knob). Validates, then
+    hands to compact_watch.submit — a human click clears a .failed breadcrumb
+    and fires immediately when the stage is free, else queues for the watch."""
+    from hearth.session import session_store  # lazy: mirrors the package gate idiom
+    import re
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    character = str(body.get("character") or "")
+    session = str(body.get("session") or "").removesuffix(".json")
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", character or "") or \
+            not re.fullmatch(r"[A-Za-z0-9._-]+", session or ""):
+        return web.json_response({"ok": False, "error": "character and session required"},
+                                 status=400)
+    known = {c["name"] for c in switch_mod.choices()["characters"]}
+    if character not in known:
+        return web.json_response({"ok": False, "error": f"unknown character {character!r}"},
+                                 status=404)
+    sdir = session_store.companion_sessions_dir(character)
+    if not (sdir / f"{session}.json").is_file():
+        return web.json_response({"ok": False, "error": f"no session {session!r} for {character}"},
+                                 status=404)
+    result = await compact_watch.submit(request.app, character, session)
+    return web.json_response(result, status=200 if result.get("ok") else 409)
 
 
 async def _daemon_restart(request: web.Request) -> web.Response:

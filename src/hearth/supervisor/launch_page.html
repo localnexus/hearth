@@ -61,7 +61,8 @@
       <option value="recall-only">recall-only — she remembers, this sitting leaves no record</option>
       <option value="off">off — a fresh meeting</option>
     </select></div>
-  <div class="row"><button id="startbtn" class="primary">Start</button></div>
+  <div class="row"><button id="startbtn" class="primary">Start</button>
+    <button id="compactbtn" title="Compact the selected session's transcript with the local model before starting — pick a session above first">Compact selected session</button></div>
 </div>
 
 <div id="stopcard" class="card hidden">
@@ -207,11 +208,26 @@ async function charPicked() {
       o.value = m.session_id;
       const tags = (m.held ? " [named]" : "") +
         (m.memory_mode === "recall-only" ? " [recall-only]" : "");
+      const size = m.est_tokens ? " · ~" + Math.round(m.est_tokens / 1000) + "k tok" : "";
       o.textContent = (m.name || m.session_id) + " · " +
-        (m.updated || m.started || "?") + " · " + m.turns + " turns" + tags;
+        (m.updated || m.started || "?") + " · " + m.turns + " turns" + size + tags;
       ss.appendChild(o);
     }
   } catch { /* listing is a convenience; Start still works without it */ }
+}
+
+async function doCompact() {
+  const character = $("pick-char").value;
+  const sessionId = $("pick-session").value;
+  if (!sessionId) { say("pick a session above first — compaction needs a target", true); return; }
+  busy = true; say("requesting compaction…");
+  try {
+    const r = await api("/admin/compact", { json: { character, session: sessionId } });
+    if (r.data && r.data.ok) say(r.data.note || "compaction requested");
+    else say("refused: " + ((r.data && (r.data.note || r.data.error)) || r.status), true);
+  } catch (e) {
+    say(e.message === "401" ? "token refused" : "compact failed: " + e.message, true);
+  } finally { busy = false; refresh(); }
 }
 
 async function doStart() {
@@ -263,6 +279,7 @@ $("tokenbtn").addEventListener("click", () => {
 $("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("tokenbtn").click(); });
 $("pick-char").addEventListener("change", charPicked);
 $("startbtn").addEventListener("click", doStart);
+$("compactbtn").addEventListener("click", doCompact);
 $("stopbtn").addEventListener("click", doStop);
 
 refresh();

@@ -967,6 +967,121 @@ class CompactWatchTick(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(note, "bad request example.bad.request")
         self.assertTrue((self.qdir / "example.bad.failed").exists())
 
+    async def test_deferred_request_parks_then_retries(self):
+        import time as _time
+        from hearth.supervisor import compact_watch
+        self._script()
+        req = self._request()
+        # a RAM-deferred run stamped deferred_ts on its way out — fresh = parked
+        info = json.loads(req.read_text())
+        info["deferred_ts"] = _time.time()
+        req.write_text(json.dumps(info))
+        self.assertIsNone(await compact_watch.tick(self._app()))
+        self.assertTrue(req.exists())
+        # stale stamp = eligible again
+        info["deferred_ts"] = _time.time() - compact_watch.DEFER_RECHECK_S - 1
+        req.write_text(json.dumps(info))
+        self.assertEqual(await compact_watch.tick(self._app()),
+                         "started example/long-run")
+
+    async def test_submit_manual(self):
+        from hearth.supervisor import compact_watch
+        self.qdir.mkdir(parents=True, exist_ok=True)
+        # bot up → honest refusal
+        res = await compact_watch.submit(self._app("running"), "example", "long-run")
+        self.assertFalse(res["ok"])
+        self.assertIn("stop it first", res["note"])
+        # a manual click re-arms a .failed pair and fires when a script exists
+        (self.qdir / "example.long-run.failed").write_text("{}")
+        self._script()
+        res = await compact_watch.submit(self._app(), "example", "long-run")
+        self.assertTrue(res["ok"])
+        self.assertEqual(res["note"], "started example/long-run")
+        self.assertFalse((self.qdir / "example.long-run.failed").exists())
+        # active claim (lock held) → refused as already compacting
+        from hearth.session import maintenance_lock
+        maintenance_lock.hold("example", op="compact", session="long-run")
+        try:
+            res = await compact_watch.submit(self._app(), "example", "long-run")
+            self.assertFalse(res["ok"])
+            self.assertIn("already compacting", res["note"])
+        finally:
+            maintenance_lock.drop("example")
+
+    async def test_submit_queues_without_compactor(self):
+        from hearth.supervisor import compact_watch
+        res = await compact_watch.submit(self._app(), "example", "long-run")
+        self.assertTrue(res["ok"])
+        self.assertIn("queued", res["note"])
+        self.assertTrue((self.qdir / "example.long-run.request").exists())
+
+
+class CompactRoute(AioHTTPTestCase):
+    """POST /admin/compact — the :65001 manual-initiation knob."""
+
+    BEARER = {"Authorization": "Bearer test-bearer"}
+
+    async def get_application(self) -> web.Application:
+        from hearth.serve import app as serve_app
+
+        app = web.Application(middlewares=[serve_app._auth])
+        app["deps"] = SimpleNamespace(
+            bearer="test-bearer", cfg={}, lm_base_url="http://127.0.0.1:1/v1",
+            lm_token="none", session=None)
+        supervisor.build_mount({"enabled": True,
+                                "panel_url": "http://127.0.0.1:1",
+                                "compact_watch": False})(app)
+        return app
+
+    async def asyncSetUp(self):
+        await super().asyncSetUp()
+        from unittest import mock
+        from hearth.config import config_loader
+        from hearth.session import session_store
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.root = Path(self._tmp.name)
+        for p in (mock.patch.object(config_loader, "DATA_DIR", self.root),
+                  mock.patch.object(routes_mod.switch_mod, "choices",
+                                    lambda: {"characters": [{"name": "example"}]}),
+                  mock.patch.object(session_store, "companion_sessions_dir",
+                                    lambda c=None: self.root / "sessions")):
+            p.start()
+            self.addCleanup(p.stop)
+        (self.root / "sessions").mkdir(parents=True)
+        (self.root / "sessions" / "long-run.json").write_text("{}")
+        self.app["bot_child"].close()
+        self.app["bot_child"] = _fake(GRACEFUL)
+
+    async def asyncTearDown(self):
+        await self.app["bot_child"].stop()
+        self.app["bot_child"].close()
+        await super().asyncTearDown()
+
+    async def test_validation(self):
+        r = await self.client.post("/admin/compact", headers=self.BEARER,
+                                   json={"character": "nobody", "session": "long-run"})
+        self.assertEqual(r.status, 404)
+        r = await self.client.post("/admin/compact", headers=self.BEARER,
+                                   json={"character": "example", "session": "gone"})
+        self.assertEqual(r.status, 404)
+        r = await self.client.post("/admin/compact", headers=self.BEARER, json={})
+        self.assertEqual(r.status, 400)
+        r = await self.client.post("/admin/compact")
+        self.assertEqual(r.status, 401)  # bearer door
+
+    async def test_ok_queues(self):
+        r = await self.client.post("/admin/compact", headers=self.BEARER,
+                                   json={"character": "example",
+                                         "session": "long-run.json"})
+        data = await r.json()
+        self.assertEqual(r.status, 200, data)
+        self.assertTrue(data["ok"])
+        self.assertIn("queued", data["note"])  # no compactor installed here
+        qfile = self.root / "ops" / "compact-queue" / "example.long-run.request"
+        self.assertTrue(qfile.exists())
+        self.assertEqual(json.loads(qfile.read_text())["source"], "manual")
+
 
 class MaintenanceStartGuard(AioHTTPTestCase):
     """/admin/bot/start refuses 409 while a compaction lock is held, and

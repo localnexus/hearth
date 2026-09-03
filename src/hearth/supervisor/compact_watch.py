@@ -40,6 +40,11 @@ from hearth.session import maintenance_lock
 
 INTERVAL_S = 60.0
 STALE_RUNNING_S = 180.0
+# A run that deferred itself (RAM floor — see the compactor's gate) stamps
+# deferred_ts back into its restored .request; leave it parked this long
+# before the next attempt, so a busy machine gets a probe every ten minutes
+# instead of a spawn-and-defer cycle every tick.
+DEFER_RECHECK_S = 600.0
 
 
 def queue_dir() -> Path:
@@ -88,7 +93,9 @@ async def tick(app) -> Optional[str]:
     if maintenance_lock.held_locks(op="compact"):
         return None  # manual compaction under way somewhere
 
-    requests = sorted(qdir.glob("*.request"))
+    requests = [r for r in sorted(qdir.glob("*.request"))
+                if time.time() - float((_read_info(r) or {}).get("deferred_ts") or 0)
+                > DEFER_RECHECK_S]
     if not requests:
         return None
     script = compactor_path()
@@ -143,6 +150,46 @@ async def tick(app) -> Optional[str]:
     logger.info("[compact-watch] auto-compaction started: {}/{} (pid {})",
                 info["character"], info["session"], proc.pid)
     return f"started {info['character']}/{info['session']}"
+
+
+async def submit(app, character: str, session: str) -> dict:
+    """Manual initiation (the /admin/compact door): queue a request for
+    (character, session) and run one tick immediately.
+
+    A manual click is a human decision — it clears a prior ``.failed``
+    breadcrumb and any stale parked request for the pair. Returns
+    {"ok", "note"}: ok=True with the tick's action when it fired now;
+    ok=True with a "queued" note when it parked (the watch retries);
+    ok=False only when an active compaction already owns the pair.
+    """
+    child = app.get("bot_child") if hasattr(app, "get") else app["bot_child"]
+    if child is not None and child.status().get("state") in ("starting", "running"):
+        return {"ok": False, "note": "the voice bot is running — stop it first"}
+
+    qdir = queue_dir()
+    qdir.mkdir(parents=True, exist_ok=True)
+    base = f"{character}.{session}"
+    running = qdir / f"{base}.running"
+    if running.exists():
+        held = maintenance_lock.probe(character)
+        if held is not None:
+            return {"ok": False,
+                    "note": f"already compacting ({maintenance_lock.describe(held)})"}
+        # dead claim — the manual click supersedes it
+        running.unlink(missing_ok=True)
+    (qdir / f"{base}.failed").unlink(missing_ok=True)  # human retry re-arms
+
+    payload = {"character": character, "session": session, "source": "manual",
+               "requested": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime())}
+    (qdir / f"{base}.request").write_text(json.dumps(payload, indent=1),
+                                          encoding="utf-8")
+    note = await tick(app)
+    if note and note.startswith("started"):
+        return {"ok": True, "note": note}
+    return {"ok": True,
+            "note": "queued — runs once no compaction is active and the RAM "
+                    "floor holds; the watch retries and the status line shows "
+                    "progress"}
 
 
 async def _loop(app) -> None:
