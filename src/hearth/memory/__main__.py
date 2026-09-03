@@ -22,6 +22,16 @@ Verbs (all default to the ACTIVE companion; --character overrides):
       requires --yes — forgetting the wrong session is the failure mode.
       True-delete by design: an archive step would retain what the user
       asked gone.
+
+  fork --as <name> --until <when> [--character c] [--include-sessions] [--yes]
+      Branch the companion's memory track at a juncture: a new character
+      (persona as it stands today + voices + theme) whose records/ holds the
+      shared history up to <when>, enrolled at the source's tier, then
+      replayed into a non-floor backend. Records are selected by METADATA
+      (ended/started), never filename; the intent slot is never copied; held
+      transcripts come along only with --include-sessions. Preview without
+      --yes. Full story + caveats: docs/memory.md, "Forking the track at a
+      juncture".
 """
 
 from __future__ import annotations
@@ -147,6 +157,77 @@ def _cmd_forget(character: str, session_id: str, yes: bool) -> int:
     return 0
 
 
+def _cmd_fork(character: str, target: str, until: str,
+              include_sessions: bool, yes: bool) -> int:
+    from . import fork as fork_mod
+
+    try:
+        plan = fork_mod.plan(character, target, until,
+                             include_sessions=include_sessions)
+    except fork_mod.ForkError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    print(f"fork {character!r} → {target!r} at juncture {plan.cutoff}")
+    if plan.records:
+        print(f"  shared history — {len(plan.records)} record(s) copy over:")
+        for _path, record in plan.records:
+            when = (record.ended or record.started)[:16].replace("T", " ")
+            name = f" “{record.name}”" if record.name else ""
+            print(f"    {when}  {record.session_id}{name}")
+    else:
+        print("  shared history — NO records at or before the juncture "
+              "(the fork starts amnesiac)")
+    if plan.left_behind:
+        print(f"  {plan.left_behind} record(s) after the juncture stay with "
+              f"{character!r}")
+    if plan.undated:
+        print(f"  {plan.undated} undated record(s) cannot be placed against a "
+              "juncture — they stay behind")
+    voices = ", ".join(plan.voices) if plan.voices else "none"
+    print(f"  identity — {len(plan.identity)} file(s): personas + voices "
+          f"({voices}) + theme, persona AS IT STANDS TODAY (edit after the "
+          "fork if the juncture's differed)")
+    print(f"  sessions — {len(plan.sessions)} transcript(s) copy over"
+          if include_sessions else
+          f"  sessions — stay with {character!r} (--include-sessions copies "
+          "those started at or before the juncture)")
+    print("  intent slot — never copied (it belongs to the source track)")
+    print("  memory tier — " + (f"{plan.tier!r} (the source's effective tier)"
+                                if plan.tier is not None else
+                                "memory disabled, no enrollment"))
+    if not yes:
+        print("\nnothing written — re-run with --yes to create the fork",
+              file=sys.stderr)
+        return 1
+
+    try:
+        result = fork_mod.execute(plan)
+    except fork_mod.ForkError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    except Exception as exc:  # noqa: BLE001 — rolled back in execute
+        print(f"fork failed ({type(exc).__name__}) — nothing was kept",
+              file=sys.stderr)
+        return 1
+    print(f"\nforked: characters/{target}/ created, "
+          f"{result['records']} record(s) restamped\n  {result['memory']}")
+    if plan.tier in (None, "floor", "none"):
+        print("no backend replay needed — "
+              + ("the floor reads record files directly" if plan.tier == "floor"
+                 else "no indexed backend for this tier"))
+        return 0
+    if not result["enrolled"]:
+        print("backend replay SKIPPED — enroll by hand, then run "
+              f"`rebuild --character {target}`", file=sys.stderr)
+        return 1
+    rc = _cmd_rebuild(target)
+    if rc != 0:
+        print(f"the fork stands; re-run `rebuild --character {target}` to "
+              "finish the replay", file=sys.stderr)
+    return rc
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m hearth.memory",
                                      description=__doc__.splitlines()[0])
@@ -163,7 +244,17 @@ def main(argv: list[str] | None = None) -> int:
                           help="session id (as `records` lists it)")
     p_forget.add_argument("--yes", action="store_true",
                           help="confirm the deletion (without it: preview only)")
-    for p in (p_records, p_rebuild, p_forget):
+    p_fork = sub.add_parser("fork",
+                            help="branch the memory track at a juncture")
+    p_fork.add_argument("--as", required=True, metavar="NAME", dest="fork_as",
+                        help="the fork's character name (must not exist)")
+    p_fork.add_argument("--until", required=True, metavar="WHEN",
+                        help="the juncture, inclusive (ISO date or timestamp)")
+    p_fork.add_argument("--include-sessions", action="store_true",
+                        help="also copy transcripts started at or before the juncture")
+    p_fork.add_argument("--yes", action="store_true",
+                        help="confirm the fork (without it: preview only)")
+    for p in (p_records, p_rebuild, p_forget, p_fork):
         p.add_argument("--character", default=None,
                        help="companion name (default: the active one)")
     args = parser.parse_args(argv)
@@ -172,6 +263,9 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_records(character)
     if args.verb == "forget":
         return _cmd_forget(character, args.session, args.yes)
+    if args.verb == "fork":
+        return _cmd_fork(character, args.fork_as, args.until,
+                         args.include_sessions, args.yes)
     return _cmd_rebuild(character, clean=args.clean, yes=args.yes)
 
 

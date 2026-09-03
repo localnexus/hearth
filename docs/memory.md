@@ -45,12 +45,33 @@ python -m hearth.memory records                 # list a companion's records (me
 python -m hearth.memory rebuild                 # replay all records into the active backend
 python -m hearth.memory forget --session <id>   # delete ONE conversation everywhere (previews first)
 python -m hearth.memory rebuild --clean --yes   # wipe the index, replay the surviving records
+python -m hearth.memory fork --as <name> --until <when>   # branch the track at a juncture
 ```
 
 That's also how you **switch backends mid-relationship** (edit memory.toml,
 rebuild — the new backend inherits the whole history instead of starting
 amnesiac) and how an A/B between candidates stays fair (each contender indexes
 the same records).
+
+## Forking the track at a juncture
+
+A memory track can **branch**: one line pursues a new path while the original
+proceeds down its own route. `fork --as <name> --until <when>` creates a new
+character (persona *as it stands today*, plus every voice bundle and the theme)
+whose records hold a copy of the shared history up to the juncture — selected
+by each record's `ended` timestamp, never its filename — restamped with the new
+name and a `forked_from` provenance key, enrolled at the source's memory tier,
+and (on an indexed backend) replayed into its own bank. Banks key on companion
+name, so the two tracks can never recall across each other. Without `--yes`
+the same command previews the whole plan and touches nothing.
+
+Three things deliberately stay behind: records *after* the juncture, the
+consume-once intent slot (it belongs to the track that stated it), and held
+transcripts — pass `--include-sessions` when you want those resumable in both
+branches. The persona is today's text: personas evolve in place, so "as it
+stood at the juncture" is your edit after the fork, not the verb's guess. A
+replayed bank is a faithful *re-reading* of the shared history, not a
+byte-identical copy of the source's index — same records, freshly extracted.
 
 ## Forgetting one conversation
 
