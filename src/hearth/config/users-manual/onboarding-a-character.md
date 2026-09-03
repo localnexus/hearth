@@ -8,7 +8,13 @@ the licensing discipline that rides every clip, and the ear test that decides wh
 requirement). The licensing frame: `docs/COMPONENT-LICENSING.md`. The what-to-edit reference:
 `docs/config-manual/voice-tts.md`. This page walks the *shape* of the process; those hold the exact steps.
 
-The fastest start: copy `characters/example/` and edit it.
+The fastest start: copy `characters/example/` and edit it. Or let the **roster
+wizard** do the mechanical steps for you — `/admin/roster` on the serve facade
+(behind the bearer door, when the supervisor is mounted) scaffolds the
+directories, conditions the clip, writes `voice.toml` + `VOICE-SOURCE.md` from
+one set of answers, and verifies the bundle with the same loaders startup
+uses. What it never does: touch an existing character, or promote a voice —
+steps 5–6 below stay yours either way.
 
 ---
 

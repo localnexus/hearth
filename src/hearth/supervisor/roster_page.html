@@ -1,0 +1,213 @@
+<!doctype html>
+<!-- roster_page.html — the character-roster wizard (served at /admin/roster).
+
+     SECURITY CONTRACT: this file is served WITHOUT auth (a static-chrome
+     exemption beside /admin/launch and /health), so it must stay pure chrome —
+     no names, no state, no tokens baked in. Every fact on screen arrives via
+     an authed fetch; the bearer is entered once, kept in this browser's
+     localStorage (shared with the launch page), sent only as a header. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hearth — roster</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; max-width: 40em; margin: 3em auto;
+         padding: 0 1em; line-height: 1.5; }
+  h1 { font-size: 1.4em; }
+  .card { border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+          border-radius: 8px; padding: 1em 1.2em; margin: 1em 0; }
+  .row { margin: 0.5em 0; display: flex; gap: 0.6em; align-items: center;
+         flex-wrap: wrap; }
+  .row label { min-width: 8em; }
+  select, input[type=text], input[type=password], input[type=file] {
+         flex: 1; min-width: 12em; padding: 0.3em 0.4em; font: inherit; }
+  textarea { width: 100%; min-height: 12em; font: inherit; padding: 0.4em; }
+  button { font: inherit; padding: 0.4em 1.2em; cursor: pointer; }
+  button.primary { font-weight: 600; }
+  #roster { font-family: ui-monospace, monospace; font-size: 0.9em; white-space: pre-wrap; }
+  #report { font-family: ui-monospace, monospace; font-size: 0.9em;
+            white-space: pre-wrap; min-height: 1.5em; }
+  .err { color: #c33; }
+  .hidden { display: none; }
+  a { color: inherit; }
+  small { opacity: 0.75; }
+</style>
+</head>
+<body>
+<h1>Hearth — roster</h1>
+<div id="statusline">connecting…</div>
+
+<div id="tokencard" class="card hidden">
+  <p>This surface needs the serve bearer token (asked once; kept only in this
+     browser — shared with the launch page).</p>
+  <div class="row">
+    <input type="password" id="token" autocomplete="off" placeholder="bearer token">
+    <button id="tokenbtn" class="primary">Unlock</button>
+  </div>
+</div>
+
+<div id="rostercard" class="card hidden">
+  <h2>Companions</h2>
+  <div id="roster">…</div>
+  <p><a href="/admin/launch">Launch page</a> · <a href="/">Control panel</a></p>
+</div>
+
+<div id="wizardcard" class="card hidden">
+  <h2>New character</h2>
+  <p><small>Creates <code>characters/&lt;name&gt;/</code> — persona, voice bundle,
+     provenance record — and verifies it with the same loaders startup uses.
+     Existing characters are never touched. Audition stays yours:
+     <b>your ear decides</b> what goes live.</small></p>
+  <div class="row"><label for="f-name">Name</label>
+    <input type="text" id="f-name" autocomplete="off" placeholder="letters, digits, . _ -"></div>
+  <div class="row"><label for="f-persona">Persona</label></div>
+  <textarea id="f-persona">## IDENTITY
+
+(who they stably are — written to characters/&lt;name&gt;/persona.md)
+
+## SOUL
+
+(the tunable how — tone, pace, manner)
+</textarea>
+  <div class="row"><label for="f-tag">Voice tag</label>
+    <input type="text" id="f-tag" value="default"></div>
+  <div class="row"><label for="f-sample">Sample</label>
+    <input type="file" id="f-sample" accept="audio/*">
+  </div>
+  <div class="row"><small id="ffnote"></small></div>
+  <div class="row"><label for="f-license">License</label>
+    <select id="f-license">
+      <option value="personal-use-only" selected>personal-use-only (the conservative default)</option>
+      <option value="public-domain">public-domain</option>
+      <option value="owned">owned — my own recording / rights cleared</option>
+    </select></div>
+  <div class="row"><label for="f-source">Source</label>
+    <input type="text" id="f-source" autocomplete="off"
+           placeholder="where the clip came from — required, this cannot be mechanized"></div>
+  <div class="row"><label for="f-tier">Memory</label>
+    <select id="f-tier">
+      <option value="">default (whatever [memory] backend says)</option>
+      <option value="floor">ephemeral — dated digests only (floor)</option>
+      <option value="hindsight">Hindsight-enrolled — born keyed</option>
+    </select></div>
+  <div class="row">
+    <button id="previewbtn">Preview (writes nothing)</button>
+    <button id="createbtn" class="primary" disabled>Create</button>
+  </div>
+</div>
+
+<div id="report"></div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const TOKEN_KEY = "hearth_admin_token";  // shared with the launch page
+
+function token() { try { return localStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; } }
+function show(id, on) { $(id).classList.toggle("hidden", !on); }
+function report(text, isErr) { $("report").textContent = text || ""; $("report").className = isErr ? "err" : ""; }
+
+async function api(path, opts) {
+  const o = Object.assign({ headers: {} }, opts || {});
+  o.headers["Authorization"] = "Bearer " + token();
+  const r = await fetch(path, o);
+  if (r.status === 401) throw new Error("401");
+  let data = null;
+  try { data = await r.json(); } catch { /* non-JSON */ }
+  return { status: r.status, data };
+}
+
+function needToken(prompt) {
+  show("tokencard", true); show("rostercard", false); show("wizardcard", false);
+  $("statusline").textContent = prompt || "locked — enter the bearer token";
+}
+
+async function refresh() {
+  if (!token()) { needToken(); return; }
+  let st;
+  try { st = await api("/admin/roster/state"); }
+  catch (e) {
+    if (e.message === "401") { needToken("that token was refused — try again"); return; }
+    $("statusline").textContent = "facade unreachable — retrying…";
+    return;
+  }
+  show("tokencard", false); show("rostercard", true); show("wizardcard", true);
+  const d = st.data || {};
+  const lines = (d.characters || []).map(c => {
+    const bits = [c.name];
+    if (d.active && d.active.character === c.name) bits.push("● live");
+    bits.push("voices: " + ((c.voices || []).join(", ") || "—"));
+    if ((c.personas || []).length > 1) bits.push("personas: " + c.personas.join(", "));
+    if (c.memory_backend) bits.push("memory: " + c.memory_backend);
+    return "  " + bits.join("  ·  ");
+  });
+  $("roster").textContent = lines.join("\n") || "  (no characters found)";
+  $("statusline").textContent = (d.characters || []).length + " companion(s)" +
+    (d.memory_enabled ? "" : "  ·  memory not enabled");
+  $("ffnote").textContent = d.ffmpeg
+    ? "any audio format accepted — conditioned to mono 24 kHz automatically"
+    : "ffmpeg not installed — upload an already-conforming WAV (mono, ~24 kHz)";
+}
+
+function formData(confirmed) {
+  const fd = new FormData();
+  fd.append("name", $("f-name").value.trim());
+  fd.append("persona", $("f-persona").value);
+  fd.append("voice_tag", $("f-tag").value.trim());
+  fd.append("license", $("f-license").value);
+  fd.append("source", $("f-source").value.trim());
+  fd.append("memory_tier", $("f-tier").value);
+  if (confirmed) fd.append("yes", "true");
+  const file = $("f-sample").files[0];
+  if (file) fd.append("sample", file, file.name);
+  return fd;
+}
+
+function renderReport(d) {
+  const out = [];
+  if (d.errors) return d.errors.map(e => "✗ " + e).join("\n");
+  if (d.clip) out.push(`clip: ${d.clip.duration_s}s · ${d.clip.channels}ch · ` +
+                       `${d.clip.rate} Hz · ${d.clip.processing}`);
+  if (d.memory) out.push("memory: " + d.memory);
+  if (d.loader) out.push("loader: " + d.loader);
+  if (d.files) out.push("written:\n  " + d.files.join("\n  "));
+  if (d.confirm) out.push("\n" + d.confirm);
+  if (d.next) out.push("\nNEXT: " + d.next);
+  return out.join("\n");
+}
+
+async function submit(confirmed) {
+  report(confirmed ? "creating…" : "checking…");
+  $("createbtn").disabled = true;
+  let r;
+  try { r = await api("/admin/roster/onboard", { method: "POST", body: formData(confirmed) }); }
+  catch (e) {
+    if (e.message === "401") { needToken("that token was refused — try again"); return; }
+    report("facade unreachable", true); return;
+  }
+  const d = r.data || {};
+  report(renderReport(d), !d.ok);
+  // Create unlocks only after a clean preview of the SAME form (edits re-lock).
+  $("createbtn").disabled = !(d.ok && !d.created);
+  if (d.created) { $("createbtn").disabled = true; refresh(); }
+}
+
+$("previewbtn").addEventListener("click", () => submit(false));
+$("createbtn").addEventListener("click", () => submit(true));
+for (const id of ["f-name", "f-persona", "f-tag", "f-license", "f-source", "f-tier", "f-sample"])
+  $(id).addEventListener("input", () => { $("createbtn").disabled = true; });
+
+$("tokenbtn").addEventListener("click", () => {
+  try { localStorage.setItem(TOKEN_KEY, $("token").value.trim()); } catch { /* private mode */ }
+  $("token").value = "";
+  refresh();
+});
+$("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("tokenbtn").click(); });
+
+refresh();
+setInterval(refresh, 30000);
+</script>
+</body>
+</html>

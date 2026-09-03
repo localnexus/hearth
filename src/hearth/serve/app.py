@@ -130,11 +130,12 @@ def _resolve_lm_token(passed: str, cfg: dict) -> str:
 
 # ── auth middleware ───────────────────────────────────────────────────────────
 
-# Unauthed paths: liveness, plus the supervisor's launch SHELL — a static,
-# contentless page (no names, no state, no tokens baked in) whose every data
-# call comes back through this middleware with the bearer. Nothing else is
-# ever exempted; when the supervisor isn't mounted, /admin/launch is a 404.
-_AUTH_EXEMPT = frozenset({"/health", "/admin/launch"})
+# Unauthed paths: liveness, plus the supervisor's two static SHELLS — the
+# launch page and the roster wizard page: contentless chrome (no names, no
+# state, no tokens baked in) whose every data call comes back through this
+# middleware with the bearer. Nothing else is ever exempted; when the
+# supervisor isn't mounted, both /admin pages are 404s.
+_AUTH_EXEMPT = frozenset({"/health", "/admin/launch", "/admin/roster"})
 
 
 @web.middleware
@@ -505,7 +506,11 @@ async def _transcriptions(request: web.Request) -> web.Response:
 # ── app factory + lifecycle ───────────────────────────────────────────────────
 
 def build_app(deps: FacadeDeps) -> web.Application:
-    app = web.Application(middlewares=[_auth])
+    # 32 MB body cap: raised from aiohttp's 1 MB default for the roster
+    # wizard's sample upload. The auth middleware answers 401 before any
+    # handler reads a body, so the widened cap is reachable only through the
+    # bearer door (and the loopback/overlay bind is the outer wall).
+    app = web.Application(middlewares=[_auth], client_max_size=32 * 1024**2)
     app["deps"] = deps
     app.router.add_get("/health", _health)
     app.router.add_get("/v1/models", _models)

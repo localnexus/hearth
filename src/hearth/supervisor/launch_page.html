@@ -1,11 +1,11 @@
 <!doctype html>
 <!-- launch_page.html — the standing launch surface (served at /admin/launch).
 
-     SECURITY CONTRACT: this file is served WITHOUT auth (the one static-chrome
-     exemption beside /health), so it must stay pure chrome — no names, no
-     state, no tokens baked in. Every fact on screen arrives via an authed
-     fetch; the bearer is entered once, kept in this browser's localStorage,
-     and sent only as an Authorization header. -->
+     SECURITY CONTRACT: this file is served WITHOUT auth (a static-chrome
+     exemption beside /health and the roster wizard shell), so it must stay
+     pure chrome — no names, no state, no tokens baked in. Every fact on
+     screen arrives via an authed fetch; the bearer is entered once, kept in
+     this browser's localStorage, and sent only as an Authorization header. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -76,6 +76,8 @@
 </div>
 
 <div id="msg"></div>
+
+<p><small><a href="/admin/roster">Manage the roster</a> — onboard a new companion</small></p>
 
 <script>
 "use strict";

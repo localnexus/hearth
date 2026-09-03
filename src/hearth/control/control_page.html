@@ -195,6 +195,12 @@
     <div class="krow"><span class="kname">Model</span><select id="sw-model"></select></div>
     <label class="krow" id="sw-holdrow" title="drop a hold marker before stopping, so the current session is kept (named) instead of discarded"><input type="checkbox" id="sw-hold"> keep this session (hold)</label>
     <div class="kbtns"><button id="sw-go">Switch</button> <span id="sw-state"></span></div>
+    <!-- Roster management lives on the FACADE behind the token door (write-layer
+         rule (c)): this panel displays and links over. The relative link works
+         when the panel is viewed through the facade's proxy — same visibility
+         gate as the switcher itself (daemon up = facade up). -->
+    <div class="klegend"><a href="/admin/roster">Manage the roster</a> — onboard a
+      new companion (persona, voice bundle, provenance, memory tier) on the facade.</div>
   </div>
 </div>
 </div><!-- /dest-controls -->
