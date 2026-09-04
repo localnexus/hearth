@@ -1,7 +1,7 @@
 """enroll.py — the [memory.companions] tier entry (targeted, comment-preserving).
 
 One implementation, two callers: the roster wizard's onboarding
-(supervisor/roster.py) and the fork verb (memory/fork.py) both finish by
+(supervisor/roster/onboard.py) and the fork verb (memory/fork.py) both finish by
 recording a companion's tier here. Insert-only — an existing enrollment is
 never rewritten (curation of a living entry is the operator's hand edit).
 """
