@@ -55,6 +55,44 @@ def compactor_path() -> Path:
     return Path(config_loader.DATA_DIR) / "ops" / "compact-companion-session.sh"
 
 
+#: Queue file suffix → the state a person should read it as.
+_QUEUE_STATES = {".request": "parked", ".running": "running", ".failed": "failed"}
+
+
+def queue_status() -> list:
+    """The queue as the panel may show it: one entry per queue file, NAMES AND
+    STATES ONLY — never a byte of session content.
+
+    ``.failed`` is why this exists. A held maintenance lock already surfaces a
+    running compaction, but a run that dies in its first second holds the lock
+    for less than one poll, so the launch page could never catch it — and the
+    breadcrumb it leaves is never auto-retried, by design. Without this the
+    only record of a failure is a line in ``logs/compact-auto.log``, which is
+    to say: invisible to the person who pressed the button.
+    """
+    qdir = queue_dir()
+    if not qdir.is_dir():
+        return []
+    out = []
+    for path in sorted(qdir.iterdir()):
+        state = _QUEUE_STATES.get(path.suffix)
+        if state is None:
+            continue
+        info = _read_info(path) or {}
+        out.append({
+            "state": state,
+            "character": info.get("character") or "?",
+            "session": info.get("session") or "?",
+            "source": info.get("source") or "auto",
+            "requested": info.get("requested"),
+            # Written by the compactor's exit path; absent on older breadcrumbs
+            # and on anything that died without reaching it.
+            "error": info.get("error"),
+            "step": info.get("step"),
+        })
+    return out
+
+
 def _read_info(path: Path) -> Optional[dict]:
     try:
         info = json.loads(path.read_text(encoding="utf-8"))

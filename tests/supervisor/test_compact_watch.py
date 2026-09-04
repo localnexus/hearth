@@ -17,6 +17,77 @@ from types import SimpleNamespace
 from hearth import supervisor
 
 
+# ── the queue readout (what the launch page can see) ─────────────────────────
+
+class QueueStatus(unittest.TestCase):
+    """compact_watch.queue_status — names and states, never content.
+
+    The case that matters is `.failed`: a run that dies in its first second
+    holds the maintenance lock for less than one poll, so the queue file is
+    the only trace the panel can render.
+    """
+
+    def setUp(self):
+        from unittest import mock
+        from hearth.config import config_loader
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+        patch = mock.patch.object(config_loader, "DATA_DIR", self.root)
+        patch.start()
+        self.addCleanup(patch.stop)
+        self.qdir = self.root / "ops" / "compact-queue"
+
+    def _write(self, name, **info):
+        self.qdir.mkdir(parents=True, exist_ok=True)
+        (self.qdir / name).write_text(json.dumps(info), encoding="utf-8")
+
+    def test_absent_queue_is_empty_not_an_error(self):
+        from hearth.supervisor import compact_watch
+        self.assertEqual(compact_watch.queue_status(), [])
+
+    def test_each_suffix_reads_as_its_state(self):
+        from hearth.supervisor import compact_watch
+        self._write("zz-a.s1.request", character="zz-a", session="s1")
+        self._write("zz-b.s2.running", character="zz-b", session="s2")
+        self._write("zz-c.s3.failed", character="zz-c", session="s3")
+        got = {e["session"]: e["state"] for e in compact_watch.queue_status()}
+        self.assertEqual(got, {"s1": "parked", "s2": "running", "s3": "failed"})
+
+    def test_failure_reason_is_carried_when_the_compactor_stamped_one(self):
+        from hearth.supervisor import compact_watch
+        self._write("zz-a.s1.failed", character="zz-a", session="s1",
+                    source="manual", step="5. model bracket + summarize",
+                    error="lms CLI not on PATH")
+        entry, = compact_watch.queue_status()
+        self.assertEqual(entry["error"], "lms CLI not on PATH")
+        self.assertEqual(entry["step"], "5. model bracket + summarize")
+        self.assertEqual(entry["source"], "manual")
+
+    def test_an_older_breadcrumb_without_a_reason_still_reads(self):
+        """Pre-2026-09-04 .failed files carry no error — must not vanish."""
+        from hearth.supervisor import compact_watch
+        self._write("zz-a.s1.failed", character="zz-a", session="s1")
+        entry, = compact_watch.queue_status()
+        self.assertEqual(entry["state"], "failed")
+        self.assertIsNone(entry["error"])
+
+    def test_unrelated_files_are_ignored(self):
+        from hearth.supervisor import compact_watch
+        self.qdir.mkdir(parents=True, exist_ok=True)
+        (self.qdir / "notes.txt").write_text("x", encoding="utf-8")
+        (self.qdir / "zz-a.s1.request").write_text("{}", encoding="utf-8")
+        self.assertEqual(len(compact_watch.queue_status()), 1)
+
+    def test_an_unreadable_file_degrades_instead_of_raising(self):
+        from hearth.supervisor import compact_watch
+        self.qdir.mkdir(parents=True, exist_ok=True)
+        (self.qdir / "zz-a.s1.failed").write_text("{not json", encoding="utf-8")
+        entry, = compact_watch.queue_status()
+        self.assertEqual((entry["state"], entry["character"]), ("failed", "?"))
+
+
+
 # ── auto-compaction: the compact watch + the start-door guard ────────────────
 
 class CompactWatchTick(unittest.IsolatedAsyncioTestCase):

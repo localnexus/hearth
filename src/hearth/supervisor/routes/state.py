@@ -28,6 +28,7 @@ from aiohttp import web
 from hearth.session import maintenance_lock
 
 from .. import actuators as actuators_mod
+from .. import compact_watch
 
 
 async def _http_alive(session, url: str, headers: Optional[dict] = None):
@@ -72,6 +73,10 @@ async def _state(request: web.Request) -> web.Response:
         # Held session-maintenance locks (op/character/session/started — names
         # only): the launch page renders in-progress compactions from this.
         "maintenance": maintenance_lock.held_locks(),
+        # The compaction queue (names and states only). The lock above covers
+        # a compaction in flight; this covers the ones that are parked, and
+        # the ones that FAILED — which nothing else on this page can show.
+        "compact_queue": compact_watch.queue_status(),
     })
 
 

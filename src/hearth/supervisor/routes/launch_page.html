@@ -72,6 +72,7 @@
       </select></div>
     <div class="row">
       <button id="compactbtn" title="Compact the selected session's transcript with the local model before starting — pick a session above first">Compact selected session</button></div>
+    <div id="compactqueue" class="hidden"></div>
   </div>
 </div>
 
@@ -101,6 +102,7 @@
 
 <!-- Spliced in at render time from ui/switch_card.js (shared with the panel). -->
 <script>/*SWITCH_CARD_JS*/</script>
+<script>/*COMPACT_QUEUE_JS*/</script>
 
 <script>
 "use strict";
@@ -226,6 +228,9 @@ async function refresh() {
                 (m.started ? " since " + m.started.slice(11, 16) : ""));
   }
   $("statusline").textContent = bits.join("  ·  ");
+  // Parked and FAILED requests — the states no lock can report (a run that
+  // dies in its first second never survives a poll).
+  compactQueue.render(st.data);
 
   // Never flip cards or re-fill a select under an in-flight action — the card
   // owns a selection the operator may be part-way through making.
