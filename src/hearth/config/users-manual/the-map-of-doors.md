@@ -35,7 +35,8 @@ with ports picked at spawn — nothing for you to open or check.
 
 When the supervisor gate is on, `:65001` serves a small set of **pages**, not just an API. They're behind
 the same bearer as everything else on that port, and between them they cover most of what used to be a
-file edit and a restart:
+file edit and a restart. This table says *what each one is for*;
+[The pages behind the door](the-pages-behind-the-door.md) walks what's actually on them:
 
 | Page | What you do there |
 |---|---|
@@ -49,7 +50,8 @@ file edit and a restart:
 > prune* links are these same pages — they work when you're viewing the panel through the facade, because
 > then both are behind the one door.
 
-The settings page is the general answer to "where do I change this without opening a file." The rest of
+The settings page is the general answer to "where do I change this without opening a file" — and
+[The pages behind the door](the-pages-behind-the-door.md) is the chapter for all five. The rest of
 this manual names the files anyway, because they're **yours** and you should know what you own — but
 naming a file is not the same as being told to open it.
 

@@ -72,7 +72,8 @@ Beside it, a **review & prune** link points at the memory curation page. That pa
 :65001 **facade**, not on this panel — write-layer operations like curation never happen on :65000. The
 link only resolves when you're viewing this panel *through* the facade's proxy; opened directly at
 :65000 it may not go anywhere. If you need curation and don't have that proxy set up, reach the facade
-directly instead (see [The map of doors](the-map-of-doors.md)).
+directly instead (see [The map of doors](the-map-of-doors.md)). What you'll find when you get there is
+[The pages behind the door](the-pages-behind-the-door.md).
 
 ### The one runtime button: pause / resume voice recall
 
