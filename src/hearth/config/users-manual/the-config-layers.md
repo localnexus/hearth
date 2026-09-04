@@ -10,7 +10,9 @@ key, with a topic page per family); every key, default, and range in one generat
 `config/serve.toml.example` (the committed template). This page is the ownership map; those hold the details.
 
 Every layer below ships as a committed `.example` template. Copy it to the real (gitignored) filename before
-you use it, and run `python -m hearth.config.check` after a hand-edit — it validates every config file
+you use it. **You can edit any of these as a form** on `/admin/settings/ui`, which validates before it
+writes; this page is about *who owns what*, so it names the files rather than sending you to them. After a
+hand-edit, run `python -m hearth.config.check` — it validates every config file
 present on this install against its schema and prints a per-file verdict, naming **keys only, never
 values**.
 
@@ -70,7 +72,8 @@ in [The live knobs panel](the-live-knobs-panel.md). The rule:
 
 > **Operators don't hand-edit `overrides.toml`.** The panel owns it. Its live values **override
 > `active.toml` every turn** while set — which is exactly why a voice pick can seem "stuck": a leftover
-> `[voice]` section from a live audition wins over your `active.toml` edit until you clear it and restart.
+> `[voice]` section from a live audition wins over your selection until you clear it. **Clearing it is a
+> button** — *Reset voice* in the panel's VOICE box, or *Restore ALL to defaults* for every layer at once.
 > (That specific fix is `docs/runbook/05-fast-recovery.md`.) When in doubt, *read* it to see what the panel left
 > behind — don't edit it by hand.
 

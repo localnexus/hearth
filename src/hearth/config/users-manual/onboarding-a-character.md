@@ -14,7 +14,7 @@ wizard** do the mechanical steps for you — `/admin/roster` on the serve facade
 directories, conditions the clip, writes `voice.toml` + `VOICE-SOURCE.md` from
 one set of answers, and verifies the bundle with the same loaders startup
 uses. What it never does: overwrite an existing bundle, or promote a voice —
-steps 5–6 below stay yours either way.
+going live and the ear test stay yours either way.
 
 The same page also covers a **living** character: an **Edit a persona** card
 (rewrites `persona.md` or a variant, verified with the composition path, one
@@ -100,6 +100,20 @@ This is the part you cannot skip, because the restriction attaches to the **audi
 
 ## The process, end to end
 
+**On the roster page** (`/admin/roster`) — the ordinary way:
+
+1. **Answer the wizard's questions** and hand it your clip. It scaffolds the directories, conditions the
+   audio, writes the descriptor and the provenance record, and verifies the result with the same loaders
+   startup uses. A whole new companion, or a new voice for one you already have, is the same card.
+2. **Write the persona** in the *Edit a persona* card — the two sections, checked through the real
+   composition path before it saves, with one backup kept.
+3. **Make them live** with the switch card, on the panel or the launch page.
+4. **Audition by ear before you promote.** **Your ear decides** which cut becomes the live voice. Listen
+   to a real spoken reply, keep or revert. The wizard deliberately stops short of this one — promoting a
+   voice is a judgement, not a step.
+
+**By hand** — when the supervisor gate is off, or you'd rather see the machinery:
+
 1. **Get a clean clip** into `characters/<name>/voices/<tag>/sample.wav` — mono, ~24 kHz, best ~10–15 s at
    the front, ending on a settled falling phrase. (No downloadable file? `docs/bring-your-own-voice.md` has
    a loopback capture recipe.)
@@ -109,12 +123,14 @@ This is the part you cannot skip, because the restriction attaches to the **audi
    change needed. Then `python -m hearth.config.check` — it validates the new `voice.toml` and everything
    else present, naming keys only.
 4. **Record provenance** — the character's `VOICE-SOURCE.md` *and* the `voice.toml`.
-5. **Select + restart** — set `character` / `voice` in `config/active.toml` and restart the lane that serves
-   the companion (see [Switching who's live](switching-who-is-live.md)), or press the panel's **COMPANION**
-   switcher ([the one-button switch](the-one-button-switch.md)). The composition happens once at startup, so
-   something has to re-read it either way.
-6. **Audition by ear before you promote.** **Your ear decides** which cut becomes the live voice. Listen to
-   a real spoken reply, keep or revert.
+5. **Select + restart** — see [Switching who's live](switching-who-is-live.md). The composition happens
+   once at startup, so something has to re-read it either way.
+6. **Audition by ear**, as above.
 
-**Net:** two halves (model-agnostic persona + model-side hard rules), a self-contained voice bundle whose
-license rides the clip, provenance recorded in two enforceable places, and the ear as the final judge.
+Both paths write the same files; the wizard just doesn't make you type them. The anatomy above is worth
+reading either way — knowing what a bundle *is* is what lets you fix one.
+
+**Net:** the roster page does the mechanical part — scaffold, condition, describe, verify. What stays
+yours is the part that was never mechanical: two halves (model-agnostic persona + model-side hard rules),
+a voice bundle whose license rides the clip, provenance recorded in two enforceable places, and the ear as
+the final judge.

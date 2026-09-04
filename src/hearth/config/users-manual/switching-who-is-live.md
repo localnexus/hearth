@@ -1,16 +1,22 @@
-# Switching who's live — character, voice, model
+# Switching who's live — by hand
 
-*The hand-edit ritual for changing **who** answers: pick the companion in one file, make sure no one's
+> ## ⚠️ You probably don't need this page.
+>
+> **Changing who answers is one press.** Use the **COMPANION** box on the `:65000` panel, or the switch
+> card on `/admin/launch` — pick a character, voice, model or persona variant and press it. It validates
+> the pick, writes the selection for you, and usually applies it **without any restart at all**. Start at
+> [The one-button switch](the-one-button-switch.md).
+>
+> **This page is what's underneath that button** — the same four steps, done by hand. You want it in
+> exactly two situations: the supervisor gate is off (so there's no button), or something went wrong and
+> you need to see the machinery.
+
+*The hand ritual for changing **who** answers: pick the companion in one file, make sure no one's
 mid-conversation, restart the lane that serves them, confirm the right one came back.*
 
 **Authoritative sources:** what each config key means → `docs/config-manual/llm.md` +
 `docs/config-manual/voice-tts.md`; the launch/stop drill → `docs/runbook/`. This page is the *sequence*
-that ties them together.
-
-> **There is a one-action version of this.** With the supervisor daemon on, the control panel's
-> **COMPANION** box does all four steps for you — and usually without any restart at all. See
-> [The one-button switch](the-one-button-switch.md). This page stays the ground truth underneath it:
-> the daemon performs exactly this ritual, and hand-edit + restart keeps working unchanged.
+that ties them together — and the sequence the button performs on your behalf.
 
 ---
 
@@ -35,6 +41,10 @@ voice for the whole run. Nothing hot-swaps by itself. So switching by hand is al
 ## The four steps
 
 ### 1 · Edit the selection
+
+> **Two ways that aren't this one.** The switch card picks all four for you from menus of what's actually
+> installed. Failing that, `/admin/settings/ui` renders this same file as a form and refuses a bad value
+> before it writes. Reach for the text editor when neither door is open.
 
 Open `config/active.toml` and set what you want:
 
@@ -134,5 +144,6 @@ Lanes read `active.toml` at *different* moments, so a switch reaches them differ
 > **The mental model:** the voice loop and the facade are *two independent readers* of the same selection
 > file. Each takes its snapshot when it starts. Restarting one never disturbs the other.
 
-**Net:** edit `active.toml`, run `config.check`, confirm the ESTABLISHED probe is empty, restart the lane,
-then let the `Agent` line (or `/v1/models`), the startup line, and your ear all agree.
+**Net:** press the COMPANION box and you're done. By hand it's four steps — edit the pointer, check nobody
+is mid-conversation, restart the lane, then let the `Agent` line, the startup line, and your ear agree —
+and the button does all four, which is the whole reason it exists.

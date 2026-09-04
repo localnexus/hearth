@@ -17,10 +17,10 @@ overview → `docs/runbook/README.md`. Those are the single sources of truth —
 | No audio / `Errno -9996` / wrong input device | `docs/runbook/05-fast-recovery.md` (invalid default device; relaunch) |
 | STT never transcribes but the OS mic meter moves | `docs/runbook/05-fast-recovery.md` (iTerm mic permission / TCC) |
 | `model_not_found` / `401` from the LLM server | `docs/runbook/05-fast-recovery.md` (wrong model id, or a missing/bad `LM_API_TOKEN` — `llama-server` only wants one if started with `--api-key`; LM Studio always does) |
-| Set a voice in `active.toml` but a **different** voice plays | `docs/runbook/05-fast-recovery.md` (sticky `[voice]` in the panel's `overrides.toml`) → also [The config layers](the-config-layers.md) |
+| Picked a voice but a **different** voice plays | A live audition is still bound. Press **Reset voice** in the panel's VOICE box (or **Restore ALL to defaults**) and the pick takes. Why: [The config layers](the-config-layers.md) · deeper: `docs/runbook/05-fast-recovery.md` |
 | Cut off mid-word / garbled render / cue tag spoken aloud | `docs/debugging/tts-audio-cases.md` |
 | Resume "not found" / persona-model mismatch after resume | `docs/debugging/session-continuity-faults.md` |
-| A hand-edited config file that may be wrong | `python -m hearth.config.check` — validates every config file present, names bad keys, prints no values |
+| A config file that may be wrong | Open it on `/admin/settings/ui` — the form is generated from the schema that validates it, so a bad value is refused rather than saved. Checking a file you already hand-edited: `python -m hearth.config.check` (names bad keys, prints no values) |
 | The panel has no **COMPANION** box | [The one-button switch](the-one-button-switch.md) (daemon gate off? facade not running standalone? panel LAN-exposed?) |
 | A switch answered `409` and nothing changed | [The one-button switch](the-one-button-switch.md) (a switch already in flight, or a refused live arm — the selection is already written; repost on the restart path) |
 | Phone won't connect / mic dead on the walk | [The phone lane — away mode](the-phone-lane-away-mode.md) (TURN up? insecure-origin flag re-added? relaunched after reboot?) |
@@ -48,8 +48,9 @@ Run standalone, it says exactly this on stderr and exits 2:
 [serve] config/serve.toml absent or enabled=false — nothing to run
 ```
 
-**Fix:** if you *want* the facade up, set `enabled = true` in `config/serve.toml` and start it again.
-(Manage that file, never print it — [The config layers](the-config-layers.md).)
+**Fix:** if you *want* the facade up, turn the gate on and start it again — the **serve** section of
+`/admin/settings/ui` if you can already reach the facade, otherwise `enabled = true` in
+`config/serve.toml` by hand. (Manage that file, never print it — [The config layers](the-config-layers.md).)
 
 ### `{"error": "unauthorized"}` back from the facade
 

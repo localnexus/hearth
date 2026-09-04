@@ -40,11 +40,11 @@ source of truth** (`docs/config-manual/`, `docs/runbook/`, `docs/bring-your-own-
 
 | Chapter | Walks you through |
 |---|---|
-| [`the-map-of-doors.md`](the-map-of-doors.md) | Every port on one page — owner, bind, auth, and the read-only health check for each, plus what a deployment tends to add around them. Start here when you're lost about which thing is on which port. |
+| [`the-map-of-doors.md`](the-map-of-doors.md) | Every port on one page — owner, bind, auth, and the read-only health check for each, plus what a deployment tends to add around them. Start here when you're lost about which thing is on which port. **Also lists the pages behind the `/admin` door** — launch, roster, settings, memory, pairing — which is where most "where do I change this" questions end. |
 | [`reading-the-panel.md`](reading-the-panel.md) | What's actually on the :65000 panel — text/mute/PTT, the Record button, and every line of the status block, including the Memory line's live pause/resume button. Start here when you're lost about what's *on the page*. |
 | [`the-live-knobs-panel.md`](the-live-knobs-panel.md) | How the panel's CHARACTER / VOICE / LISTENING boxes actually work — effective values, Save/Load/Reset, and why an auditioned voice can't outlive the session. |
-| [`switching-who-is-live.md`](switching-who-is-live.md) | The hand ritual to change character / voice / model / persona: edit `active.toml` → check no live session → restart the lane → confirm by name, log, and ear. |
-| [`the-one-button-switch.md`](the-one-button-switch.md) | The same switch as one press: turning on the supervisor daemon, the panel's **COMPANION** box, and how to tell a live swap from a warm restart. |
+| [`the-one-button-switch.md`](the-one-button-switch.md) | **Changing who's live** — one press on the panel's **COMPANION** box or the launch page's switch card: turning on the supervisor daemon, and how to tell a live swap from a warm restart. |
+| [`switching-who-is-live.md`](switching-who-is-live.md) | ⚙️ **The same switch by hand** — for when the supervisor gate is off, or you want to see the machinery the button drives: the selection pointer, the no-live-session check, the restart, the confirmation. |
 | [`the-phone-lane-away-mode.md`](the-phone-lane-away-mode.md) | ⚠️ **A deployment, not the shipped install** — away mode from the server side: overlay-network-only exposure, the TURN-over-TCP workaround, the fragile insecure-origin flag, and the reboot-durability gap. |
 | [`the-openclaw-voice-lane.md`](the-openclaw-voice-lane.md) | ⚠️ **UNTESTED** — how OpenClaw *should* speak in a Hearth voice via the :8555 shim, honest about what's unconfirmed. |
 | [`onboarding-a-character.md`](onboarding-a-character.md) | Bringing in a new companion — the persona/model split, the voice bundle, the personal-use-only licensing that rides the clip, and the ear test. |

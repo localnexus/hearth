@@ -31,6 +31,30 @@ with ports picked at spawn — nothing for you to open or check.
 
 ---
 
+## What's behind the `/admin` door
+
+When the supervisor gate is on, `:65001` serves a small set of **pages**, not just an API. They're behind
+the same bearer as everything else on that port, and between them they cover most of what used to be a
+file edit and a restart:
+
+| Page | What you do there |
+|---|---|
+| `/admin/launch` | Start and stop the companion, see whether they're running, and switch who's live — the standing surface you can leave open |
+| `/admin/roster` | Bring in a new companion, add a voice to an existing one, edit a persona, or branch their memory onto a new track |
+| `/admin/settings/ui` | **Every config file, as a form** — the selection pointer, model facts, voice descriptors, the listening calibration, the gates. Generated from the same schema that validates them, so a bad value is refused before it's written |
+| `/admin/memory/ui` | Review what a companion remembers and prune it — read what a record says, forget one, clear a companion |
+| `/admin/pair/ui` | Hand a device a pairing code, so a phone can reach the door without you typing a token into it |
+
+> **The panel links across to these.** The `:65000` page's *Manage the roster*, *Settings* and *review &
+> prune* links are these same pages — they work when you're viewing the panel through the facade, because
+> then both are behind the one door.
+
+The settings page is the general answer to "where do I change this without opening a file." The rest of
+this manual names the files anyway, because they're **yours** and you should know what you own — but
+naming a file is not the same as being told to open it.
+
+---
+
 ## Doors your deployment may add
 
 Hearth ships the doors above. A particular installation often puts more around them — a chat client, a
