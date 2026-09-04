@@ -1,6 +1,6 @@
 """Three pages are split into their own files now, and the seams have to hold.
 
-The control panel (5 sections), the roster page (3) and the settings page (4)
+The control panel (6 sections), the roster page (3) and the settings page (4)
 were each one file with several unrelated jobs sharing one scope. Their sections
 live under `ui/` and are spliced back in at render, so the SERVED pages are what
 they always were — only the sources are separable.
@@ -73,7 +73,7 @@ SECTIONLESS = {
 #: mattering, with the failure landing as a blank page.
 ORDER = {
     "panel": ("panel_style.css", "panel_record.js", "panel_status.js",
-              "panel_knobs.js", "panel_manual.js"),
+              "panel_knobs.js", "panel_manual.js", "panel_turn.js"),
     "roster": ("roster_onboard.js", "roster_edit.js", "roster_fork.js"),
     "settings": ("settings_schema.js", "settings_files.js",
                  "settings_form.js", "settings_confirm.js"),

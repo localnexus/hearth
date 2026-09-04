@@ -125,6 +125,10 @@ import hearth.control.features.live_switch  # noqa: F401
 #                      DISPLAY only per the write-layer rule (c) — answers 503
 #                      until main() attaches the switcher below.
 import hearth.control.features.memory_status  # noqa: F401
+#   /turn            — the last-reply echo above the compose box (features/
+#                      turn_echo.py): a read of the LLMContext this process
+#                      already holds, so it needs no tap and no attach call.
+import hearth.control.features.turn_echo  # noqa: F401
 # Already pulled in by config_profiles; imported explicitly because bot core calls its
 # startup override-scrub below (remove that call too if these feature imports ever go).
 import hearth.control.features.config_knobs  # noqa: F401

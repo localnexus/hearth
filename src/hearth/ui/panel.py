@@ -15,6 +15,7 @@ The split is by CONCERN, not by size:
   ``panel_knobs.js``     the L2 hot knobs: the plain-language help table, the
                          slider/enum row builders, the profile buttons
   ``panel_manual.js``    the destinations rail and the in-page manual reader
+  ``panel_turn.js``      the last-reply echo above the compose box
 
 What stays in the page is markup plus the two things every concern touches: the
 ``$``/``status``/``post`` transport and the mic and text-turn controls that ARE
@@ -59,6 +60,7 @@ SECTIONS = pages.Sections("panel", Path(__file__).parent, (
     ("/*PANEL_STATUS_JS*/", "panel_status.js", "the status block", _IN_SCRIPT),
     ("/*PANEL_KNOBS_JS*/", "panel_knobs.js", "the hot knobs", _IN_SCRIPT),
     ("/*PANEL_MANUAL_JS*/", "panel_manual.js", "the manual pane", _IN_SCRIPT),
+    ("/*PANEL_TURN_JS*/", "panel_turn.js", "the last-reply echo", _IN_SCRIPT),
 ))
 
 #: One transform for the whole panel: ``pages.chain(panel.splice, ...)``.
