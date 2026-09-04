@@ -497,6 +497,8 @@ ENV_VARS: tuple[tuple[str, str, str, str], ...] = (
     ("LM_API_TOKEN", "none", "pipeline (bot)", "LLM bearer key, only if the server wants one"),
     ("LM_PROVIDER", "llama-server", "pipeline + panel", "which engine probe the panel uses (llama-server | lmstudio)"),
     ("T4_METRICS", "0", "pipeline (bot)", "1 = per-turn latency marks in the log"),
+    ("HEARTH_DEV_RELOAD", "0", "control panel + facade",
+     "1 = re-read page files per request (dev; default reads once at import)"),
     ("SERVE_TOKEN", "(unset)", "serve facade", "facade bearer override — wins over token_source"),
 )
 

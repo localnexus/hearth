@@ -61,6 +61,7 @@ from aiohttp import web
 from loguru import logger
 
 from hearth.ui import brand
+from hearth.ui import pages
 
 from .child import STOP_GRACE_S, TERM_GRACE_S, _MEMORY_MODES, BotChild, _now_iso
 from . import actuators as actuators_mod
@@ -97,13 +98,13 @@ _OFFLINE_PAGE = """<!doctype html><meta charset="utf-8">
 # spliced into both pages at import. A static route would have needed its own
 # auth exemption (a <script src> cannot carry the bearer); splicing keeps the
 # door count where it is and guarantees both surfaces run the same bytes.
-_SWITCH_CARD_JS = (Path(__file__).parent.parent / "ui" /
-                   "switch_card.js").read_text(encoding="utf-8")
-_LAUNCH_PAGE = brand.splice(
-    (Path(__file__).parent / "launch_page.html").read_text(encoding="utf-8")
-    .replace("/*SWITCH_CARD_JS*/", _SWITCH_CARD_JS))
-_PAIR_PAGE = brand.splice(
-    (Path(__file__).parent / "pair_page.html").read_text(encoding="utf-8"))
+_CARD_PATH = Path(__file__).parent.parent / "ui" / "switch_card.js"
+_SWITCH_CARD_JS = pages.text(_CARD_PATH)
+_LAUNCH_PAGE = pages.Page(
+    Path(__file__).parent / "launch_page.html",
+    lambda src: brand.splice(src.replace("/*SWITCH_CARD_JS*/",
+                                         pages.text(_CARD_PATH))))
+_PAIR_PAGE = pages.Page(Path(__file__).parent / "pair_page.html", brand.splice)
 
 # Device pairing. A 64-hex bearer is not something anyone types into a phone,
 # and file transfer to a hardened handset is its own adventure — so the desk
@@ -345,13 +346,13 @@ async def _pair_claim(request: web.Request) -> web.Response:
 
 async def _pair_ui(request: web.Request) -> web.Response:
     """The pairing shell — static chrome, like the launch page."""
-    return web.Response(text=_PAIR_PAGE, content_type="text/html")
+    return web.Response(text=_PAIR_PAGE(), content_type="text/html")
 
 
 async def _launch(request: web.Request) -> web.Response:
     """The standing launch surface — reachable bot-up AND bot-down (a
     registered route always beats the catch-all proxy). Static chrome only."""
-    return web.Response(text=_LAUNCH_PAGE, content_type="text/html")
+    return web.Response(text=_LAUNCH_PAGE(), content_type="text/html")
 
 
 async def _sessions(request: web.Request) -> web.Response:

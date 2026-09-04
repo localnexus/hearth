@@ -28,12 +28,12 @@ from hearth.ui import brand
 
 #: name → the page as it is actually served (post-splice).
 PAGES = {
-    "control": control_mod._HTML,
-    "launch": routes_mod._LAUNCH_PAGE,
-    "pair": routes_mod._PAIR_PAGE,
-    "roster": roster_mod._PAGE,
-    "settings": settings_mod._PAGE,
-    "memory": curation_mod._PAGE,
+    "control": control_mod._HTML(),
+    "launch": routes_mod._LAUNCH_PAGE(),
+    "pair": routes_mod._PAIR_PAGE(),
+    "roster": roster_mod._PAGE(),
+    "settings": settings_mod._PAGE(),
+    "memory": curation_mod._PAGE(),
 }
 
 #: The facade pages follow the OS; the panel is committed dark and must not.

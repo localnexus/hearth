@@ -23,6 +23,8 @@ from pathlib import Path
 
 from aiohttp import web
 
+from hearth.ui import pages
+
 _DIR = Path(__file__).parent
 _BRAND_DIR = _DIR / "brand"
 
@@ -34,7 +36,12 @@ PLACEHOLDER = "/*BRAND_CSS*/"
 #: markup costs each page ~25 bytes instead of ~175.
 HEAD_PLACEHOLDER = re.compile(r"<!--BRANDHEAD:([^>]*?)-->")
 
-CSS = (_DIR / "brand.css").read_text(encoding="utf-8")
+CSS_PATH = _DIR / "brand.css"
+
+#: The palette as of import. splice() re-reads through pages.text(), so editing
+#: brand.css under HEARTH_DEV_RELOAD lands without a restart; this stays the
+#: import-time value the divergence guards compare pages against.
+CSS = pages.text(CSS_PATH)
 
 #: filename → bytes, read once at import (the pages' read-once property).
 ASSETS = {name: (_BRAND_DIR / name).read_bytes()
@@ -69,7 +76,7 @@ def splice(page: str) -> str:
             f"page does not declare {PLACEHOLDER} — it cannot receive the brand "
             "layer (add the placeholder inside its <style> block)")
     page = HEAD_PLACEHOLDER.sub(lambda m: header(m.group(1)), page)
-    return page.replace(PLACEHOLDER, CSS)
+    return page.replace(PLACEHOLDER, pages.text(CSS_PATH))
 
 
 def _serve(blob: bytes):

@@ -66,9 +66,9 @@ from typing import Literal, Union, get_args, get_origin
 from aiohttp import web
 
 from hearth.ui import brand
+from hearth.ui import pages
 
-_PAGE = brand.splice(
-    (Path(__file__).parent / "settings_page.html").read_text(encoding="utf-8"))
+_PAGE = pages.Page(Path(__file__).parent / "settings_page.html", brand.splice)
 
 _REDACTED = "•••"
 
@@ -480,7 +480,7 @@ async def _set(request: web.Request) -> web.Response:
 async def _page(_req: web.Request) -> web.Response:
     """The generated form page — static chrome (see settings_page.html's
     security contract; the serve middleware exempts exactly this path)."""
-    return web.Response(text=_PAGE, content_type="text/html")
+    return web.Response(text=_PAGE(), content_type="text/html")
 
 
 def add_routes(app: web.Application) -> None:

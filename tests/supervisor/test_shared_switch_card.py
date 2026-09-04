@@ -43,8 +43,8 @@ class SharedSwitchCard(unittest.TestCase):
 
     def test_both_pages_actually_splice_it(self):
         """A page that ships the placeholder ships a switcher that cannot run."""
-        for name, page in (("launch", routes_mod._LAUNCH_PAGE),
-                           ("control", control_mod._HTML)):
+        for name, page in (("launch", routes_mod._LAUNCH_PAGE()),
+                           ("control", control_mod._HTML())):
             with self.subTest(page=name):
                 self.assertNotIn("/*SWITCH_CARD_JS*/", page,
                                  "placeholder was never replaced")
@@ -53,8 +53,8 @@ class SharedSwitchCard(unittest.TestCase):
 
     def test_the_card_appears_exactly_once_per_page(self):
         """Two copies in one page would mean two switchers fighting over ids."""
-        for name, page in (("launch", routes_mod._LAUNCH_PAGE),
-                           ("control", control_mod._HTML)):
+        for name, page in (("launch", routes_mod._LAUNCH_PAGE()),
+                           ("control", control_mod._HTML())):
             with self.subTest(page=name):
                 self.assertEqual(page.count("window.HearthSwitchCard = (function"), 1)
 

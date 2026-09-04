@@ -90,13 +90,13 @@ from aiohttp import web
 from loguru import logger
 
 from hearth.ui import brand
+from hearth.ui import pages
 
 from hearth.memory.enroll import enroll_memory_tier as _enroll_memory_tier
 
 from . import switch as switch_mod
 
-_PAGE = brand.splice(
-    (Path(__file__).parent / "roster_page.html").read_text(encoding="utf-8"))
+_PAGE = pages.Page(Path(__file__).parent / "roster_page.html", brand.splice)
 
 _TIERS = ("", "floor", "hindsight")  # "" = don't touch memory.toml
 _FFMPEG_TIMEOUT_S = 60.0
@@ -318,7 +318,7 @@ def _dry_run(fields: dict, clip_src: Path) -> dict:
 # ── handlers ──────────────────────────────────────────────────────────────────
 
 async def _page(_req: web.Request) -> web.Response:
-    return web.Response(text=_PAGE, content_type="text/html")
+    return web.Response(text=_PAGE(), content_type="text/html")
 
 
 async def _state(request: web.Request) -> web.Response:

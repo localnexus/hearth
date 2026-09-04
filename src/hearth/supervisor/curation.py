@@ -52,11 +52,11 @@ from pathlib import Path
 from aiohttp import web
 
 from hearth.ui import brand
+from hearth.ui import pages
 
 from . import switch as switch_mod
 
-_PAGE = brand.splice(
-    (Path(__file__).parent / "memory_page.html").read_text(encoding="utf-8"))
+_PAGE = pages.Page(Path(__file__).parent / "memory_page.html", brand.splice)
 
 # Record files are <session_id>.json — the id must stay a bare filename.
 _SESSION_RE = re.compile(r"^[A-Za-z0-9._-]+$")
@@ -164,7 +164,7 @@ async def _facts(request: web.Request) -> web.Response:
 async def _page(_req: web.Request) -> web.Response:
     """The review-and-prune pane — static chrome (see memory_page.html's
     security contract; the serve middleware exempts exactly this path)."""
-    return web.Response(text=_PAGE, content_type="text/html")
+    return web.Response(text=_PAGE(), content_type="text/html")
 
 
 async def _forget(request: web.Request) -> web.Response:

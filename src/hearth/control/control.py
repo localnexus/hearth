@@ -43,6 +43,7 @@ from pipecat.frames.frames import (
 
 from hearth.control import control_routes
 from hearth.ui import brand
+from hearth.ui import pages
 
 if TYPE_CHECKING:
     from pipecat.pipeline.worker import PipelineWorker
@@ -129,7 +130,8 @@ async def fetch_engine_info(base_url: str, token: str, target_model: str | None 
 # panel work is plain HTML/CSS/JS diffs, not Python-string diffs, with editor syntax
 # highlighting). Read ONCE at
 # import (same lifetime as the old module-level string literal); served verbatim
-# by the "/" route below.
+# by the "/" route below. HEARTH_DEV_RELOAD=1 makes that read per-request instead,
+# so panel edits land on a refresh rather than a bot restart (see ui/pages.py).
 # The companion switcher itself is SHARED with the facade's launch page — one
 # source file (ui/switch_card.js), spliced into both at import, so the two
 # surfaces offer the same fields and read live-vs-restart the same way.
@@ -137,11 +139,12 @@ async def fetch_engine_info(base_url: str, token: str, target_model: str | None 
 # panel and the facade cannot drift into two visual languages; the artwork is
 # served from /ui/brand/ rather than inlined, which took 12.7 KB of base64 out
 # of this page.
-_SWITCH_CARD_JS = (Path(__file__).parent.parent / "ui" /
-                   "switch_card.js").read_text(encoding="utf-8")
-_HTML = brand.splice(
-    (Path(__file__).parent / "control_page.html").read_text(encoding="utf-8")
-    .replace("/*SWITCH_CARD_JS*/", _SWITCH_CARD_JS))
+_CARD_PATH = Path(__file__).parent.parent / "ui" / "switch_card.js"
+_SWITCH_CARD_JS = pages.text(_CARD_PATH)
+_HTML = pages.Page(
+    Path(__file__).parent / "control_page.html",
+    lambda src: brand.splice(src.replace("/*SWITCH_CARD_JS*/",
+                                         pages.text(_CARD_PATH))))
 
 
 # ── Route handlers ─────────────────────────────────────────────────────────────
@@ -159,7 +162,7 @@ def _make_routes(
 
     @routes.get("/")
     async def index(_req: web.Request) -> web.Response:
-        return web.Response(text=_HTML, content_type="text/html")
+        return web.Response(text=_HTML(), content_type="text/html")
 
     @routes.post("/say")
     async def say(req: web.Request) -> web.Response:
