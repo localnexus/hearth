@@ -220,9 +220,10 @@ document.addEventListener('keyup',   e => { if (e.key === 'm') pttUp(); });
 // The panel's three self-gating sections live in their own files under ui/ and
 // are spliced in HERE, inside this same script block — so they share the scope
 // above ($, status, post) exactly as they did when this was one 822-line file.
-// See ui/panel.py. The ORDER is contract, not layout: status declares
-// renderAgent(), knobs declares `knob`/`selVoice`, and each reaches for the
-// other's — function declarations hoist, `let` does not, so status goes first.
+// See ui/panel.py. Status and knobs reach across: status declares
+// renderAgent(), knobs declares `knob`/`selVoice`, each uses the other's. That
+// survives any order today only because every such read happens after an await;
+// the written order is pinned by test_page_sections.py so it stays that way.
 /*PANEL_STATUS_JS*/
 
 /*PANEL_KNOBS_JS*/

@@ -1,9 +1,9 @@
 // panel_status.js — the control panel's status block and its poll timers.
 // Spliced INSIDE control_page.html's own <script> block (ui/panel.py), so `$`,
 // `status` and `post` come from the page and this file's declarations are the
-// page's top-level bindings. Splice order matters here: renderAgent() reads
-// `knob` and `selVoice`, which panel_knobs.js declares with `let` AFTER this
-// file — safe only because the read happens post-await, never during load.
+// page's top-level bindings. renderAgent() reads `knob` and `selVoice`, which
+// panel_knobs.js declares with `let` AFTER this file — safe only because the
+// read happens post-await, never during load. Keep it that way.
 //
 // Phase 1 status block.
 // Engine facts (allotted / model max / Model ID / provider) ride /engine — fetched

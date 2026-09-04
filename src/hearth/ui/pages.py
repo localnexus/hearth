@@ -95,6 +95,44 @@ def chain(*transforms: Callable[[str], str]) -> Callable[[str], str]:
     return run
 
 
+class Sections:
+    """One page's own files: the pieces it was split into, and the transform
+    that puts them back.
+
+    Distinct from the SHARED files (brand.css, switch_card.js, admin_shell.js),
+    which several pages splice because they must not drift between them. These
+    belong to one page and exist to give it seams — so `page` is carried here
+    and the guard test asserts no OTHER page takes one.
+
+    Order: each splice is an independent `replace`, so what binds is where the
+    PLACEHOLDERS sit in the page, not the order of `modules`. Where two sections
+    reach across (a `let` in one read by another) that page's own module says so.
+    """
+
+    def __init__(self, page: str, directory: Path | str,
+                 modules: tuple[tuple[str, str, str, str], ...]):
+        self.page = page
+        self.dir = Path(directory)
+        #: (placeholder, filename, what it is, where the placeholder belongs)
+        self.modules = modules
+        self.paths = {name: self.dir / name for _, name, _, _ in modules}
+        self.splices = tuple(
+            splicer(placeholder, self.dir / name, what, where)
+            for placeholder, name, what, where in modules)
+        self.splice = chain(*self.splices)
+
+    def text(self, name: str) -> str:
+        """One section's source, through `text()` so dev reload reaches it."""
+        return text(self.paths[name])
+
+    @property
+    def names(self) -> tuple[str, ...]:
+        return tuple(name for _, name, _, _ in self.modules)
+
+    def __repr__(self) -> str:  # pragma: no cover — debugging aid
+        return f"<Sections {self.page}: {', '.join(self.names)}>"
+
+
 class Page:
     """A page file plus the transform that turns it into the served HTML.
 

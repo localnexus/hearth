@@ -68,9 +68,14 @@ from aiohttp import web
 from hearth.ui import admin_shell
 from hearth.ui import brand
 from hearth.ui import pages
+from hearth.ui import settings_sections
 
+# The page keeps its markup, the state every section reads, and the wiring that
+# starts it; the schema walkers, the file list, the generated form and the
+# confirm step are four files under ui/ — see ui/settings_sections.py.
 _PAGE = pages.Page(Path(__file__).parent / "settings_page.html",
-                   pages.chain(admin_shell.splice, brand.splice))
+                   pages.chain(settings_sections.splice, admin_shell.splice,
+                               brand.splice))
 
 _REDACTED = "•••"
 
