@@ -69,10 +69,12 @@ class SharedSwitchCard(unittest.TestCase):
 
     def test_neither_page_rebuilds_the_pickers(self):
         """The retired ids are the fingerprint of a locally rebuilt form."""
-        for name, path in (("launch", "supervisor/launch_page.html"),
-                           ("control", "control/control_page.html")):
-            page = (Path(routes_mod.__file__).parent.parent / path).read_text(
-                encoding="utf-8")
+        # The RAW file, not the rendered page — a rebuilt picker would be in
+        # the page's own markup. Each Page knows where it was read from, which
+        # is one fewer path to keep in step with the tree.
+        for name, page_obj in (("launch", routes_mod._LAUNCH_PAGE),
+                               ("control", control_mod._HTML)):
+            page = page_obj.path.read_text(encoding="utf-8")
             for bad in RETIRED_IDS:
                 with self.subTest(page=name, id=bad):
                     self.assertNotIn(bad, page,

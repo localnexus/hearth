@@ -63,7 +63,7 @@ def splicer(placeholder: str, path: Path | str, what: str,
     Seven splices now say the same four lines — check the placeholder, raise with
     a useful sentence, `replace()` through `text()` so dev reload reaches the
     shared file too. Writing them out seven times is how `control.py` and
-    `routes.py` ended up with two spellings of the same three lines before Q2.
+    `supervisor/routes` ended up with two spellings of the same three lines before Q2.
 
     Raising, rather than passing a page through unchanged, is the load-bearing
     part: a page that silently lost its placeholder would serve markup with no

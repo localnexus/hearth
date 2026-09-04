@@ -63,11 +63,12 @@ class CompactRoute(AioHTTPTestCase):
         from unittest import mock
         from hearth.config import config_loader
         from hearth.session import session_store
+        from hearth.supervisor import switch as switch_mod
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.root = Path(self._tmp.name)
         for p in (mock.patch.object(config_loader, "DATA_DIR", self.root),
-                  mock.patch.object(routes_mod.switch_mod, "choices",
+                  mock.patch.object(switch_mod, "choices",
                                     lambda: {"characters": [{"name": "example"}]}),
                   mock.patch.object(session_store, "companion_sessions_dir",
                                     lambda c=None: self.root / "sessions")):

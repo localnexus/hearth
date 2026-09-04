@@ -140,7 +140,7 @@ def _resolve_lm_token(passed: str, cfg: dict) -> str:
 # pages are 404s.
 # The pairing pair: the shell a new device opens, and the one route that can
 # hand out the bearer — guarded by a short-lived, single-use, three-strikes code
-# the operator mints at the desk (supervisor/routes.py), not by this middleware.
+# the operator mints at the desk (supervisor/routes/entry.py), not here.
 # The brand artwork: two static PNGs (the mark and the favicon) that the shells
 # above reference. They are the same files this project publishes in docs/brand/
 # and they disclose nothing — no names, no state. They are exempt because a

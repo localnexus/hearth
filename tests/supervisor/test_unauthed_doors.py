@@ -44,7 +44,8 @@ class UnauthedDoorsAreDocumented(unittest.TestCase):
 
     def test_the_docs_state_the_right_shell_count(self):
         """Five static shells; /health and the pairing claim make seven paths."""
-        root = Path(routes_mod.__file__).parent.parent.parent.parent
+        import hearth
+        root = Path(hearth.__file__).parents[2]  # src/hearth/__init__.py → repo
         for rel in self.DOCS:
             text = (root / rel).read_text(encoding="utf-8")
             with self.subTest(doc=rel):

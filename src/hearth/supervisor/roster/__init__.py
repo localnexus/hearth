@@ -90,7 +90,7 @@ this list, and roster_page.html sits beside page.py:
     branch.py   the fork route: plan → preview → execute
 
 This __init__ is the façade: it re-exports every name the parts define, so
-``from hearth.supervisor import roster`` still reaches all of them (routes.py
+``from hearth.supervisor import roster`` still reaches all of them (routes
 takes add_routes; the page tests take _PAGE; nothing else reaches in).
 """
 
@@ -118,7 +118,7 @@ from .branch import _fork_preview, _fork_route
 #: The re-exported surface. The underscored names go out too, deliberately:
 #: this package was one module until the split, and the tests reach for its
 #: internals by name (_PAGE, _condition_clip, _known_characters …). Exporting
-#: only the two names routes.py calls would have made a move into a breaking
+#: only the two names routes calls would have made a move into a breaking
 #: change.
 __all__ = ["add_routes", "ffmpeg_path"]
 

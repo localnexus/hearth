@@ -1,7 +1,8 @@
 """switch_card.py — splice the shared companion switcher into a page.
 
 The card itself (``switch_card.js``) has been shared since it was extracted; what
-lived in two places until now was the SPLICE — control.py and supervisor/routes.py
+lived in two places until now was the SPLICE — control.py and the facade's
+launch page (now supervisor/routes/entry.py)
 each carried their own copy of the same three lines. With a third shared asset in
 play (the admin shell), each host composes ``pages.chain(...)`` instead, and the
 splices belong beside the files they inject.

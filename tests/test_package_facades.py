@@ -1,7 +1,7 @@
-"""The two split packages keep their façade complete.
+"""Every split package keeps its façade complete.
 
-`config/settings_registry/` and `supervisor/roster/` were each one module until
-the file-size queue split them. Both promised the same thing: the import path
+The split packages under `config/` and `supervisor/` were each one module until
+the file-size queue split them. Each promised the same thing: the import path
 does not change and neither does the surface, because the package `__init__`
 re-exports every name its parts define — the underscored ones included, since
 callers and tests reach for those by name (`sr._model_of`, `roster._PAGE`).
@@ -21,7 +21,8 @@ import importlib
 import unittest
 from pathlib import Path
 
-PACKAGES = ("hearth.config.settings_registry", "hearth.supervisor.roster")
+PACKAGES = ("hearth.config.settings_registry", "hearth.supervisor.roster",
+            "hearth.supervisor.routes")
 
 #: (package, name) pairs that are deliberately NOT on the façade.
 EXEMPT: set[tuple[str, str]] = set()
@@ -65,7 +66,7 @@ class TheFacadeReExportsEveryPart(unittest.TestCase):
 
     def test_the_parts_import_in_one_direction(self):
         """Each part imports only parts listed EARLIER in `__init__`'s import
-        block, which both packages write in dependency order.
+        block, which each package writes in dependency order.
 
         The strong half is that a cycle cannot form. The rest is bookkeeping
         worth keeping: the façade's import block doubles as the reading order,
