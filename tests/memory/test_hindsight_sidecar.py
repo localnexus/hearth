@@ -5,6 +5,11 @@ drained for life; an oversized log rotates to .1 at spawn; a dead child is
 respawned exactly ONCE (a second death raises); close() after a death is quiet.
 All against a stub runner — no hindsight install, no network.
 
+Since the 2026-09-03 decomposition the process lives on the backend's Sidecar
+(``b._sidecar``) and the sweep in its own module, so these patch
+``backend_hindsight.sidecar`` / ``.sweep`` rather than the package: a name
+re-exported by the package is a binding, and patching it would change nothing.
+
 Run:  .venv/bin/python -m unittest discover -s tests
 """
 
@@ -57,10 +62,10 @@ class TestHindsightSidecar(unittest.TestCase):
             b = HindsightBackend({"mode": "sidecar", "python": sys.executable,
                                   "runner": str(stub), "llm_model": "m",
                                   "log_file": str(Path(tmp) / "logs" / "sidecar.log")})
-            b._start_sidecar()
-            proc = b._proc
+            b._sidecar.start()
+            proc = b._sidecar._proc
             try:
-                self.assertEqual(b._url, "http://127.0.0.1:59999")
+                self.assertEqual(b._sidecar.url, "http://127.0.0.1:59999")
                 self.assertIsNone(proc.poll())  # still running until close
                 # Own process group (start_new_session): the operator's Ctrl+C
                 # must never reach the sidecar (run-observed 2026-08-30 — the
@@ -69,13 +74,13 @@ class TestHindsightSidecar(unittest.TestCase):
             finally:
                 b.close()
             self.assertIsNotNone(proc.poll())   # terminated by close
-            self.assertIsNone(b._proc)
+            self.assertIsNone(b._sidecar._proc)
 
     def test_sidecar_requires_python_path(self):
         from hearth.memory.backend_hindsight import HindsightBackend
         b = HindsightBackend({"mode": "sidecar", "llm_model": "m"})
         with self.assertRaises(ValueError):
-            b._start_sidecar()
+            b._sidecar.start()
 
     def test_call_pins_one_persistent_thread_in_async_context(self):
         """Regression (run-observed 2026-08-30, first in-bot store): the SDK
@@ -143,7 +148,7 @@ class TestHindsightSidecar(unittest.TestCase):
             tmp = Path(tmp)
             log = tmp / "logs" / "hindsight-sidecar.log"
             b = self._backend(tmp, self._stub(tmp, "noisy", self._NOISY), log)
-            b._start_sidecar()
+            b._sidecar.start()
             try:
                 text = self._wait_for(log, "stderr complaint")
             finally:
@@ -153,7 +158,7 @@ class TestHindsightSidecar(unittest.TestCase):
             self.assertIn("stderr complaint", text)            # stderr, not DEVNULL
             self.assertEqual(stat.S_IMODE(log.stat().st_mode), 0o600)
             self.assertEqual(stat.S_IMODE(log.parent.stat().st_mode), 0o700)
-            self.assertIsNone(b._log)                          # handle released by close()
+            self.assertIsNone(b._sidecar._log)                 # handle released by close()
 
     def test_oversized_log_rotates_to_dot_one_at_spawn(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -162,7 +167,7 @@ class TestHindsightSidecar(unittest.TestCase):
             log.parent.mkdir(parents=True)
             log.write_text("x" * (5 * 1024 * 1024 + 1), encoding="utf-8")
             b = self._backend(tmp, self._stub(tmp, "noisy", self._NOISY), log)
-            b._start_sidecar()
+            b._sidecar.start()
             b.close()
             rotated = log.with_name(log.name + ".1")
             self.assertTrue(rotated.is_file())
@@ -173,60 +178,63 @@ class TestHindsightSidecar(unittest.TestCase):
         """The store at session close used to die on ClientConnectorError when
         the child was gone (run-observed). _ensure now notices and respawns —
         once. The SDK is absent here, so _new_client is the seam."""
-        from hearth.memory import backend_hindsight as hs
+        from hearth.memory.backend_hindsight import adapter as ad
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             log = tmp / "logs" / "hindsight-sidecar.log"
             b = self._backend(tmp, self._stub(tmp, "noisy", self._NOISY), log)
             clients: list[_FakeClient] = []
-            b._new_client = lambda: clients.append(_FakeClient(b._url)) or clients[-1]
+            b._new_client = (lambda: clients.append(_FakeClient(b._sidecar.url))
+                             or clients[-1])
 
             b._ensure()
-            first = b._proc
+            first = b._sidecar._proc
             self.assertEqual(len(clients), 1)
             b._ensure()                       # alive: no respawn, no new client
-            self.assertIs(b._proc, first)
+            self.assertIs(b._sidecar._proc, first)
             self.assertEqual(len(clients), 1)
 
             first.kill()
             first.wait()
-            with mock.patch.object(hs.logger, "warning") as warn:
+            with mock.patch.object(ad.logger, "warning") as warn:
                 b._ensure()
             observed = [c.args[1] for c in warn.call_args_list
                         if "died (rc=" in str(c.args[0])]
             self.assertEqual(observed, [first.returncode])     # the old rc was named
-            self.assertIsNot(b._proc, first)                   # exactly one respawn
-            self.assertIsNone(b._proc.poll())
+            self.assertIsNot(b._sidecar._proc, first)          # exactly one respawn
+            self.assertIsNone(b._sidecar._proc.poll())
             self.assertEqual(len(clients), 2)
             self.assertTrue(clients[0].closed)                 # stale client retired
 
             # a sidecar that cannot come back propagates instead of looping
             b._cfg["runner"] = str(self._stub(tmp, "dies", self._DIES))
-            b._proc.kill()
-            b._proc.wait()
+            b._sidecar._proc.kill()
+            b._sidecar._proc.wait()
             with self.assertRaises(RuntimeError):
                 b._ensure()
             b.close()
 
     def test_close_after_child_death_skips_terminate_and_resets(self):
-        from hearth.memory import backend_hindsight as hs
+        from hearth.memory.backend_hindsight import sidecar as sc
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             log = tmp / "logs" / "hindsight-sidecar.log"
             b = self._backend(tmp, self._stub(tmp, "noisy", self._NOISY), log)
-            b._start_sidecar()
-            proc = b._proc
+            b._sidecar.start()
+            proc = b._sidecar._proc
             proc.kill()
             proc.wait()
-            with mock.patch.object(hs.logger, "warning") as warn:
+            with mock.patch.object(sc.logger, "warning") as warn:
                 b.close()                                      # must not raise
             self.assertTrue(any("already exited" in str(c.args[0])
                                 for c in warn.call_args_list))
-            self.assertIsNone(b._proc)
+            self.assertIsNone(b._sidecar._proc)
             self.assertIsNone(b._client)
-            self.assertIsNone(b._url)
-            self.assertIsNone(b._log)
-            self.assertFalse(b._drain.is_alive() if b._drain else False)
+            self.assertIsNone(b._sidecar.url)
+            self.assertIsNone(b._sidecar._log)
+            self.assertFalse(b._sidecar._drain.is_alive()
+                             if b._sidecar._drain else False)
+
 
 class TestOrphanSweep(unittest.TestCase):
     """The orphan sweep (2026-09-03): a sidecar outlives an ungraceful host
@@ -241,7 +249,7 @@ class TestOrphanSweep(unittest.TestCase):
 
     def _sweep(self, pgrep_stdout: str, kill=None):
         """Run the sweep against a canned pgrep result; returns (n, killed)."""
-        import hearth.memory.backend_hindsight as hs
+        from hearth.memory.backend_hindsight import sweep as sw
 
         killed: list = []
 
@@ -251,9 +259,9 @@ class TestOrphanSweep(unittest.TestCase):
                 kill(pid)
 
         completed = mock.Mock(stdout=pgrep_stdout)
-        with mock.patch.object(hs.subprocess, "run", return_value=completed) as run, \
-                mock.patch.object(hs.os, "kill", side_effect=_kill):
-            n = hs._reap_orphaned_sidecars(self._RUNNER)
+        with mock.patch.object(sw.subprocess, "run", return_value=completed) as run, \
+                mock.patch.object(sw.os, "kill", side_effect=_kill):
+            n = sw._reap_orphaned_sidecars(self._RUNNER)
         self.argv = list(run.call_args.args[0])
         return n, killed
 
@@ -296,17 +304,21 @@ class TestOrphanSweep(unittest.TestCase):
 
     def test_sweep_survives_a_missing_pgrep(self):
         """Best-effort: a sweep that cannot run must never fail a session start."""
-        import hearth.memory.backend_hindsight as hs
+        from hearth.memory.backend_hindsight import sweep as sw
 
-        with mock.patch.object(hs.subprocess, "run", side_effect=OSError), \
-                mock.patch.object(hs.os, "kill") as kill:
-            self.assertEqual(hs._reap_orphaned_sidecars(self._RUNNER), 0)
+        with mock.patch.object(sw.subprocess, "run", side_effect=OSError), \
+                mock.patch.object(sw.os, "kill") as kill:
+            self.assertEqual(sw._reap_orphaned_sidecars(self._RUNNER), 0)
         kill.assert_not_called()
 
     def test_start_sidecar_sweeps_before_spawning(self):
         """Ordering is the point — sweeping after the spawn would reclaim
-        nothing for the session that just paid to start."""
-        import hearth.memory.backend_hindsight as hs
+        nothing for the session that just paid to start.
+
+        Patched on ``sidecar``, not on the package or on ``sweep``: the name
+        _start_sidecar actually calls is the one bound in the sidecar module."""
+        from hearth.memory.backend_hindsight import HindsightBackend
+        from hearth.memory.backend_hindsight import sidecar as sc
 
         order: list = []
         with tempfile.TemporaryDirectory() as tmp:
@@ -316,19 +328,19 @@ class TestOrphanSweep(unittest.TestCase):
                 "import time\n"
                 "print('HINDSIGHT_URL=http://127.0.0.1:59999', flush=True)\n"
                 "time.sleep(60)\n", encoding="utf-8")
-            backend = hs.HindsightBackend(
+            backend = HindsightBackend(
                 {"mode": "sidecar", "python": sys.executable, "runner": str(runner),
                  "llm_model": "m", "log_file": str(tmp / "logs" / "s.log")})
-            real_popen = hs.subprocess.Popen
+            real_popen = sc.subprocess.Popen
 
             def _popen(*a, **kw):
                 order.append("spawn")
                 return real_popen(*a, **kw)
 
-            with mock.patch.object(hs, "_reap_orphaned_sidecars",
+            with mock.patch.object(sc, "_reap_orphaned_sidecars",
                                    side_effect=lambda r: order.append(("sweep", r))), \
-                    mock.patch.object(hs.subprocess, "Popen", side_effect=_popen):
-                backend._start_sidecar()
+                    mock.patch.object(sc.subprocess, "Popen", side_effect=_popen):
+                backend._sidecar.start()
             try:
                 self.assertEqual([o[0] if isinstance(o, tuple) else o for o in order],
                                  ["sweep", "spawn"])

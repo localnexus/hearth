@@ -22,7 +22,8 @@ import unittest
 from pathlib import Path
 
 PACKAGES = ("hearth.config.settings_registry", "hearth.supervisor.roster",
-            "hearth.supervisor.routes")
+            "hearth.supervisor.routes", "hearth.supervisor.settings",
+            "hearth.memory.backend_hindsight")
 
 #: (package, name) pairs that are deliberately NOT on the façade.
 EXEMPT: set[tuple[str, str]] = set()

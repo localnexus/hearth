@@ -3,9 +3,9 @@
 Executed with the SIDECAR venv's python (the one holding ``hindsight-all``),
 never the engine venv: hindsight's server closure needs protobuf>=7 while
 pipecat pins protobuf<7, so the two can never share an interpreter. The
-engine's adapter (backend_hindsight.py, mode="sidecar") spawns this script,
-reads the ``HINDSIGHT_URL=…`` line from stdout, talks to the server with the
-lightweight ``hindsight-client`` SDK, and SIGTERMs the process at close.
+engine's adapter (backend_hindsight/sidecar.py, mode="sidecar") spawns this
+script, reads the ``HINDSIGHT_URL=…`` line from stdout, talks to the server
+with the lightweight ``hindsight-client`` SDK, and SIGTERMs the process at close.
 
 Protocol (parent-facing, deliberately tiny):
   stdout line 1..n : free logging from hindsight's own startup
