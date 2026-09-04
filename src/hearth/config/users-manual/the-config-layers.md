@@ -10,8 +10,10 @@ key, with a topic page per family); every key, default, and range in one generat
 `config/serve.toml.example` (the committed template). This page is the ownership map; those hold the details.
 
 Every layer below ships as a committed `.example` template. Copy it to the real (gitignored) filename before
-you use it. **You can edit any of these as a form** on `/admin/settings/ui`, which validates before it
-writes; this page is about *who owns what*, so it names the files rather than sending you to them. After a
+you use it — the copying is yours either way, and it is the first thing a new install needs. **Once the
+serve facade is running you can edit any of these as a form** on `/admin/settings/ui`, which validates
+before it writes; until then these files are the only door, which is why this page names them plainly.
+Either way this page is about *who owns what*, so it names the files rather than sending you to them. After a
 hand-edit, run `python -m hearth.config.check` — it validates every config file
 present on this install against its schema and prints a per-file verdict, naming **keys only, never
 values**.

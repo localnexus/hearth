@@ -20,7 +20,7 @@ overview → `docs/runbook/README.md`. Those are the single sources of truth —
 | Picked a voice but a **different** voice plays | A live audition is still bound. Press **Reset voice** in the panel's VOICE box (or **Restore ALL to defaults**) and the pick takes. Why: [The config layers](the-config-layers.md) · deeper: `docs/runbook/05-fast-recovery.md` |
 | Cut off mid-word / garbled render / cue tag spoken aloud | `docs/debugging/tts-audio-cases.md` |
 | Resume "not found" / persona-model mismatch after resume | `docs/debugging/session-continuity-faults.md` |
-| A config file that may be wrong | Open it on `/admin/settings/ui` — the form is generated from the schema that validates it, so a bad value is refused rather than saved. Checking a file you already hand-edited: `python -m hearth.config.check` (names bad keys, prints no values) |
+| A config file that may be wrong | With the facade running: the form on `/admin/settings/ui` is generated from the schema that validates it, so a bad value is refused rather than saved. With the facade off — the shipped default — `python -m hearth.config.check` validates every file and names bad keys, printing no values. Use it after any hand-edit |
 | The panel has no **COMPANION** box | [The one-button switch](the-one-button-switch.md) (daemon gate off? facade not running standalone? panel LAN-exposed?) |
 | A switch answered `409` and nothing changed | [The one-button switch](the-one-button-switch.md) (a switch already in flight, or a refused live arm — the selection is already written; repost on the restart path) |
 | Phone won't connect / mic dead on the walk | [The phone lane — away mode](the-phone-lane-away-mode.md) (TURN up? insecure-origin flag re-added? relaunched after reboot?) |

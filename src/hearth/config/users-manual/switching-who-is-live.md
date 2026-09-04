@@ -1,15 +1,19 @@
 # Switching who's live — by hand
 
-> ## ⚠️ You probably don't need this page.
+> ## ⚠️ First: is there a button for this?
 >
-> **Changing who answers is one press.** Use the **COMPANION** box on the `:65000` panel, or the switch
-> card on `/admin/launch` — pick a character, voice, model or persona variant and press it. It validates
-> the pick, writes the selection for you, and usually applies it **without any restart at all**. Start at
-> [The one-button switch](the-one-button-switch.md).
+> **If the supervisor daemon is running, there is, and you should use it.** The **COMPANION** box on the
+> `:65000` panel and the switch card on `/admin/launch` are the same control — pick a character, voice,
+> model or persona variant and press it. It validates the pick, writes the selection for you, and usually
+> applies it **without any restart at all**. Start at [The one-button switch](the-one-button-switch.md).
 >
-> **This page is what's underneath that button** — the same four steps, done by hand. You want it in
-> exactly two situations: the supervisor gate is off (so there's no button), or something went wrong and
-> you need to see the machinery.
+> **In a fresh install there is no button**, because the serve facade and its supervisor daemon both ship
+> switched off — and the daemon is what the button talks to. So on a new machine this page is not the
+> exception, it is **the** way to change who's live, until you decide to turn those gates on.
+>
+> That makes this page worth reading in three situations: you haven't enabled the facade and supervisor
+> yet (the out-of-the-box state), you have and you want to see the machinery the button drives, or
+> something went wrong and you need to work underneath it.
 
 *The hand ritual for changing **who** answers: pick the companion in one file, make sure no one's
 mid-conversation, restart the lane that serves them, confirm the right one came back.*
