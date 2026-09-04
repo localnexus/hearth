@@ -1,7 +1,7 @@
 # Settings reference — selection, models, voices, live knobs
 
 > **GENERATED — do not hand-edit.** Source of truth: the settings registry
-> (`hearth/config/settings_registry.py`). Regenerate both pages:
+> (`hearth/config/settings_registry/`). Regenerate both pages:
 > `python -m hearth.config.check --emit-manual <this directory>`; a test fails on drift.
 
 Companion page: [settings-reference-gates.md](settings-reference-gates.md). **Live path** = how a setting hot-applies at the next turn
