@@ -89,7 +89,7 @@ _LLM_TEMP_LO, _LLM_TEMP_HI = _LLM_FACTS["temperature"]
 # Chatterbox engine swap (EXPENSIVE tier — not wired). Ranges are sane guardrails, adjustable.
 _TTS_RANGES = settings_registry.live_knob_ranges("tts")
 # [vad] — the CALIBRATION tier. Ranges are sane guardrails; the panel's
-# warn thresholds live in control_page.html KNOB_HELP; ear sessions own the final words.
+# warn thresholds live in ui/panel_knobs.js KNOB_HELP; ear sessions own the final words.
 _VAD_RANGES = settings_registry.live_knob_ranges("vad")
 _WRITABLE_SECTIONS = ("llm", "tts", "voice", "vad")
 

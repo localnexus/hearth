@@ -24,7 +24,9 @@ Bind constants (local-only by default):
 # ─── STABLE CORE ────────────────────────────────────────────────────────────────
 # Build new panel functionality in a SIBLING feature module and register its routes
 # via control_routes.register — this file takes ZERO edits per feature.
-# Sanctioned seams:  • control_routes.register (new routes)  • control_page.html (UI)
+# Sanctioned seams:  • control_routes.register (new routes)  • control_page.html
+# (markup + the transport)  • a ui/panel_*.js of its own for a new SECTION's
+# behaviour, declared in ui/panel.py — not another inline block in the page.
 # ────────────────────────────────────────────────────────────────────────────────
 
 from __future__ import annotations
