@@ -65,10 +65,12 @@ from typing import Literal, Union, get_args, get_origin
 
 from aiohttp import web
 
+from hearth.ui import admin_shell
 from hearth.ui import brand
 from hearth.ui import pages
 
-_PAGE = pages.Page(Path(__file__).parent / "settings_page.html", brand.splice)
+_PAGE = pages.Page(Path(__file__).parent / "settings_page.html",
+                   pages.chain(admin_shell.splice, brand.splice))
 
 _REDACTED = "•••"
 

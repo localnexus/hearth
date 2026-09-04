@@ -51,12 +51,14 @@ from pathlib import Path
 
 from aiohttp import web
 
+from hearth.ui import admin_shell
 from hearth.ui import brand
 from hearth.ui import pages
 
 from . import switch as switch_mod
 
-_PAGE = pages.Page(Path(__file__).parent / "memory_page.html", brand.splice)
+_PAGE = pages.Page(Path(__file__).parent / "memory_page.html",
+                   pages.chain(admin_shell.splice, brand.splice))
 
 # Record files are <session_id>.json — the id must stay a bare filename.
 _SESSION_RE = re.compile(r"^[A-Za-z0-9._-]+$")

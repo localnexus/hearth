@@ -117,27 +117,12 @@
 
 <script>
 "use strict";
-const $ = (id) => document.getElementById(id);
-const TOKEN_KEY = "hearth_admin_token";  // shared with the other admin pages
+/*ADMIN_SHELL_JS*/
 
 let schemas = null;    // kind → {title, path, owner, layer, restart, schema, …}
 let overview = null;   // GET /admin/settings payload (kinds + discovered files)
 let current = null;    // the open file: {kind, file, values, writable, pointer, …}
 let pending = null;    // {file, key, value} awaiting confirm
-
-function token() { try { return localStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; } }
-function show(id, on) { $(id).classList.toggle("hidden", !on); }
-function report(text, isErr) { $("report").textContent = text || ""; $("report").className = isErr ? "err" : ""; }
-
-async function api(path, opts) {
-  const o = Object.assign({ headers: {} }, opts || {});
-  o.headers["Authorization"] = "Bearer " + token();
-  const r = await fetch(path, o);
-  if (r.status === 401) throw new Error("401");
-  let data = null;
-  try { data = await r.json(); } catch { /* non-JSON */ }
-  return { status: r.status, data };
-}
 
 function needToken(prompt) {
   show("tokencard", true); show("filescard", false);
@@ -509,14 +494,9 @@ async function confirmSet() {
 $("confirmbtn").addEventListener("click", confirmSet);
 $("cancelbtn").addEventListener("click", () => { clearPending(); report(""); });
 
-$("tokenbtn").addEventListener("click", () => {
-  try { localStorage.setItem(TOKEN_KEY, $("token").value.trim()); } catch { /* private mode */ }
-  $("token").value = "";
-  refresh();
-});
-$("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("tokenbtn").click(); });
+wireToken(refresh);
 
-refresh();
+poll(refresh);
 </script>
 </body>
 </html>

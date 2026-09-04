@@ -44,6 +44,7 @@ from pipecat.frames.frames import (
 from hearth.control import control_routes
 from hearth.ui import brand
 from hearth.ui import pages
+from hearth.ui import switch_card
 
 if TYPE_CHECKING:
     from pipecat.pipeline.worker import PipelineWorker
@@ -139,12 +140,8 @@ async def fetch_engine_info(base_url: str, token: str, target_model: str | None 
 # panel and the facade cannot drift into two visual languages; the artwork is
 # served from /ui/brand/ rather than inlined, which took 12.7 KB of base64 out
 # of this page.
-_CARD_PATH = Path(__file__).parent.parent / "ui" / "switch_card.js"
-_SWITCH_CARD_JS = pages.text(_CARD_PATH)
-_HTML = pages.Page(
-    Path(__file__).parent / "control_page.html",
-    lambda src: brand.splice(src.replace("/*SWITCH_CARD_JS*/",
-                                         pages.text(_CARD_PATH))))
+_HTML = pages.Page(Path(__file__).parent / "control_page.html",
+                   pages.chain(switch_card.splice, brand.splice))
 
 
 # ── Route handlers ─────────────────────────────────────────────────────────────

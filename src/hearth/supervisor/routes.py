@@ -60,8 +60,10 @@ import aiohttp
 from aiohttp import web
 from loguru import logger
 
+from hearth.ui import admin_shell
 from hearth.ui import brand
 from hearth.ui import pages
+from hearth.ui import switch_card
 
 from .child import STOP_GRACE_S, TERM_GRACE_S, _MEMORY_MODES, BotChild, _now_iso
 from . import actuators as actuators_mod
@@ -98,12 +100,11 @@ _OFFLINE_PAGE = """<!doctype html><meta charset="utf-8">
 # spliced into both pages at import. A static route would have needed its own
 # auth exemption (a <script src> cannot carry the bearer); splicing keeps the
 # door count where it is and guarantees both surfaces run the same bytes.
-_CARD_PATH = Path(__file__).parent.parent / "ui" / "switch_card.js"
-_SWITCH_CARD_JS = pages.text(_CARD_PATH)
 _LAUNCH_PAGE = pages.Page(
     Path(__file__).parent / "launch_page.html",
-    lambda src: brand.splice(src.replace("/*SWITCH_CARD_JS*/",
-                                         pages.text(_CARD_PATH))))
+    pages.chain(switch_card.splice, admin_shell.splice, brand.splice))
+# The pairing page takes neither shared script: it is what a device WITHOUT the
+# bearer opens, so the admin shell has nothing to carry for it.
 _PAIR_PAGE = pages.Page(Path(__file__).parent / "pair_page.html", brand.splice)
 
 # Device pairing. A 64-hex bearer is not something anyone types into a phone,

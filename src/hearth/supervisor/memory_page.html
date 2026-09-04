@@ -95,25 +95,10 @@
 
 <script>
 "use strict";
-const $ = (id) => document.getElementById(id);
-const TOKEN_KEY = "hearth_admin_token";  // shared with the launch + roster pages
+/*ADMIN_SHELL_JS*/
 
 let selected = null;                     // character whose records are open
 let pending = null;                      // {character, session} awaiting confirm
-
-function token() { try { return localStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; } }
-function show(id, on) { $(id).classList.toggle("hidden", !on); }
-function report(text, isErr) { $("report").textContent = text || ""; $("report").className = isErr ? "err" : ""; }
-
-async function api(path, opts) {
-  const o = Object.assign({ headers: {} }, opts || {});
-  o.headers["Authorization"] = "Bearer " + token();
-  const r = await fetch(path, o);
-  if (r.status === 401) throw new Error("401");
-  let data = null;
-  try { data = await r.json(); } catch { /* non-JSON */ }
-  return { status: r.status, data };
-}
 
 function needToken(prompt) {
   show("tokencard", true); show("compcard", false);
@@ -251,15 +236,9 @@ async function confirmForget() {
 $("confirmbtn").addEventListener("click", confirmForget);
 $("cancelbtn").addEventListener("click", () => { clearPending(); report(""); });
 
-$("tokenbtn").addEventListener("click", () => {
-  try { localStorage.setItem(TOKEN_KEY, $("token").value.trim()); } catch { /* private mode */ }
-  $("token").value = "";
-  refresh();
-});
-$("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("tokenbtn").click(); });
+wireToken(refresh);
 
-refresh();
-setInterval(refresh, 60000);
+poll(refresh, 60000);
 </script>
 </body>
 </html>

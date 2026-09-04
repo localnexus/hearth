@@ -21,8 +21,9 @@ from pathlib import Path
 
 from hearth.control import control as control_mod
 from hearth.supervisor import routes as routes_mod
+from hearth.ui import switch_card
 
-CARD = (Path(routes_mod.__file__).parent.parent / "ui" / "switch_card.js")
+CARD = switch_card.PATH
 
 # The fields the card owns. Anything here must be added ONCE, in the card.
 SELECTION = ("character", "voice", "persona", "model")
@@ -38,8 +39,16 @@ class SharedSwitchCard(unittest.TestCase):
     def test_both_surfaces_serve_the_same_card(self):
         """One file on disk, byte-identical in both pages — the whole point."""
         source = CARD.read_text(encoding="utf-8")
-        self.assertEqual(routes_mod._SWITCH_CARD_JS, source)
-        self.assertEqual(control_mod._SWITCH_CARD_JS, source)
+        self.assertEqual(switch_card.JS, source)
+        for name, page in (("launch", routes_mod._LAUNCH_PAGE()),
+                           ("control", control_mod._HTML())):
+            with self.subTest(page=name):
+                self.assertIn(source, page, f"{name} serves a different card")
+
+    def test_the_splice_refuses_a_page_without_the_placeholder(self):
+        """Serving the placeholder verbatim would ship a dead switcher."""
+        with self.assertRaises(ValueError):
+            switch_card.splice("<script>nothing here</script>")
 
     def test_both_pages_actually_splice_it(self):
         """A page that ships the placeholder ships a switcher that cannot run."""

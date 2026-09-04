@@ -56,6 +56,19 @@ def text(path: Path | str) -> str:
     return cached
 
 
+def chain(*transforms: Callable[[str], str]) -> Callable[[str], str]:
+    """Compose page transforms left to right — `chain(card.splice, brand.splice)`.
+
+    A page takes three shared files now (the switcher, the admin shell, the brand
+    layer); nesting their calls at each construction site was how the two hosts
+    grew two subtly different spellings of the same splice."""
+    def run(src: str) -> str:
+        for transform in transforms:
+            src = transform(src)
+        return src
+    return run
+
+
 class Page:
     """A page file plus the transform that turns it into the served HTML.
 

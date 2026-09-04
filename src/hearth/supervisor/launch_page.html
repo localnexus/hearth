@@ -104,14 +104,7 @@
 
 <script>
 "use strict";
-const $ = (id) => document.getElementById(id);
-const el = (tag, cls, text) => {   // nodes, so API text never meets innerHTML
-  const n = document.createElement(tag);
-  if (cls) n.className = cls;
-  if (text !== undefined) n.textContent = text;
-  return n;
-};
-const TOKEN_KEY = "hearth_admin_token";
+/*ADMIN_SHELL_JS*/
 let choices = null;      // /admin/switch payload (current + choices)
 let botUp = false;       // start-only riders ride a cold start, never a warm switch
 let lastBotState = null; // collapse repeated renders
@@ -119,31 +112,6 @@ let busy = false;        // a start/stop is in flight — freeze the cards
 let tick = 0;            // poll counter — actuators refresh on a slower cadence
 const actBusy = new Set(); // actuator runs in flight — never re-render under one
 let cookieMinted = false;  // the browser carrier for plain navigation
-
-function token() { try { return localStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; } }
-
-async function api(path, opts) {
-  const o = Object.assign({ headers: {} }, opts || {});
-  o.headers["Authorization"] = "Bearer " + token();
-  if (o.json !== undefined) {
-    o.method = o.method || "POST";
-    o.headers["Content-Type"] = "application/json";
-    o.body = JSON.stringify(o.json);
-    delete o.json;
-  }
-  const r = await fetch(path, o);
-  if (r.status === 401) throw new Error("401");
-  let data = null;
-  try { data = await r.json(); } catch { /* non-JSON answer */ }
-  return { status: r.status, data };
-}
-
-function say(text, isErr) {
-  $("msg").textContent = text || "";
-  $("msg").className = isErr ? "err" : "";
-}
-
-function show(id, on) { $(id).classList.toggle("hidden", !on); }
 
 function needToken(prompt) {
   show("tokencard", true); show("switchcard", false); show("stopcard", false);
@@ -193,13 +161,13 @@ async function runActuator(name, btn) {
   actBusy.add(name);
   btn.disabled = true;
   btn.textContent = "running…";
-  say("running " + name + " — this holds until the command finishes");
+  report("running " + name + " — this holds until the command finishes");
   try {
     const r = await api("/admin/actuators/" + encodeURIComponent(name) + "/run",
                         { method: "POST" });
-    if (r.status === 409) say(name + " is already running", true);
-    else if (r.status === 404) say("unknown actuator: " + name, true);
-    else if (r.data && r.data.ok) say(name + " ok in " + r.data.duration_s + "s");
+    if (r.status === 409) report(name + " is already running", true);
+    else if (r.status === 404) report("unknown actuator: " + name, true);
+    else if (r.data && r.data.ok) report(name + " ok in " + r.data.duration_s + "s");
     else {
       const d = r.data || {};
       // exit === null is a spawn that never happened (bad path, permissions) —
@@ -207,10 +175,10 @@ async function runActuator(name, btn) {
       const why = d.timed_out ? "timed out"
                 : d.exit === null || d.exit === undefined ? "could not start"
                 : "exit " + d.exit;
-      say(name + " failed: " + why + " — the log is on the machine", true);
+      report(name + " failed: " + why + " — the log is on the machine", true);
     }
   } catch (e) {
-    say(e.message === "401" ? "token refused" : name + " failed: " + e.message, true);
+    report(e.message === "401" ? "token refused" : name + " failed: " + e.message, true);
   } finally {
     actBusy.delete(name);
     btn.textContent = "Run"; btn.disabled = false;
@@ -335,44 +303,38 @@ async function loadSessions() {
 async function doCompact() {
   const character = card.character();
   const sessionId = $("pick-session").value;
-  if (!sessionId) { say("pick a session above first — compaction needs a target", true); return; }
-  busy = true; say("requesting compaction…");
+  if (!sessionId) { report("pick a session above first — compaction needs a target", true); return; }
+  busy = true; report("requesting compaction…");
   try {
     const r = await api("/admin/compact", { json: { character, session: sessionId } });
-    if (r.data && r.data.ok) say(r.data.note || "compaction requested");
-    else say("refused: " + ((r.data && (r.data.note || r.data.error)) || r.status), true);
+    if (r.data && r.data.ok) report(r.data.note || "compaction requested");
+    else report("refused: " + ((r.data && (r.data.note || r.data.error)) || r.status), true);
   } catch (e) {
-    say(e.message === "401" ? "token refused" : "compact failed: " + e.message, true);
+    report(e.message === "401" ? "token refused" : "compact failed: " + e.message, true);
   } finally { busy = false; refresh(); }
 }
 
 async function doStop() {
   const name = $("stopname").value.trim();
   const body = name ? { hold: true, name } : {};
-  busy = true; say("stopping…");
+  busy = true; report("stopping…");
   try {
     const r = await api("/admin/bot/stop", { json: body });
-    if (r.data && r.data.ok) { say("stopped" + (name ? " — session named " + name : "")); $("stopname").value = ""; }
-    else say("stop failed: " + JSON.stringify((r.data && r.data.error) || r.status), true);
+    if (r.data && r.data.ok) { report("stopped" + (name ? " — session named " + name : "")); $("stopname").value = ""; }
+    else report("stop failed: " + JSON.stringify((r.data && r.data.error) || r.status), true);
   } catch (e) {
-    say(e.message === "401" ? "token refused" : "stop failed: " + e.message, true);
+    report(e.message === "401" ? "token refused" : "stop failed: " + e.message, true);
   } finally { busy = false; refresh(); }
 }
 
 // ── wiring ──────────────────────────────────────────────────────────────────
 
-$("tokenbtn").addEventListener("click", () => {
-  try { localStorage.setItem(TOKEN_KEY, $("token").value.trim()); } catch {}
-  $("token").value = "";
-  refresh();
-});
-$("token").addEventListener("keydown", (e) => { if (e.key === "Enter") $("tokenbtn").click(); });
+wireToken(refresh);
 card.onCharacter(loadSessions);   // the session list follows the chosen companion
 $("compactbtn").addEventListener("click", doCompact);
 $("stopbtn").addEventListener("click", doStop);
 
-refresh();
-setInterval(refresh, 4000);
+poll(refresh, 4000);
 </script>
 </body>
 </html>
