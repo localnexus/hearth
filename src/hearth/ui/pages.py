@@ -56,6 +56,32 @@ def text(path: Path | str) -> str:
     return cached
 
 
+def splicer(placeholder: str, path: Path | str, what: str,
+            where: str) -> Callable[[str], str]:
+    """Build the transform that drops one shared file into a page.
+
+    Seven splices now say the same four lines — check the placeholder, raise with
+    a useful sentence, `replace()` through `text()` so dev reload reaches the
+    shared file too. Writing them out seven times is how `control.py` and
+    `routes.py` ended up with two spellings of the same three lines before Q2.
+
+    Raising, rather than passing a page through unchanged, is the load-bearing
+    part: a page that silently lost its placeholder would serve markup with no
+    behaviour behind it, and in production that failure lands at STARTUP.
+    """
+    path = Path(path)
+
+    def splice(page: str) -> str:
+        if placeholder not in page:
+            raise ValueError(
+                f"page does not declare {placeholder} — it cannot receive {what} "
+                f"(add the placeholder {where})")
+        return page.replace(placeholder, text(path))
+
+    splice.__doc__ = f"Return the page with {what} in place of {placeholder}."
+    return splice
+
+
 def chain(*transforms: Callable[[str], str]) -> Callable[[str], str]:
     """Compose page transforms left to right — `chain(card.splice, brand.splice)`.
 

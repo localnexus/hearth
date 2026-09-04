@@ -25,14 +25,7 @@ PATH = Path(__file__).parent / "switch_card.js"
 JS = pages.text(PATH)
 
 
-def splice(page: str) -> str:
-    """Return ``page`` with the switcher in place of its placeholder.
-
-    Raises if the placeholder is absent: a page that shipped it unreplaced would
-    serve a switcher that cannot run.
-    """
-    if PLACEHOLDER not in page:
-        raise ValueError(
-            f"page does not declare {PLACEHOLDER} — it cannot receive the "
-            "companion switcher (add the placeholder in its <script> block)")
-    return page.replace(PLACEHOLDER, pages.text(PATH))
+#: Refuses a page that lost the placeholder — one that shipped it unreplaced
+#: would serve a switcher that cannot run.
+splice = pages.splicer(PLACEHOLDER, PATH, "the companion switcher",
+                       "in its <script> block")

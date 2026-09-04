@@ -63,20 +63,19 @@ def header(section: str) -> str:
             '</header>')
 
 
+#: Refuses a page that lost the CSS placeholder: it would render unbranded and
+#: un-themed, which is exactly the drift this file exists to prevent.
+_splice_css = pages.splicer(PLACEHOLDER, CSS_PATH, "the brand layer",
+                            "inside its <style> block")
+
+
 def splice(page: str) -> str:
     """Return ``page`` with the brand CSS and header in place of its placeholders.
 
-    Raises if the CSS placeholder is absent: a page that silently lost it would
-    render unbranded and un-themed, which is exactly the drift this file exists
-    to prevent. The header placeholder is optional — pair_page and any future
-    fragment may legitimately not carry a header.
+    The header placeholder is optional — pair_page and any future fragment may
+    legitimately not carry a header — so only the CSS one is enforced.
     """
-    if PLACEHOLDER not in page:
-        raise ValueError(
-            f"page does not declare {PLACEHOLDER} — it cannot receive the brand "
-            "layer (add the placeholder inside its <style> block)")
-    page = HEAD_PLACEHOLDER.sub(lambda m: header(m.group(1)), page)
-    return page.replace(PLACEHOLDER, pages.text(CSS_PATH))
+    return _splice_css(HEAD_PLACEHOLDER.sub(lambda m: header(m.group(1)), page))
 
 
 def _serve(blob: bytes):

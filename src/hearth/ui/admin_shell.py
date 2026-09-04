@@ -29,15 +29,8 @@ PATH = Path(__file__).parent / "admin_shell.js"
 JS = pages.text(PATH)
 
 
-def splice(page: str) -> str:
-    """Return ``page`` with the shell in place of its placeholder.
-
-    Raises if the placeholder is absent: the page would then be serving calls to
-    helpers nobody defined — a blank screen and a console error, discovered by a
-    person instead of by startup.
-    """
-    if PLACEHOLDER not in page:
-        raise ValueError(
-            f"page does not declare {PLACEHOLDER} — it cannot receive the admin "
-            "shell (add the placeholder at the top of its <script> block)")
-    return page.replace(PLACEHOLDER, pages.text(PATH))
+#: Refuses a page that lost the placeholder — it would then serve calls to
+#: helpers nobody defined: a blank screen and a console error, discovered by a
+#: person instead of by startup.
+splice = pages.splicer(PLACEHOLDER, PATH, "the admin shell",
+                       "at the top of its <script> block")

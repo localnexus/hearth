@@ -44,6 +44,7 @@ from pipecat.frames.frames import (
 from hearth.control import control_routes
 from hearth.ui import brand
 from hearth.ui import pages
+from hearth.ui import panel
 from hearth.ui import switch_card
 
 if TYPE_CHECKING:
@@ -140,8 +141,12 @@ async def fetch_engine_info(base_url: str, token: str, target_model: str | None 
 # panel and the facade cannot drift into two visual languages; the artwork is
 # served from /ui/brand/ rather than inlined, which took 12.7 KB of base64 out
 # of this page.
+# The page's OWN skin and its three self-gating sections (status meters, hot
+# knobs, manual pane) are four more files under ui/ — see ui/panel.py, which
+# also carries the one ordering rule between them. Those are the panel's alone;
+# unlike the three above, no other page may splice them.
 _HTML = pages.Page(Path(__file__).parent / "control_page.html",
-                   pages.chain(switch_card.splice, brand.splice))
+                   pages.chain(panel.splice, switch_card.splice, brand.splice))
 
 
 # ── Route handlers ─────────────────────────────────────────────────────────────

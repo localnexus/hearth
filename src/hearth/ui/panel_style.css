@@ -1,0 +1,84 @@
+  /* panel_style.css — the control panel's own skin, spliced into
+     control_page.html's <style> block (ui/panel.py). NOT shared: the palette
+     the facade pages also use is ui/brand.css, which lands just above this.
+     Rules are indented because they were lifted out of that <style> block
+     verbatim; the served bytes are unchanged by the move. */
+  body{font-family:monospace;max-width:960px;margin:40px auto;padding:0 16px;background:#111;color:#ddd}
+  #rail .brandmark{width:17px;height:28px;margin:0 auto 10px}
+  input[type=text],textarea{width:100%;box-sizing:border-box;padding:8px;background:#222;color:#eee;border:1px solid #444;font-family:inherit;font-size:1em}
+  textarea{resize:vertical;min-height:4.5em;line-height:1.4}
+  button{padding:8px 16px;margin:6px 4px 0 0;font-family:inherit;font-size:1em;cursor:pointer;background:#333;color:#eee;border:1px solid #555}
+  button:hover{background:#444}
+  button.active{background:#600;border-color:#f44}
+  #rec.rec{background:#a00;border-color:#f55;color:#fff}
+  #recrow{margin-top:18px;padding-top:10px;border-top:1px solid #333}
+  #recrow label{margin-right:14px;color:#aaa;white-space:nowrap}
+  #recrow label.off{color:#555}
+  #recrow input[type=text]{width:15em;display:inline-block;margin:0 8px 0 0;padding:6px}
+  #recstate{margin-left:10px;font-weight:bold;color:#f66;letter-spacing:1px}
+  #recout{margin-top:4px;font-size:0.75em;color:#8a6}
+  #micstate{margin-top:16px;font-weight:bold;letter-spacing:1px}
+  #micstate.live{color:#4c8}
+  #micstate.muted{color:#f66}
+  #micstate.ptt{color:#4ae}
+  #hint{margin-top:4px;font-size:0.75em;color:#666}
+  #status{margin-top:8px;font-size:0.85em;color:#888;min-height:1.2em}
+  #statusblock{margin-top:12px;font-size:0.9em;color:var(--ember);line-height:1.5}
+  #statusblock div{white-space:pre-wrap}
+  #leak{margin-top:4px;font-weight:bold;color:#f66}
+  #s-tokens.zone-warn{color:#e8b04b}
+  #s-tokens.zone-over{color:#e5534b;font-weight:bold}
+  #ctxwarn{margin-top:4px;font-weight:bold;color:#e8b04b}
+  /* L2 hot knobs — segmented per-character / per-voice panels (features/config_profiles) */
+  #knobs{margin-top:18px;padding-top:10px;border-top:1px solid #333}
+  .kpanel{border:1px solid #444;padding:8px 12px 10px;margin:8px 0;background:#181818}
+  .khead{font-weight:bold;color:var(--ember);letter-spacing:1px;margin-bottom:6px}
+  .khead .dim{color:#666;font-weight:normal;letter-spacing:0}
+  .krow{display:flex;align-items:center;gap:10px;margin:5px 0}
+  .krow .kname{width:9em;color:#9a9;flex:none}
+  .krow input[type=range]{flex:1;min-width:6em}
+  .krow select{background:#222;color:#eee;border:1px solid #444;font-family:inherit;font-size:0.95em;padding:4px}
+  .kval{width:5em;text-align:right;color:#8a8;flex:none}
+  .kval.dirty{color:#e8b04b}
+  .kfield{margin:8px 0}
+  .kfield .krow{margin:0}
+  .khelp{font-size:0.72em;color:#667;line-height:1.4;margin:1px 0 0 9.7em}
+  .khelp .lean{color:#9a9}
+  .kwarn{font-size:0.72em;color:#f0663a;line-height:1.4;margin:1px 0 0 9.7em}
+  .kwarn.hidden{display:none}
+  .klegend{font-size:0.74em;color:#778;margin:2px 0 6px;line-height:1.4}
+  .klegend b{color:var(--ember)}
+  .kbtns{margin-top:4px}
+  .kbtns button{font-size:0.9em}
+  details.kpanel > summary{cursor:pointer;list-style:none}
+  details.kpanel > summary::before{content:'▸ ';color:#667}
+  details.kpanel[open] > summary::before{content:'▾ '}
+  /* Destinations rail + manual pane. The rail is the two-surface
+     end-goal's mounting point: CONTROLS/MANUAL today, Settings slots in later. */
+  #rail{position:fixed;left:0;top:0;bottom:0;width:72px;background:#151515;border-right:1px solid #333;display:flex;flex-direction:column;gap:2px;padding-top:18px;z-index:5}
+  #rail button{background:none;border:none;border-left:3px solid transparent;color:#888;padding:10px 0;margin:0;font-size:0.78em;letter-spacing:1px;cursor:pointer}
+  #rail button:hover{color:#ddd;background:#1c1c1c}
+  #rail button.active{color:var(--ember);border-left-color:var(--ember)}
+  body.railed{padding-left:88px}
+  #mlayout{display:flex;gap:14px;margin-top:12px;align-items:flex-start}
+  #mnav{flex:none;width:15em;border:1px solid #333;background:#151515;padding:6px}
+  #mnav button{display:block;width:100%;text-align:left;background:none;border:none;color:#9a9;padding:6px 8px;margin:0;font-size:0.85em;cursor:pointer}
+  #mnav button:hover{color:#ddd;background:#1c1c1c}
+  #mnav button.active{color:var(--ember);background:#181818}
+  #mcontent{flex:1;min-width:0;border:1px solid #333;background:#141414;padding:4px 18px 18px}
+  .manual h1{font-size:1.25em;color:var(--ember);margin:16px 0 8px}
+  .manual h2{font-size:1.1em;color:var(--ember);margin:16px 0 6px}
+  .manual h3,.manual h4{font-size:1em;color:#c89a5e;margin:12px 0 4px}
+  .manual p,.manual li{line-height:1.5;color:#ccc}
+  .manual code{background:#222;padding:1px 4px;color:#9c9}
+  .manual pre{background:#181818;border:1px solid #333;padding:8px 10px;overflow-x:auto}
+  .manual pre code{background:none;padding:0}
+  .manual blockquote{border-left:3px solid #445;margin:8px 0;padding:2px 12px;color:#aab}
+  .manual hr{border:none;border-top:1px solid #333;margin:14px 0}
+  .manual .tscroll{overflow-x:auto}
+  .manual table{border-collapse:collapse;font-size:0.85em;margin:8px 0}
+  .manual th,.manual td{border:1px solid #3a3a3a;padding:4px 8px;text-align:left;vertical-align:top}
+  .manual th{color:var(--ember);background:#181818}
+  .manual a{color:var(--ember)}
+  .manual .deadlink{color:#889;border-bottom:1px dotted #556;cursor:help}
+  .hidden{display:none}
