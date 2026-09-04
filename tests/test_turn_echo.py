@@ -5,13 +5,13 @@ proving is not plumbing but what it will and will not hand back:
 
   1. the composed persona is a system message, and no shape of context can get
      one out of this route — the reason the filter is an allow-list;
-  2. the two states the page distinguishes — her reply newest (paint it) vs your
-     turn newest (she is still answering);
+  2. the two states the page distinguishes — the reply newest (paint it) vs your
+     turn newest (still answering);
   3. content flattening: a message's content is a string OR a list of parts, and
      only text parts are read — the mic path's base64 audio must never ride a
      two-second poll;
   4. `seq` moves when a turn lands and holds when nothing did, since that is
-     what tells the page "nothing new" from "she said that twice".
+     what tells the page "nothing new" from "that was said twice".
 
 Duck-typed context: the module is pipecat-free, so this runs in the base venv.
 

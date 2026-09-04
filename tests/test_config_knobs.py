@@ -126,7 +126,7 @@ def test_dump_roundtrip():
     check("full dict round-trips", roundtrip(data) == data)
 
     # persona with quotes + newline survives serialization
-    tricky = _merge({}, {"llm": {"persona": 'She said "hi".\nThen left.\tOK'}})
+    tricky = _merge({}, {"llm": {"persona": 'She said "hi".\nThen left.\tOK'}})  # scrublint: allow (escaping fixture)
     check("tricky persona round-trips", roundtrip(tricky) == tricky)
 
     # deterministic section order (llm before tts)

@@ -725,7 +725,7 @@ if __name__ == "__main__":
         default=None,  # absent ⇒ a resumed session's own stamp, else "full"
         metavar="MODE",
         help="this session's memory posture: full (default — recall and retain, "
-        "unchanged), recall-only (she recalls her real memories but this "
+        "unchanged), recall-only (the companion recalls their real memories but this "
         "session leaves no memory record — nothing is retained), off (no "
         "recall, no retention — a fresh meeting). Governs the memory bank "
         "only; the session transcript keeps its own lifecycle (--hold). "

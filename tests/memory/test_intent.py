@@ -116,7 +116,7 @@ class TestIntentSlot(unittest.TestCase):
 
     def test_answer_none_writes_no_slot_and_boot_unchanged(self):
         """A deliberate close that named no topic: the model says so, and the
-        slot stays absent — she was told goodbye, not what to pick up."""
+        slot stays absent — goodbye was said, but not what to pick up."""
         with tempfile.TemporaryDirectory() as tmp:
             d, slot = Path(tmp), Path(tmp) / "intent.json"
             records_mod.write_record(_record("s1", "2026-08-29T09:00:00"), d)

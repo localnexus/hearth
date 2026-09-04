@@ -1,5 +1,5 @@
-"""features/turn_echo.py — the panel's last-reply echo: what she just said,
-shown above the box you type into.
+"""features/turn_echo.py — the panel's last-reply echo: the companion's last
+words, shown above the box you type into.
 
 DROP-IN (the panel-extension seam, same shape as memory_status): bot.py imports
 this module; registration is the import side effect, control.py takes zero
@@ -8,13 +8,13 @@ section self-gates on a 404 from this route.
 
 **No tap, no storage, no new plumbing.** control.py already hands every route
 contributor the live ``LLMContext``: the same object ``/say`` appends your typed
-turn to, and the same one the assistant aggregator appends her reply to when a
+turn to, and the same one the assistant aggregator appends the reply to when a
 turn closes. The echo is a read of state this process is already holding, which
 is why it costs one route. A live companion switch keeps the object and calls
 ``set_messages`` on it (pipeline/switcher.py), so the echo follows a switch with
 no push plumbing either.
 
-**Whole-turn, not streaming — and it runs slightly AHEAD of her voice.** The
+**Whole-turn, not streaming — and it runs slightly AHEAD of the voice.** The
 assistant message lands in the context when the aggregator closes the turn, i.e.
 when the LLM finishes; the TTS is usually still speaking it. That is the honest
 behaviour of this seam rather than a defect to paper over: token-at-a-time echo
@@ -28,11 +28,11 @@ which is what makes it structurally unable to hand one back.
 API:
     GET /turn → {ok, seq, role, text, waiting}
         seq     — how many echoable messages the context holds. The page uses it
-                  to tell "nothing new" from "she said the same thing twice".
-        role    — "assistant" when her reply is the newest message, "user" when
+                  to tell "nothing new" from "the same thing said twice".
+        role    — "assistant" when the reply is the newest message, "user" when
                   yours is.
         text    — that message's text (see _flatten).
-        waiting — role == "user": she has not answered yet.
+        waiting — role == "user": the companion has not answered yet.
 """
 
 from __future__ import annotations

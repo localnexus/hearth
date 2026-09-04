@@ -5,14 +5,14 @@
 //
 // Self-gating like the knobs and memory sections: no /turn route (the feature
 // module not imported) means the block stays hidden and the panel is what it
-// was. Text is written with textContent, never innerHTML — her reply is model
+// was. Text is written with textContent, never innerHTML — the reply is model
 // output, and the panel renders it as the plain text it is. Markdown rendering
 // belongs to the text-surface build, not to a status echo.
 const TURN_POLL_MS = 2000;
 let lastTurnSeq = -1;   // seq of the message currently painted; -1 = nothing yet
 
-// Two states worth telling apart: her reply is the newest message (paint it), or
-// yours is (she is composing — keep the previous reply on screen and say so,
+// Two states worth telling apart: the reply is the newest message (paint it), or
+// yours is (still composing — keep the previous reply on screen and say so,
 // rather than blanking the block or echoing your own words back at you).
 function renderTurn(t) {
   const el = $('lastturn'), body = $('lastturn-txt'), who = $('lastturn-who');

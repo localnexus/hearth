@@ -75,7 +75,7 @@ A character can hold several voice bundles side by side under `voices/`. Switch 
 by changing `voice` in `config/active.toml` (and restarting), or audition them live from the
 control panel.
 
-Once you have auditioned your way to a keeper, name it in her own `profile.toml` so the
+Once you have auditioned your way to a keeper, name it in that character's own `profile.toml` so the
 switch pickers reach for it instead of whichever bundle happens to sort first:
 
 ```toml
@@ -85,5 +85,5 @@ voice = "myvoice"
 
 One line, at the top of the file (a bare key written after a `[llm]` table would belong to
 that table). It changes nothing about who is live — `active.toml` remains the selection —
-only what the picker offers the moment you move *to* her. An absent or stale pin falls back
+only what the picker offers the moment you move *to* them. An absent or stale pin falls back
 to first-in-list, so nothing breaks if you rename a bundle.

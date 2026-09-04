@@ -342,7 +342,7 @@ def capture(companion: str, messages, session_id: str, cfg: dict,
 
       * an explicit topic (with or without closure) ⇒ the slot is written — a
         plan named mid-conversation is still the plan;
-      * a deliberate close with no topic ⇒ nothing written: she was told
+      * a deliberate close with no topic ⇒ nothing written: the companion was told
         goodbye, not what to pick up;
       * no deliberate closure ⇒ nothing written, because the conversation did
         not actually end — an idle timeout is not a goodbye, and inventing one

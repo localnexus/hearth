@@ -19,7 +19,7 @@ the engine is byte-identical. Enabled, the seam:
     that intent — dated — into the next boot's memory block (intent.py);
   * contains every backend failure: recall degrades to the
     compaction floor, then to nothing; store/consolidate log and drop. Memory
-    absent must mean "she doesn't recall", never "session down".
+    absent must mean "the companion doesn't recall", never "session down".
 
 Backend selection is per companion: [memory].backend is the default,
 [memory.companions] overrides it by name, "none" opts a companion out.
@@ -166,7 +166,7 @@ class MemorySeam:
 
         Provenance framing: every line carries its date (or the
         backend's own temporal phrasing inside the text). A captured intent
-        rides the same block as a dated last line — she opens aware of the
+        rides the same block as a dated last line — the companion opens aware of the
         plan, not merely better-briefed about it — and is consumed here,
         because "used" means injected, not merely read. The composed lines are
         cached for augment_turn() — the per-turn path re-frames them, never

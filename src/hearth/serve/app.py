@@ -89,7 +89,7 @@ class FacadeDeps:
     voice_cache: dict = field(default_factory=dict)
     # Per-identity transcript taps (misfiling fix 2026-08-31): the startup tap
     # serves the default character; a client-declared companion gets a tap homed
-    # under her OWN directory, built by tap_factory and cached per character.
+    # under its OWN directory, built by tap_factory and cached per character.
     tap_factory: Optional[object] = None
     tap_cache: dict = field(default_factory=dict)
     session: Optional[aiohttp.ClientSession] = field(default=None)
@@ -413,7 +413,7 @@ async def _chat(request: web.Request) -> web.StreamResponse:
 def _tap_for(deps: "FacadeDeps", character: str) -> Optional[TranscriptTap]:
     """The transcript tap for the RESOLVED companion (misfiling fix 2026-08-31):
     the startup tap serves the default identity; a client-declared character
-    files under her own transcripts directory, one cached tap per character."""
+    files under its own transcripts directory, one cached tap per character."""
     if character == deps.character or deps.tap_factory is None:
         return deps.tap
     tap = deps.tap_cache.get(character)

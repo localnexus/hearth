@@ -10,7 +10,7 @@ a backend per companion). The types here ARE the contract:
   * ``SessionRecord`` is the canonical substrate: Hearth's own
     format, written by the seam on every graceful session end, outliving any
     backend. Every backend must be rebuildable by replaying records through
-    ``store`` — backend = disposable cache, record = hers.
+    ``store`` — backend = disposable cache, record = the companion's.
   * ``MemoryBackend`` is the protocol adapters implement (~100 lines each).
     Heavy dependencies live behind optional extras (pip install
     hearth[memory-<backend>]); the floor needs none.
@@ -30,7 +30,7 @@ class MemoryItem:
     whose items embed their own temporal phrasing inside ``text`` (Hindsight's
     "When: …" facts) may leave it "" — the prompt framing then relies on the
     text itself. ``source_session`` names the record or bank the item came
-    from, so the "what she remembers" surface can trace every line.
+    from, so the "what the companion remembers" surface can trace every line.
     """
 
     text: str

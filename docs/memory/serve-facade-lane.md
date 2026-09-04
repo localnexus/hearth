@@ -65,7 +65,7 @@ pool then consume with no changes anywhere.
 
 Every step is contained. A recall failure means the base instruction; a
 checkpoint failure is logged; a close failure leaves the checkpoint for the next
-start. Memory absent must mean "she doesn't recall", never "the conversation
+start. Memory absent must mean "the companion doesn't recall", never "the conversation
 dropped".
 
 ### Client-declared companions

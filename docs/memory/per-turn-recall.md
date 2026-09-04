@@ -46,7 +46,7 @@ The feature has two lanes, one per surface:
   latency-free variant: after the user's turn *N* is transcribed, its recall runs
   **in the background, off the event loop**; the extras it finds are injected into
   the system instruction **before turn *N+1***. Zero added latency, a one-turn lag —
-  *ask, she checks, next turn she knows*. The background recall carries the same 5 s
+  *ask, they check, next turn they know*. The background recall carries the same 5 s
   deadline (`PREFETCH_DEADLINE_S`) and is discarded if a newer turn or a live
   companion switch supersedes it. Synchronous voice recall is rejected outright by
   the latency doctrine (~0.3 s before first-token, every turn).

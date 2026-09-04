@@ -39,7 +39,7 @@ check(TP.load_profiles("no-such-engine") == {}, "unknown engine -> {} (fail-soft
 # ── 2. DETECTION — deltas_for on post-normalize text
 print("\n[2] DETECTION (deltas_for)")
 P = {"crying": {"temperature": 1.2}, "fear": {"temperature": 1.2, "top_p": 0.9}}
-check(TP.deltas_for("[crying] He's gone.", P) == {"temperature": 1.2},
+check(TP.deltas_for("[crying] He's gone.", P) == {"temperature": 1.2},  # scrublint: allow (sample input fixture)
       "leading profiled tag -> its deltas")
 check(TP.deltas_for("I was fine. [crying] And then I wasn't.", P) == {"temperature": 1.2},
       "mid-chunk profiled tag -> its deltas")
@@ -88,7 +88,7 @@ class _Deps:
         self.allow_tag_profiles = allow
 
 
-base = {"model": "m", "input": "[crying] He's gone.", "response_format": "wav",
+base = {"model": "m", "input": "[crying] He's gone.", "response_format": "wav",  # scrublint: allow (sample input fixture)
         "ref_audio": "/x.wav", "temperature": 0.79}
 # no pin: deltas apply
 out = tts_prep.with_tag_profile(dict(base), _Deps({}, True))

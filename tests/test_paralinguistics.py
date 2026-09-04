@@ -44,7 +44,7 @@ REPAIR = [
     ("*shushes*", "[shush]"), ("[shushing]", "[shush]"), ("(shush)", "[shush]"),
     # clear throat (multi-word canonical + possessive/word-order variants)
     ("*clears throat*", "[clear throat]"), ("(clearing throat)", "[clear throat]"),
-    ("[clears his throat]", "[clear throat]"), ("{throat clearing}", "[clear throat]"),
+    ("[clears his throat]", "[clear throat]"), ("{throat clearing}", "[clear throat]"),  # scrublint: allow (literal tag fixtures)
     ("*clear throat*", "[clear throat]"),
     # curated multi-word tag-attempts (deliberate +1-word whitelist)
     ("[soft sigh]", "[sigh]"), ("[ soft sigh ]", "[sigh]"), ("(soft sighs)", "[sigh]"),
@@ -66,9 +66,9 @@ REPAIR = [
 UNCHANGED = [
     "*sighs heavily*",              # +1 word (modifier) crosses the threshold
     "*pulls you into a hug*",       # stage-direction action, no canonical root
-    "*clears his throat twice*",    # extra word beyond the clear-throat expression
+    "*clears his throat twice*",    # extra word beyond the expression — scrublint: allow
     "(sarcastically)",              # non-square: catch-all is BRACKET-ONLY
-    "She sighed and left.",         # unwrapped prose
+    "She sighed and left.",         # unwrapped prose — scrublint: allow
     "The dog coughs a lot.",        # unwrapped prose
     "*sigh)",                       # mismatched enclosure
     "(see the note)",               # non-cue parenthetical
@@ -99,12 +99,12 @@ STRIP = [
                                     # logged UNKNOWN so the chuckle can be curated
     ("[quietly]", ""), ("[teasingly]", ""),
     ("[beat]", ""), ("[sic]", ""),
-    ("She's right. [softly] I know.", "She's right. I know."),
+    ("She's right. [softly] I know.", "She's right. I know."),  # scrublint: allow (sample prose fixture)
     # BRACE catch-all — some models drift to `{cue}` not `[cue]`.
     # Repair salvages brace CUE roots ({chuckle}->[chuckle]); a SURVIVING brace is a
     # non-cue that previously reached Chatterbox and was SPOKEN ALOUD.
     ("{softly}", ""), ("{soft chuckle}", ""), ("{grins}", ""), ("{warmly}", ""),
-    ("She's right. {softly} I know.", "She's right. I know."),
+    ("She's right. {softly} I know.", "She's right. I know."),  # scrublint: allow (sample prose fixture)
     # mixed: brace cue repaired+kept, brace non-cue stripped, in one line
     ("{chuckle} come here {grins} now.", "[chuckle] come here now."),
 ]

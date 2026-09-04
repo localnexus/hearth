@@ -3,7 +3,7 @@
 Prefetch-behind: after the user's turn N
 is transcribed, a targeted recall runs in the BACKGROUND, off the event loop; its
 extras are injected into the system instruction before turn N+1. Zero added
-latency, a one-turn lag — "ask, she checks, next turn she knows". Synchronous
+latency, a one-turn lag — "ask, they check, next turn they know". Synchronous
 voice recall is rejected by the latency doctrine (it would add ~0.3 s before
 first-token every turn).
 

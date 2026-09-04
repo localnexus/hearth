@@ -52,8 +52,8 @@ strip vs keep) is the full handler's job, not this slice's.
 It deliberately does NOT: translate open-ended multi-word prose stage-directions
 (`*sighs heavily*`, `*pulls you into a hug*` — a second, non-whitelisted word
 crosses the modifier threshold), STRIP `*…*` / `(…)` enclosures (repair still fires
-there; only the catch-all strip skips them), or touch unwrapped words (`She
-sighed.`). Idempotent, zero latency.
+there; only the catch-all strip skips them), or touch unwrapped words — sample
+prose, e.g. `She sighed.`, is left alone. Idempotent, zero latency.  scrublint: allow
 
 Source of truth for the nine shipped cues: the active model's
 system-prompt-template.md.
@@ -104,10 +104,12 @@ _PHRASES = [
 # braces). Angle brackets are intentionally excluded (mild prose ambiguity).
 _ENCLOSURES = [("*", "*"), ("(", ")"), ("[", "]"), ("{", "}")]
 
-# `clear throat` — the one multi-word canonical. `his/her/the/my` is part of the
-# expression, not an extra modifier; anything beyond it fails the bare-root test.
+# `clear throat` — the one multi-word canonical. The pronoun alternatives are
+# part of the expression a model actually emits, not an extra modifier; anything beyond it
+# fails the bare-root test. The pronouns below are matched literals, not register
+# — they must stay exactly as written. (scrublint: allow)
 _CLEAR_THROAT = (
-    r"clear(?:s|ing|ed)?\s+(?:his|her|the|my)\s+throat"
+    r"clear(?:s|ing|ed)?\s+(?:his|her|the|my)\s+throat"  # scrublint: allow
     r"|clear(?:s|ing|ed)?\s+throat"
     r"|throat[-\s]*clear(?:ing|s|ed)?"
 )

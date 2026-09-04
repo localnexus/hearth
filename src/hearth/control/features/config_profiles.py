@@ -39,7 +39,7 @@ WHAT A PROFILE HOLDS
     baseline preset (a valid "reset-to-default" preset), which is fine.
 
     A character profile may additionally carry ONE selection key, `voice` — the bundle
-    the switch pickers reach for when you move to her (config_loader.preferred_voice).
+    the switch pickers reach for when you move to them (config_loader.preferred_voice).
     Nothing here writes it: it is an operator hand-edit, and save/load/reset leave it
     exactly where it is (the save carries it through rather than erasing it).
 

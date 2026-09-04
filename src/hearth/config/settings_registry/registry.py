@@ -76,7 +76,7 @@ REGISTRY: dict[str, FileEntry] = {e.kind: e for e in (
               note="PANEL-MANAGED snapshots of the override deltas for one companion or voice; "
                    "they travel with the companion's directory. An empty preset == baseline. One "
                    "key is yours, not the panel's: `voice` in a CHARACTER profile pins the bundle "
-                   "the switch pickers offer when you move to her — hand-edit it, and a panel save "
+                   "the switch pickers offer when you move to that character — hand-edit it, and a panel save "
                    "carries it through untouched."),
 )}
 

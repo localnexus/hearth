@@ -39,7 +39,7 @@ running event loop. The event-loop thread only ever mutates the session table.
 Containment: this is the health-load-bearing channel. Every step is
 try/except-contained — recall failure ⇒ the base instruction, checkpoint
 failure ⇒ logged, close failure ⇒ logged and the checkpoint survives for the
-next start. Memory absent must mean "she doesn't recall", never "the
+next start. Memory absent must mean "the companion doesn't recall", never "the
 conversation dropped".
 """
 

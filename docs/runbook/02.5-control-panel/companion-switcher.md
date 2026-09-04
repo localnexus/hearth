@@ -23,7 +23,7 @@ lightest way it can:
 
 **Which voice a character comes up in.** Voice and persona belong to the character, so picking
 a different one re-derives both. Staying on the current character keeps what is live; moving to
-another reaches for **her remembered voice** — `voice = "<bundle>"` at the top of
+another reaches for **their remembered voice** — `voice = "<bundle>"` at the top of
 `characters/<c>/profile.toml`, a hand-edit you make once (see
 [bring-your-own-voice.md](../../bring-your-own-voice.md), "Multiple voices"). Without a pin the
 picker offers whichever bundle sorts first, which is only right by luck once a character holds

@@ -8,7 +8,7 @@
   input[type=text],textarea{width:100%;box-sizing:border-box;padding:8px;background:#222;color:#eee;border:1px solid #444;font-family:inherit;font-size:1em}
   textarea{resize:vertical;min-height:4.5em;line-height:1.4}
   /* Last-reply echo (features/turn_echo): directly above the compose box, so the
-     newest thing she said and the box you answer in are one glance apart. Capped
+     newest thing said and the box you answer in are one glance apart. Capped
      and scrollable — a long reply must not push the controls off the screen. */
   #lastturn{margin-bottom:12px;padding:10px 12px;background:#191919;border:1px solid #333;border-left:2px solid var(--ember)}
   #lastturn-who{font-size:0.7em;letter-spacing:1px;text-transform:uppercase;color:#777;margin-bottom:6px}

@@ -136,7 +136,7 @@ def list_voices(character: str) -> list:
 def preferred_voice(character: str) -> str | None:
     """The character's remembered voice bundle: `voice = "<name>"` at the top of
     characters/<character>/profile.toml (DATA, else ROOT) — what the switch pickers
-    offer when you move TO her, instead of whichever bundle sorts first.
+    offer when you move TO them, instead of whichever bundle sorts first.
 
     None when unset, unreadable, or naming a bundle that isn't there. The pin is a
     convenience, never a gate: a stale name falls back to first-in-list rather than

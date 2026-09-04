@@ -9,7 +9,7 @@ before any backend sees it (the record is the substrate, the
 backend an index; the floor IS the substrate reader, so it has nothing to
 index). That also makes it the degrade-to-floor target: when a
 richer backend fails, the seam answers from here, and memory absent means
-"she doesn't recall", never "session down".
+"the companion doesn't recall", never "session down".
 """
 
 from __future__ import annotations

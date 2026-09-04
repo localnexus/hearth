@@ -9,7 +9,7 @@ and the write is verified with compose_persona — the startup path — with the
 previous text restored if composition breaks.
 
 The GET is authed for a reason: persona text is the one piece of a character
-that is genuinely hers, and it crosses this wire only behind the bearer, only
+that is genuinely theirs, and it crosses this wire only behind the bearer, only
 to the operator's own browser.
 
 One part of the /admin/roster arc; the package __init__ carries the map of the

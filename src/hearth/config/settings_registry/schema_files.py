@@ -144,8 +144,8 @@ class VadFile(_Cfg):
 
 class ProfileFile(_Cfg):
     voice: Optional[str] = Field(None, pattern=_NAME,
-                                 description="character scope only: her remembered voice bundle — what the "
-                                             "switch pickers offer when you move to her (else first-in-list)")
+                                 description="character scope only: that character's remembered voice bundle — what "
+                                             "the switch pickers offer when you move to them (else first-in-list)")
     llm: Optional[_OvLLM] = Field(None, description="character preset: deltas from the model baseline")
     tts: Optional[_OvTTS] = Field(None, description="voice preset: deltas from the engine baseline")
 

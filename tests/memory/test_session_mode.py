@@ -117,7 +117,7 @@ class TestSessionMode(unittest.TestCase):
                 seam._floor = FloorBackend(d)
                 out = seam.augment("SYSTEM PROMPT")
             self.assertIn("## MEMORY — from earlier conversations", out)  # recall is live
-            self.assertIn("the tea ceremony", out)     # she opens aware of the plan…
+            self.assertIn("the tea ceremony", out)     # opens aware of the plan…
             self.assertTrue(slot.is_file())            # …but the slot is peeked, not popped
             # The next FULL boot still gets to consume it.
             with mock.patch.object(intent_mod, "intent_path", return_value=slot):

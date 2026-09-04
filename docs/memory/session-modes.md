@@ -13,7 +13,7 @@ postures:
 
 ```bash
 ./start.sh                         # full (default): recall + retain, as configured
-./start.sh --memory recall-only    # she remembers everything — this sitting adds nothing to the bank
+./start.sh --memory recall-only    # they remember everything — this sitting adds nothing to the bank
 ./start.sh --memory off            # no recall, no retention: a fresh meeting
 ```
 
@@ -74,7 +74,7 @@ land next time:
 * **At the next session start** — the recall query becomes the standing
   `recall_query` **plus** the stated topic (semantic backends surface material
   *about* it), and the memory block gains a dated line: *"On 2026-08-30 you
-  agreed to pick up the tea ceremony next time."* She opens aware of the plan.
+  agreed to pick up the tea ceremony next time."* The companion opens aware of the plan.
 * **Consume-once** — the slot is deleted the moment it has been injected. A
   plan that re-asserts itself for weeks is worse than no plan. An expiry
   backstop (`expiry_days`, default 14) clears one that was never used. (One

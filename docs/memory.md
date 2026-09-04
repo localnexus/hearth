@@ -33,7 +33,7 @@ on a graceful stop `[memory] record kept (<session>)`.
   lives here, never mid-conversation.
 * **Failure containment** — any backend failure degrades: recall falls back to
   the floor, then to nothing; store/consolidate log and drop. Memory absent
-  means "she doesn't recall", never "session down".
+  means "the companion doesn't recall", never "session down".
 
 ## Privacy — read this before enabling
 
@@ -61,7 +61,7 @@ Memory's detail lives in [`memory/`](memory/), one page per concern:
 
 ## Not built yet (deliberate)
 
-An idle-time consolidate trigger; a "what she remembers" panel page with
+An idle-time consolidate trigger; a "what the companion remembers" panel page with
 accept/edit/discard cards for extracted facts. The seam's contracts already leave
 room for both.
 
