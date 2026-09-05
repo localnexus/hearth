@@ -121,7 +121,7 @@ class TurnEcho(unittest.TestCase):
     def test_provider_specific_entries_are_skipped(self):
         """LLMContext can hold LLMSpecificMessage objects — one provider's wire
         format, not a conversation turn."""
-        specific = types.SimpleNamespace(llm="anthropic", message={"role": "user"})
+        specific = types.SimpleNamespace(llm="zz-provider", message={"role": "user"})
         body = self._get(PERSONA, {"role": "assistant", "content": "mine"}, specific)
         self.assertEqual(body["role"], "assistant")
         self.assertEqual(body["text"], "mine")
