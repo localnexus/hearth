@@ -9,7 +9,7 @@ The Hearth mark: a flame in a fireplace, inside an amber ring, on charcoal.
 | `hearth-banner.jpg` | Wide 3:2 banner (1200×800) for pages that want the full composite. |
 | `hearth-avatar-512.png` | Square avatar — org / repo / app icon. |
 | `hearth-social-1280x640.png` | Link-preview card (GitHub social preview, Open Graph). |
-| `elements/` | Layer cutouts (RGBA): `layer-flame`, `layer-fireplace`, `layer-circular-border`, plus the composite with the ring removed. Use the flame alone at small sizes — the thin ring aliases below ~48 px. |
+| `elements/` | Layer cutouts (RGBA): `layer-flame`, `layer-fireplace`, `layer-circular-border`, plus the composite with the ring removed. Use the flame alone at small sizes — the thin ring aliases below ~48 px. `gray-flame` (279×459, RGBA) is the flame as three flat gray tonal layers — the resting/state form (each layer a state; favicon first, mark later). |
 
 Integrity: `SHASUMS-256.txt` (`shasum -a 256 -c SHASUMS-256.txt`).
 
