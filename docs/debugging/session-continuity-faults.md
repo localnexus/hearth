@@ -15,8 +15,8 @@
 **Symptom:** `./start.sh --resume work-chat` reports the session can't be found.
 
 **Check:**
-1. Was `./stop.sh --hold work-chat` run **before** the bot stopped?
-2. `ls characters/<character>/sessions/` (under the data root) — does `work-chat.json` or `session-work-chat.json` exist?
+1. Was `./stop.sh --hold work-chat` run **before** the companion stopped?
+2. `ls characters/<character>/sessions/` (under the data folder) — does `work-chat.json` or `session-work-chat.json` exist?
 3. Bare `./start.sh --resume` (no name) shows the full metadata picker — find the file there and use its exact name or path.
 
 ### Fault S3 — persona or model seems different after a resume
@@ -39,7 +39,7 @@
 
 ### Fault S5 — where the transcript lives; how to purge it
 
-**Transcript path:** `characters/<character>/sessions/<id>.json` under the data root — plaintext message list, `0600`, gitignored. The persona prompt is NOT stored.
+**Transcript path:** `characters/<character>/sessions/<id>.json` under the data folder — plaintext message list, `0600`, gitignored. The persona prompt is NOT stored.
 
 **Purge options:**
 - `./stop.sh --discard-held [name|--all]` — true-delete a held session.

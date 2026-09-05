@@ -29,7 +29,7 @@ in a continuous, low-latency loop. Every stage runs locally against endpoints yo
 - **Local by construction.** The pipeline targets endpoints on your own machine. There is no
   telemetry, no phone-home, no hosted API in the default path.
 - **Bring your own everything.** Hearth ships the *pipeline* and the *cloning capability*, not
-  the heavy or rights-encumbered pieces. You supply the LLM weights, the inference server, and
+  the heavy or rights-encumbered pieces. You supply the model weights, the inference server, and
   any voices you want beyond the default. This keeps the project small, permissively licensed,
   and puts the choices that carry legal or ethical weight (which model, whose voice) in your
   hands.
@@ -42,7 +42,7 @@ in a continuous, low-latency loop. Every stage runs locally against endpoints yo
 Hearth is designed to run on hardware **you** control. Two tiers are supported:
 
 - **Gold tier — sovereign local (recommended).** Everything runs on your own Apple Silicon
-  Mac: the LLM server, the speech models, the pipeline. Nothing is rented, nothing is remote.
+  Mac: the model server, the speech models, the pipeline. Nothing is rented, nothing is remote.
   This is the tier the project is tuned for today. The Mac-only speech chain installs via the
   `hearth[mac]` extra.
 - **Silver tier — rented raw GPU with root.** A GPU box you rent but administer as root (you
@@ -75,9 +75,9 @@ Sizing detail (memory floor, disk, measured latency, which chips are fast enough
    Full walkthrough — system prerequisites (PortAudio!), fetching the speech models, the first
    launch — in [Installing Hearth](docs/installing.md).
 
-2. **Bring an LLM.** Download GGUF weights for a chat model you like and serve them with
+2. **Bring an model.** Download GGUF weights for a chat model you like and serve them with
    [`llama-server`](https://github.com/ggml-org/llama.cpp) (from llama.cpp), which exposes an
-   OpenAI-compatible endpoint. Hearth targets that endpoint — **no LLM server is bundled.**
+   OpenAI-compatible endpoint. Hearth targets that endpoint — **no model server is bundled.**
    (LM Studio works too as an alternative workbench, but `llama-server` is the recommended,
    regression-stable default.)
 
@@ -110,7 +110,7 @@ Sizing detail (memory floor, disk, measured latency, which chips are fast enough
 
 Three things Hearth deliberately does **not** bundle:
 
-- **Weights.** You choose and download the LLM. Hearth is model-agnostic — it speaks to any
+- **Weights.** You choose and download the model. Hearth is model-agnostic — it speaks to any
   OpenAI-compatible endpoint.
 - **The server.** No inference server ships. `llama-server` is the recommended default; you
   install and run it.

@@ -14,16 +14,16 @@
 
 | Dependency | Needed? | Note |
 |---|---|---|
-| **LLM server** (`llama-server` on `:8080` — the default; LM Studio on `:1234` + its token as the alternative) | **Yes** | must serve the model the bot targets — resolved from config (`config/active.toml` → `config/models/<model>/model.toml` → `.id`). `llama-server` serves its one loaded model regardless of the id; LM Studio needs it verbatim. A hybrid-thinking model needs thinking forced OFF via `reasoning_effort:"none"` (`model.toml`, sent every request); if the template ignores it, a `llama-server` start-up switch — or, under LM Studio, its persistent Prompt-Template edit (`model.toml.needs_template_edit`). A key is needed only if the server asks for one (`llama-server --api-key`; LM Studio always). |
+| **model server** (`llama-server` on `:8080` — the default; LM Studio on `:1234` + its token as the alternative) | **Yes** | must serve the model the companion targets — resolved from config (`config/active.toml` → `config/models/<model>/model.toml` → `.id`). `llama-server` serves its one loaded model regardless of the id; LM Studio needs it verbatim. A hybrid-thinking model needs thinking forced OFF via `reasoning_effort:"none"` (`model.toml`, sent every request); if the template ignores it, a `llama-server` start-up switch — or, under LM Studio, its persistent Prompt-Template edit (`model.toml.needs_template_edit`). A key is needed only if the server asks for one (`llama-server --api-key`; LM Studio always). |
 | **A default mic + speaker** | **Yes** | transport grabs the macOS **default** in/out at startup (no device pinned). Esp. after a Bluetooth switch — see §1 check 3 |
 | **In-process TTS** (Chatterbox-Turbo) | auto | loads inside `bot.py` at startup from the `.venv`; **no app, no port**. Weights cached under `~/.cache/huggingface` |
 | **In-process STT** (MLX-Whisper) | auto | same — loads inside `bot.py` at startup |
 | **mic permission** | **Yes** | granted to **iTerm.app** (or whichever terminal launches python), not python itself (macOS TCC) |
 | **`.venv`** | **Yes** | `uv venv -p 3.12 && uv pip install -e ".[mac]"` (README). **`transformers` must be pinned `==5.5.0`** |
 | A separate TTS service/port | **No** | not used — TTS is in-process. |
-| Ollama `:11434` | **No** | not used (the LLM comes from the server above). Ignore. |
+| Ollama `:11434` | **No** | not used (the model comes from the server above). Ignore. |
 
-> The LLM server is a separate, long-running process — "online/offline" below means *the conversation loop* (`bot.py`). You normally leave the server running. §4 covers reclaiming its memory.
+> The model server is a separate, long-running process — "online/offline" below means *the conversation loop* (`bot.py`). You normally leave the server running. §4 covers reclaiming its memory.
 
 ## Version pins — if you use LM Studio instead of `llama-server`
 

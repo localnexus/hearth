@@ -13,7 +13,7 @@ prompt's job; the dials can't buy them. Keep that split in mind and the rest is 
 > **What you can touch today:** `temperature` and `reasoning_effort` are owned by Hearth — both start in
 > `config/models/<model>/model.toml` and the panel's **CHARACTER** box can move them live (that's what it
 > writes into `config/overrides.toml`). The word-net knobs (`top_p/top_k/min_p`, `repeat_penalty`) and
-> `max_tokens` are left to **your LLM server's** defaults — set them where that server takes them
+> `max_tokens` are left to **your model server's** defaults — set them where that server takes them
 > (`llama-server` command-line flags; LM Studio's GUI, if that's what you run). The length rule is
 > prompt-side and live now. How the panel's Save/Load/Reset around these knobs works is
 > [The live knobs panel](the-live-knobs-panel.md).
@@ -58,7 +58,7 @@ casual.
 **Net:** reach for this when the companion seems to be *misunderstanding*, not when it seems flat or
 robotic — that's `temperature`'s job, above. `none` or `low` suits most companion chatter.
 
-## top_p / top_k / min_p — the word-net  · *your LLM server's, not Hearth's*
+## top_p / top_k / min_p — the word-net  · *your model server's, not Hearth's*
 
 **What they are:** three ways of drawing the pool of words the companion is *allowed* to consider before temperature
 rolls the dice among them. Tighter net = only the common, likely words. Looser net = rare and colorful words
@@ -76,7 +76,7 @@ feels plain even after you've raised temperature.
 **Net:** the safety rails on spontaneity. If temperature is the dice, this is how many faces they have. Reach
 for **min_p** first.
 
-## repeat_penalty — the "circle back or loop?" dial  · *your LLM server's, not Hearth's*
+## repeat_penalty — the "circle back or loop?" dial  · *your model server's, not Hearth's*
 
 **What it is:** how strongly the companion avoids reusing words and phrases they just said.
 
@@ -92,7 +92,7 @@ loops.
 **Net:** for a companion, err **gentle** — the warmth of returning to something usually beats the tidiness of
 never repeating.
 
-## max_tokens — the emergency brake, NOT a volume knob  · *your LLM server's, unset by Hearth*
+## max_tokens — the emergency brake, NOT a volume knob  · *your model server's, unset by Hearth*
 
 **What it is:** a hard ceiling on how many words a single reply can be.
 

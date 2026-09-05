@@ -6,12 +6,12 @@ leak a secret.*
 
 **Authoritative sources:** knob-by-knob meaning → `docs/config-manual/` (its `README.md` maps request → file →
 key, with a topic page per family); every key, default, and range in one generated table →
-`docs/config-manual/settings-reference.md` and `settings-reference-gates.md`; the facade gate →
+`docs/config-manual/settings-reference.md` and `settings-reference-gates.md`; the Hearth on/off switch →
 `config/serve.toml.example` (the committed template). This page is the ownership map; those hold the details.
 
 Every layer below ships as a committed `.example` template. Copy it to the real (gitignored) filename before
-you use it — the copying is yours either way, and it is the first thing a new install needs. **Once the
-serve facade is running you can edit any of these as a form** on `/admin/settings/ui`, which validates
+you use it — the copying is yours either way, and it is the first thing a new install needs. **Once
+Hearth is running you can edit any of these as a form** on `/admin/settings/ui`, which validates
 before it writes; until then these files are the only door, which is why this page names them plainly.
 Either way this page is about *who owns what*, so it names the files rather than sending you to them. After a
 hand-edit, run `python -m hearth.config.check` — it validates every config file
@@ -27,14 +27,14 @@ Every path below is relative to one of two anchors:
 | Anchor | Env var | Holds | Default |
 |---|---|---|---|
 | **Engine tree** | `HEARTH_ROOT` | the code, the shipped baselines (`config/tts/`, `config/vad.toml`), the `example` character and model config, the `.example` templates | the checkout (found from the package) |
-| **Data root** | `HEARTH_DATA` | **everything you own**: `characters/` (persona, voices — and each companion's `sessions/`, `transcripts/`, `captures/`, `profile.toml`), `config/models/`, `config/active.toml`, `config/overrides.toml`, `config/serve.toml` + token | **the engine tree** |
+| **Data folder** (`data root` in the code) | `HEARTH_DATA` | **everything you own**: `characters/` (persona, voices — and each companion's `sessions/`, `transcripts/`, `captures/`, `profile.toml`), `config/models/`, `config/active.toml`, `config/overrides.toml`, `config/serve.toml` + token | **the engine tree** |
 
-Leave `HEARTH_DATA` unset and the checkout doubles as your data root — the layout is
+Leave `HEARTH_DATA` unset and the checkout doubles as your data folder — the layout is
 exactly the one described here, and the public `.gitignore` keeps your companions, model
 configs, and runtime files out of git. Set it (a vault, `~/.hearth`, anywhere) to keep
 companions outside the checkout entirely: one directory per companion is then the whole
-companion — copy it to move it, delete it to erase it. Lookup is **data root first, then
-the engine tree**, so the shipped `example` stays reachable from an empty data root, and
+companion — copy it to move it, delete it to erase it. Lookup is **data folder first, then
+the engine tree**, so the shipped `example` stays reachable from an empty data folder, and
 your own `characters/example/` would shadow it. `./start.sh --check` prints both roots.
 
 ## The layers at a glance
@@ -47,10 +47,10 @@ secret you only ever manage, never read.
 | **`config/active.toml`** | **You** (operator) | Edit the `character` / `model` / `voice` selection (and an optional `persona` variant), then restart | [Switching who's live](switching-who-is-live.md) · `docs/config-manual/llm.md` |
 | **`config/overrides.toml`** | **The :65000 panel** (live knobs) | **Don't hand-edit.** Read it to understand a sticky setting; let the panel manage it | `docs/config-manual/README.md` · `docs/runbook/02.5-control-panel.md` · [The live knobs panel](the-live-knobs-panel.md) |
 | **`config/models/<model>/`** | **You** | Edit `model.toml` load facts + `system-prompt-template.md` | `docs/config-manual/llm.md` |
-| **`config/serve.toml`** | **You** — but it holds a **bearer** | Manage the gate; **never print its contents** | This page, below · `config/serve.toml.example` |
-| **`config/tts/<engine>/tts.toml`**, **`config/vad.toml`** | **Shipped baselines** (calibrated) | Leave alone unless you're re-calibrating by ear/mic — or use the panel's **VOICE** / **LISTENING** boxes, which layer live values over these from `overrides.toml`. A copy under your data root replaces the shipped file whole | `docs/config-manual/voice-tts.md` · `docs/config-manual/listening-vad-barge-in.md` · [The live knobs panel](the-live-knobs-panel.md) |
+| **`config/serve.toml`** | **You** — but it holds an **access key** | Manage the switch; **never print its contents** | This page, below · `config/serve.toml.example` |
+| **`config/tts/<engine>/tts.toml`**, **`config/vad.toml`** | **Shipped baselines** (calibrated) | Leave alone unless you're re-calibrating by ear/mic — or use the panel's **VOICE** / **LISTENING** boxes, which layer live values over these from `overrides.toml`. A copy under your data folder replaces the shipped file whole | `docs/config-manual/voice-tts.md` · `docs/config-manual/listening-vad-barge-in.md` · [The live knobs panel](the-live-knobs-panel.md) |
 | **`characters/<name>/profile.toml`**, **`…/overrides.toml`** (and per voice) | **The panel** | The companion's saved knob preset, and a live mirror of its identity-scope knobs — they travel with the companion. Hands off | `docs/config-manual/README.md` · [The live knobs panel](the-live-knobs-panel.md) |
-| **`config/memory.toml`**, **`config/openclaw.toml`** | **You** | Two more gates, both OFF by default: cross-session memory, and the companion's dispatch "hands" | `docs/memory.md` · `docs/config-manual/settings-reference-gates.md` |
+| **`config/memory.toml`**, **`config/openclaw.toml`** | **You** | Two more switches, both OFF by default: cross-session memory, and the companion's dispatch "hands" | `docs/memory.md` · `docs/config-manual/settings-reference-gates.md` |
 
 ---
 
@@ -58,10 +58,10 @@ secret you only ever manage, never read.
 
 Your one deliberate lever for *who's live*: `character`, `model`, `voice` — plus an optional
 `persona = "<variant>"` that picks `persona.<variant>.md` beside the character's `persona.md`. It's read
-**once at startup** by whichever lane reads it (a desk `bot.py`, or the facade) — nothing hot-swaps by
+**once at startup** by whichever lane reads it (a desk `bot.py`, or Hearth) — nothing hot-swaps by
 itself. Edit, then restart: [Switching who's live](switching-who-is-live.md).
 
-With the supervisor daemon on, that same file is written *for* you by one press of the panel's
+With the launch page on, that same file is written *for* you by one press of the panel's
 **COMPANION** switcher, which then applies it live when it can — [The one-button switch](the-one-button-switch.md).
 
 ## `overrides.toml` — the panel's layer (hands off)
@@ -95,38 +95,38 @@ Two files per model dir, both **yours** to edit:
 
 Every change here needs a **restart** to apply. Per-knob meaning lives in `docs/config-manual/llm.md`.
 
-## `config/serve.toml` — the facade gate (manage, never print)
+## `config/serve.toml` — the Hearth on/off switch (manage, never print)
 
 Everywhere a person reads — the install guide, the launch and first-run pages — this process is
 simply **Hearth, the program you start** (`python -m hearth.serve`), and its token is **your access
-key**. *Facade* and *bearer* are the names the config, the logs and this manual use for the same two
-things; nothing else is meant by either.
+key**. In the config keys, the logs and the code you will meet them once under their technical names:
+*facade* (this process) and *bearer* (the access key) — nothing else is meant by either. <!-- manual-lint: allow -->
 
-This is the switch that decides whether the **:65001 facade** runs at all, plus its auth. It's **yours to
-manage** — but it holds a **bearer token path**, so it has one hard rule:
+This is the switch that decides whether **Hearth's network door (:65001)** opens at all, plus its auth. It's **yours to
+manage** — but it holds an **access key path**, so it has one hard rule:
 
 > **Never print, `cat`, or echo `config/serve.toml` or `config/serve-token`.** Not to "check the token,"
-> not to debug. To confirm the facade is authing correctly, use the **inline-token idiom** instead — it
+> not to debug. To confirm Hearth is authing correctly, use the **inline-token idiom** instead — it
 > feeds the token to a header and displays nothing:
 > ```bash
 > curl -s -H "Authorization: Bearer $(cat config/serve-token)" http://127.0.0.1:65001/v1/models
 > ```
 
-On a new install this file, its token, and both gates come from the first-run bootstrap
-(`hearth.init`) — it copies the template, mints the token at `token_source` (0600), and sets
+On a new install this file, its token, and both switches come from the first-run setup
+(`hearth.init`) — it copies the template, mints the token at `token_source` (readable only by you), and sets
 `[serve] enabled` and `[serve.supervisor] enabled` without touching another byte.
 
 What the *committed template* (`config/serve.toml.example`, safe to read) tells you without exposing the live
 file:
 
 - **`enabled = false` ⇒ nothing loads, no sockets** — the appliance is byte-identical when off. This is a
-  **gate**, so "connection refused" after a bounce can simply mean it's disabled, not broken.
+  **switch**, so "connection refused" after a bounce can simply mean it's disabled, not broken.
 - **`host = "127.0.0.1"`** loopback by default; a tailnet reach is a `100.x` literal or `tailscale serve`
   fronting — **never `0.0.0.0`.**
-- **Bearer auth is *always on*** — there is no unauthenticated mode, so a later tailnet bind can never become
+- **Access key auth is *always on*** — there is no unauthenticated mode, so a later tailnet bind can never become
   an accidental open door. `token_source` is a **path** to the token, never the token itself.
 
-## The two gates you'll meet later: `memory.toml` and `openclaw.toml`
+## The two switches you'll meet later: `memory.toml` and `openclaw.toml`
 
 Both ship **off**, and both are byte-identical no-ops while off — the same house idiom as `serve.toml`.
 
@@ -139,7 +139,7 @@ Both ship **off**, and both are byte-identical no-ops while off — the same hou
   voice recall) is the single exception to "this file decides": it's a runtime-only poke that never writes
   back to `memory.toml`.
 - **`config/openclaw.toml`** gives the companion two narrow tools for dispatching work to an OpenClaw agent.
-  One gate drives both the tools and the prompt paragraph that mentions them, so capability and prompt can
+  One switch drives both the tools and the prompt paragraph that mentions them, so capability and prompt can
   never disagree. (Unrelated to [The OpenClaw voice lane](the-openclaw-voice-lane.md), which is about
   OpenClaw *speaking* in a Hearth voice.)
 
@@ -155,5 +155,5 @@ Which services keep these files loaded, and on which ports, is
 - **A setting won't stick?** The **panel's** `overrides.toml` is probably winning — clear it via the panel,
   don't hand-edit.
 - **Tuning the model or its prompt?** `config/models/<model>/` + restart.
-- **The facade won't answer?** Check the `serve.toml` gate — and **never** print it.
+- **Hearth won't answer?** Check the `serve.toml` switch — and **never** print it.
 - **Hand-edited something and want to be sure?** `python -m hearth.config.check`.

@@ -1,6 +1,6 @@
 # Session continuity — the companion's `sessions/` dir and CLI flags
 
-Per-turn transcript saved to `characters/<character>/sessions/<id>.json` under the data root (dir `0700`, file `0600`, gitignored). Sessions are keyed by companion: the choosers only offer the live character's; `python -m hearth.session.session_store list` shows every companion's. Persona prompt NOT stored. No new env vars or deps.
+Per-turn transcript saved to `characters/<character>/sessions/<id>.json` under the data folder (dir `0700`, file `0600`, gitignored). Sessions are keyed by companion: the choosers only offer the live character's; `python -m hearth.session.session_store list` shows every companion's. Persona prompt NOT stored. No new env vars or deps.
 
 **Saved by default** — `./stop.sh` keeps the session (unclean exits keep it too); deleting is the
 explicit act. The one carve-out: a `--memory recall-only` sitting stays **transcript-ephemeral** —

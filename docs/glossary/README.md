@@ -1,4 +1,5 @@
 # GLOSSARY — terms, acronyms & shorthand
+<!-- manual-lint: allow-file — the glossary defines the technical names the manual avoids -->
 
 **What this is.** The plain-language decoder for this project's acronyms and shorthand — so someone
 **new to this work** can read the other docs without prior context.

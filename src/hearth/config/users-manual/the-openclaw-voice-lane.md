@@ -34,7 +34,7 @@ OpenClaw reply text ──/v1/audio/speech──▶  mlx-audio shim  :8555 (loop
                                                             cloned-voice audio
 ```
 
-A companion **voice agent** ("Hearth Voice") also runs OpenClaw's turns on the same local LLM Hearth
+A companion **voice agent** ("Hearth Voice") also runs OpenClaw's turns on the same local model Hearth
 uses — so both the words and the voice stay local.
 
 ---
@@ -45,10 +45,10 @@ uses — so both the words and the voice stay local.
   Localhost-only by design: **personal voices never leave the machine.** It serves `/v1/audio/speech` (the
   TTS-with-cloning route OpenClaw calls) and also carries idle STT routes.
 - **The OpenClaw side** points its TTS provider at `http://127.0.0.1:8555/v1` with a **dummy API key** (the
-  server ignores it — loopback is the gate), `wav` output, and an `extraBody.ref_audio` pointing at the
+  server ignores it — loopback is the switch), `wav` output, and an `extraBody.ref_audio` pointing at the
   chosen voice sample. It's **on-demand only** (`/tts audio <text>`), not automatic.
 
-> **Same :8555 as Hearth's facade.** This is the very server the Hearth facade also proxies to for its voice
+> **Same :8555 as Hearth's own voice door.** This is the very server Hearth (:65001) also proxies to for its voice
 > notes — one loopback TTS engine, two consumers. Keep its version pins stable, or bump both consumers
 > together (the ops README spells out the exact pins and why they matter).
 

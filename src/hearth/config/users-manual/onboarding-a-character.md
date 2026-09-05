@@ -9,8 +9,8 @@ requirement). The licensing frame: `docs/COMPONENT-LICENSING.md`. The what-to-ed
 `docs/config-manual/voice-tts.md`. This page walks the *shape* of the process; those hold the exact steps.
 
 The fastest start: copy `characters/example/` and edit it. Or let the **roster
-wizard** do the mechanical steps for you — `/admin/roster` on the serve facade
-(behind the bearer door, when the supervisor is mounted) scaffolds the
+wizard** do the mechanical steps for you — `/admin/roster` on Hearth
+(behind the access key door, when the launch page is mounted) scaffolds the
 directories, conditions the clip, writes `voice.toml` + `VOICE-SOURCE.md` from
 one set of answers, and verifies the bundle with the same loaders startup
 uses. What it never does: overwrite an existing bundle, or promote a voice —
@@ -112,7 +112,7 @@ This is the part you cannot skip, because the restriction attaches to the **audi
    to a real spoken reply, keep or revert. The wizard deliberately stops short of this one — promoting a
    voice is a judgement, not a step.
 
-**By hand** — when the supervisor gate is off, or you'd rather see the machinery:
+**By hand** — when the launch-page switch is off, or you'd rather see the machinery:
 
 1. **Get a clean clip** into `characters/<name>/voices/<tag>/sample.wav` — mono, ~24 kHz, best ~10–15 s at
    the front, ending on a settled falling phrase. (No downloadable file? `docs/bring-your-own-voice.md` has

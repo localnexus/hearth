@@ -48,7 +48,7 @@ consolidating this session."* A separate banner, *"reasoning tokens leaked,"* ap
 internal reasoning is showing up somewhere it shouldn't — that's a model/server issue to chase, not
 something this panel can fix.
 
-**`Engine`** names your LLM server's identity: the inference provider and the model ID it's actually
+**`Engine`** names your model server's identity: the inference provider and the model ID it's actually
 serving right now — re-checked roughly once a minute, so a model you swap on the server side surfaces here
 without a Hearth restart.
 
@@ -69,9 +69,9 @@ and how many extra facts the last turn pulled in and from where. A recall source
 a fallback path never poses as the primary backend.
 
 Beside it, a **review & prune** link points at the memory curation page. That page itself lives on the
-:65001 **facade**, not on this panel — write-layer operations like curation never happen on :65000. The
-link only resolves when you're viewing this panel *through* the facade's proxy; opened directly at
-:65000 it may not go anywhere. If you need curation and don't have that proxy set up, reach the facade
+:65001 **Hearth**, not on this panel — write-layer operations like curation never happen on :65000. The
+link only resolves when you're viewing this panel *through* Hearth's proxy; opened directly at
+:65000 it may not go anywhere. If you need curation and don't have that proxy set up, reach Hearth
 directly instead (see [The map of doors](the-map-of-doors.md)). What you'll find when you get there is
 [The pages behind the door](the-pages-behind-the-door.md).
 
@@ -86,8 +86,8 @@ resuming picks recall back up from there.
 This is deliberately **runtime-only** — it pokes the live session and nothing else. `config/memory.toml`
 is never touched, so a restart or a live companion switch always returns to whatever the file says,
 regardless of where you last left this button. The button itself only appears when the session actually
-built the voice-recall machinery at startup (voice recall has to have been on when the bot started) and the
-current companion's per-turn chat gate is on — if either isn't true, there's nothing here to pause, so the
+built the voice-recall machinery at startup (voice recall has to have been on when the companion started) and the
+current companion's per-turn chat switch is on — if either isn't true, there's nothing here to pause, so the
 button stays hidden rather than offering a control that would just refuse.
 
 ---

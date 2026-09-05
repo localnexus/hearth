@@ -56,7 +56,7 @@ your edit after the fork, not the verb's guess. A replayed bank is a faithful
 *re-reading* of the shared history, not a byte-identical copy of the source's
 index — same records, freshly extracted.
 
-The same verb is reachable from the roster page when the supervisor is
+The same verb is reachable from the roster page when the launch page is
 mounted (`POST /admin/roster/fork`, with a Branch card on `/admin/roster`
 that picks the juncture from the record listing) — identical plan/execute,
 except the replay itself stays a desk command, for the same reason
@@ -84,12 +84,12 @@ that, every future `forget` is complete on its own. Granularity is the
 session, by design: "forget just this one sentence" is record *editing*, a
 different tool.
 
-The same capability is reachable over the serve facade when the supervisor is
+The same capability is reachable over Hearth when the launch page is
 mounted: `GET /admin/memory` (per-companion record counts), `GET
 /admin/memory/records?character=<c>` (the digest listing), and `POST
 /admin/memory/forget {character, session, yes?}` — the identical
-preview-then-confirm contract and deletion ordering, behind the facade's
-bearer door (`character` is required there; the web has no "active companion"
+preview-then-confirm contract and deletion ordering, behind Hearth's
+access key door (`character` is required there; the web has no "active companion"
 in view). `rebuild --clean` stays CLI-only: a wipe-then-replay runs the
 extraction model over every record and belongs at the desk, not on a request
 timeout.

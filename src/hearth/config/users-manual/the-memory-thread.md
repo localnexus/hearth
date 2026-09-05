@@ -72,7 +72,7 @@ session* — a resumed conversation keeps its own mode unless you say otherwise.
 
 A conversation is written to the running checkpoint as you go, so a crash never costs the whole session. The
 durable record is written when the conversation **closes**, and there are three ways that happens: you close
-it deliberately, it goes quiet long enough to be swept, or the facade shuts down. A checkpoint left behind by
+it deliberately, it goes quiet long enough to be swept, or Hearth shuts down. A checkpoint left behind by
 something that died is finalized at the next start.
 
 **One honest gap.** Only a *deliberate* close captures the session's intent — the "here's what we decided"
@@ -91,10 +91,10 @@ you commit.
 
 ## It ships switched off
 
-None of this is on out of the box. The gate lives in `config/memory.toml`, which ships only as an example,
+None of this is on out of the box. The switch lives in `config/memory.toml`, which ships only as an example,
 with memory disabled — a fresh install composes prompts exactly as if the feature did not exist. Once the
-serve facade is running, the **memory** section of the settings form turns it on and picks the backend; until
-then the gate file is the only door. A companion can also be opted out individually, so one character can
+Hearth is running, the **memory** section of the settings form turns it on and picks the backend; until
+then that file's switch is the only door. A companion can also be opted out individually, so one character can
 remember while another deliberately doesn't.
 
 ---

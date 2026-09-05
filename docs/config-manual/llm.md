@@ -1,4 +1,4 @@
-# The LLM (model, persona, tone, backend)
+# The model (model, persona, tone, backend)
 
 Hearth talks to **any OpenAI-compatible server**. The documented default is **`llama-server`** (from llama.cpp) on **`http://127.0.0.1:8080/v1`**, keyless unless you started it with `--api-key`. **LM Studio is supported as an alternative** — see the note at the end of each section where the two differ.
 
@@ -11,7 +11,7 @@ Hearth talks to **any OpenAI-compatible server**. The documented default is **`l
 | **`llama-server`** (default) | a label | One model per process — the server answers with **its loaded model regardless** of the `model` field. Preflight *warns* on a mismatch instead of failing. By default `llama-server` reports the **GGUF file path** as the id; `--alias <name>` sets a friendlier one. |
 | LM Studio (alternative) | must match **verbatim** | It can serve several models at once, so a wrong id is a hard `model_not_found`. |
 
-List what your server advertises (bearer header only if the server wants a key):
+List what your server advertises (access key header only if the server wants a key):
 ```bash
 BASE_URL=${LM_BASE_URL:-http://127.0.0.1:8080/v1}
 curl -s "$BASE_URL/models" ${LM_API_TOKEN:+-H "Authorization: Bearer $LM_API_TOKEN"} \
@@ -24,7 +24,7 @@ curl -s "$BASE_URL/models" ${LM_API_TOKEN:+-H "Authorization: Bearer $LM_API_TOK
 
 ### Forcing hybrid thinking OFF
 
-Hearth already sends **`reasoning_effort`** from the active `model.toml` on **every request** (`config_loader` → the LLM `Settings` `extra`). Set `reasoning_effort = "none"` there and that is normally the whole job. Like `temperature`, this is **live-hot**: the panel can write `[llm] reasoning_effort` into **`config/overrides.toml`** (overlaid at the next turn boundary, no restart) and snapshot it to a companion's **`characters/<character>/profile.toml`** preset — the `model.toml` value is just the at-rest default.
+Hearth already sends **`reasoning_effort`** from the active `model.toml` on **every request** (`config_loader` → the model `Settings` `extra`). Set `reasoning_effort = "none"` there and that is normally the whole job. Like `temperature`, this is **live-hot**: the panel can write `[llm] reasoning_effort` into **`config/overrides.toml`** (overlaid at the next turn boundary, no restart) and snapshot it to a companion's **`characters/<character>/profile.toml`** preset — the `model.toml` value is just the at-rest default.
 
 - **On `llama-server`** the request field is documented as: *"`reasoning_effort`: If `none`, reasoning/thinking is disabled. Otherwise, the value is made available to the jinja template."* So Hearth's per-request field is the supported lever. If a template ignores it, `llama-server` also has **server-side** switches you can start it with — `-rea, --reasoning off` (*"Use reasoning/thinking in the chat ('on', 'off', or 'auto', default: 'auto' (detect from template))"*), `--reasoning-budget 0` (*"token budget for thinking: … 0 for immediate end"*), `--chat-template-kwargs '{"enable_thinking": false}'`, and `--reasoning-format none` (which leaves any thoughts unparsed in `message.content` rather than hiding them). A stubborn template can be replaced outright with `--chat-template` / `--chat-template-file`. Check your build's own `llama-server --help` / the upstream `tools/server/README.md` for the exact set — these switches have moved before.
 - A natively non-thinking model needs none of this.
@@ -53,13 +53,13 @@ curl -s -N "$BASE_URL/chat/completions" ${LM_API_TOKEN:+-H "Authorization: Beare
 | Env | Default | Meaning |
 |---|---|---|
 | `LM_BASE_URL` | `http://127.0.0.1:8080/v1` | any OpenAI-compatible server |
-| `LM_API_TOKEN` | *(unset)* | bearer key, **only if the server requires one** (`llama-server --api-key`) |
+| `LM_API_TOKEN` | *(unset)* | access key key, **only if the server requires one** (`llama-server --api-key`) |
 | `LM_PROVIDER` | `llama-server` | which engine probe the control panel uses; the other value is `lmstudio` |
 
 LM Studio is one env triple away:
 ```bash
 LM_BASE_URL=http://127.0.0.1:1234/v1 LM_API_TOKEN=<its token> LM_PROVIDER=lmstudio ./start.sh
 ```
-Keep it local ("sensitive text stays local"). *(A headless `mlx_lm.server` is another drop-in alternative — an operational choice, not a speed one; the LLM isn't the bottleneck.)*
+Keep it local ("sensitive text stays local"). *(A headless `mlx_lm.server` is another drop-in alternative — an operational choice, not a speed one; the model isn't the bottleneck.)*
 
-**A live session owns its model's residency (LM Studio only).** At start-up the companion checks whether the configured model is loaded and, if not, loads it itself through the `lms` command-line tool (found on `PATH`, at `~/.lmstudio/bin/lms`, or wherever `LMS_BIN` points) — the wait lands at start-up, where a wait is expected, not on the first sentence spoken. This matters more than it sounds: an LM Studio build was observed unloading a just-in-time-loaded model the second a reply finished, which turned every turn into a full load (~15 s). An explicit load carries no such timer. The load's output goes to `logs/model-load.log` in the data root; if the tool is missing or the server does not answer, the companion says so in one line and proceeds as before. Nothing is unloaded at session end — warm stays the default; the launch page's unload actuator is the explicit cold stop, and it is held behind a confirm while a companion is running (`guard = "companion"`). Under `llama-server` the model is the process, so none of this applies.
+**A live session owns its model's residency (LM Studio only).** At start-up the companion checks whether the configured model is loaded and, if not, loads it itself through the `lms` command-line tool (found on `PATH`, at `~/.lmstudio/bin/lms`, or wherever `LMS_BIN` points) — the wait lands at start-up, where a wait is expected, not on the first sentence spoken. This matters more than it sounds: an LM Studio build was observed unloading a just-in-time-loaded model the second a reply finished, which turned every turn into a full load (~15 s). An explicit load carries no such timer. The load's output goes to `logs/model-load.log` in the data folder; if the tool is missing or the server does not answer, the companion says so in one line and proceeds as before. Nothing is unloaded at session end — warm stays the default; the launch page's unload actuator is the explicit cold stop, and it is held behind a confirm while a companion is running (`guard = "companion"`). Under `llama-server` the model is the process, so none of this applies.

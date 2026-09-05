@@ -28,7 +28,7 @@ most `limit` genuinely-new items, and frames them under their own heading —
 *"MEMORY — surfaced by what the user just said"*. The open-time lines and any
 intent line stay exactly as they were; the intent slot is **not** touched here (it
 is consumed once, at boot). Every guard and every failure yields an empty block —
-gate off, a cue below `min_cue_chars`, or nothing new surfaced all send the
+switch off, a cue below `min_cue_chars`, or nothing new surfaced all send the
 request exactly as it would have gone without the feature. Containment is the
 seam's usual ladder: backend → floor → empty.
 
@@ -45,7 +45,7 @@ byte-stable for the whole sitting, and the per-turn block rides where it is chea
 
 The feature has two lanes, one per surface:
 
-* **Chat lane (synchronous).** In the serve facade's session glue
+* **Chat lane (synchronous).** In Hearth's session glue
   (`_turn_instruction`), the re-query runs **in-line** on the close-worker thread
   under a hard deadline (`PER_TURN_DEADLINE_S`, 5 s); a one-slot cache short-circuits
   an identical repeated cue. Chat only, deliberately — a synchronous recall on the
@@ -53,7 +53,7 @@ The feature has two lanes, one per surface:
   out, or is superseded costs the turn nothing: the cached open-time instruction
   serves.
 * **Voice lane (prefetch-behind).** Set `voice = true` (needs `enabled = true`
-  too — the chat gate alone stays chat-only) and the voice loop gets a
+  too — the chat switch alone stays chat-only) and the voice loop gets a
   latency-free variant: after the user's turn *N* is transcribed, its recall runs
   **in the background, off the event loop**; the block it finds rides the newest
   user message of **turn *N+1*** (a request copy — see above). Zero added latency, a one-turn lag —
@@ -62,9 +62,9 @@ The feature has two lanes, one per surface:
   companion switch supersedes it. Synchronous voice recall is rejected outright by
   the latency doctrine (~0.3 s before first-token, every turn).
 
-Cost is one embedding-search recall per qualifying turn (no LLM, no extraction).
+Cost is one embedding-search recall per qualifying turn (no model, no extraction).
 On the `floor` backend, which ignores the query, the re-query simply returns the
-same recency digest and dedupes away against the open block — the gate is a no-op
+same recency digest and dedupes away against the open block — the switch is a no-op
 there rather than a cost.
 
 The extras themselves cost **context** every turn they ride, and that adds up in

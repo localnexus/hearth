@@ -121,7 +121,7 @@ def scan_markdown(text: str, path: Path) -> list[Finding]:
     out: list[Finding] = []
     fenced = False
     for i, raw in enumerate(text.splitlines(), 1):
-        stripped = raw.lstrip()
+        stripped = raw.lstrip().lstrip("> ")  # a fence inside a blockquote is still a fence
         if stripped.startswith(("```", "~~~")):
             fenced = not fenced
             continue

@@ -47,6 +47,10 @@ class Markdown(unittest.TestCase):
         ])
         self.assertEqual(words(ml.scan_markdown(text, P)), ["bot", "facade"])
 
+    def test_fence_inside_a_blockquote_is_code(self):
+        text = "> the facade\n> ```bash\n> curl -H \"Authorization: Bearer x\" u\n> ```\n> bearer again"
+        self.assertEqual([f.word for f in ml.scan_markdown(text, P)], ["facade", "bearer"])
+
     def test_allow_mark_suppresses_the_line(self):
         self.assertEqual(ml.scan_markdown("the bot  <!-- manual-lint: allow -->", P), [])
 

@@ -73,7 +73,7 @@ directory is always self-describing, without requiring an explicit Save.
 ## The voice sample you're auditioning doesn't outlive the session
 
 Picking a different clip in the VOICE box's **Sample** dropdown writes a live `[voice]` override — but that
-one override is **session-scoped**: it's cleared automatically the next time the bot starts, before
+one override is **session-scoped**: it's cleared automatically the next time the companion starts, before
 anything else loads. Between sessions, `config/active.toml` is still the only thing that decides who
 sounds how ([Switching who's live](switching-who-is-live.md)). Audition freely; a sample you tried and
 didn't keep can't quietly become tomorrow's voice by accident.

@@ -49,9 +49,9 @@ and the outgoing companion's session-end honors its own. Resuming a session
 (via the switch) that was saved under a different mode warns — the sitting's
 mode wins.
 
-**Boundaries.** A restart-path switch spawns a new bot process — that is a new
+**Boundaries.** A restart-path switch spawns a new companion process — that is a new
 sitting, back to the default (or to the resumed session's stamp). The serve
-facade's conversations are separate sittings; this flag does not govern them.
+Hearth's conversations are separate sittings; this flag does not govern them.
 
 **Seeing it.** The control panel's `Misc` line shows the sitting's effective
 posture (`Memory: full | recall-only | off`; a `—` means memory isn't
@@ -105,7 +105,7 @@ parser rejects anything that isn't a short topic, and every doubt resolves to
 "no slot". Missing an intent costs a hint; inventing one costs trust.
 
 **Privacy.** The slot (`characters/<c>/memory/intent.json`) holds the stated
-topic, a timestamp, and the source session id — 0600 in the same 0700 tree as
+topic, a timestamp, and the source session id — readable only by you (`0600`) in the same `0700` tree as
 the records, gitignored, local-only, and deleted on first use. It is a sidecar,
 not substrate: losing it loses one hint, never a memory, and it takes no part in
 `rebuild`. Capture calls the same local model the extraction lane already uses —

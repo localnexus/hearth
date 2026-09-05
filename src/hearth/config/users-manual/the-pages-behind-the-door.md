@@ -1,14 +1,14 @@
 # The pages behind the door — the `/admin` surface at :65001
 
-*The six pages the facade serves when the supervisor gate is on: what each one lets you do, the single
+*The six pages Hearth serves when the launch-page switch is on: what each one lets you do, the single
 unlock they share, and the two habits that repeat on every page that writes something. This is the sibling
 of [Reading the panel](reading-the-panel.md) — that page covers the `:65000` panel you sit at, this one
 covers the pages on the other port.*
 
 **Authoritative sources:** route by route → `docs/runbook/02.5-control-panel/admin-surface.md`; the launch
 page in depth → `docs/runbook/02.5-control-panel/launch-page.md`. Which port is which →
-[The map of doors](the-map-of-doors.md). Whether this door exists at all is one gate, covered in
-[The one-button switch](the-one-button-switch.md) — **the supervisor ships off**, and with it off none of
+[The map of doors](the-map-of-doors.md). Whether this door exists at all is one switch, covered in
+[The one-button switch](the-one-button-switch.md) — **the launch page ships off**, and with it off none of
 this is there.
 
 ---
@@ -19,16 +19,16 @@ All six pages arrive **empty**. They're plain chrome with nothing baked in — n
 and everything you see fills in afterward, fetched with your key attached. So a page that looks blank is
 almost always **locked, not broken**.
 
-The first one you open asks for the serve bearer **once**. That browser keeps it and sends it as a header
+The first one you open asks for the serve access key **once**. That browser keeps it and sends it as a header
 from then on; nothing is stored on the Hearth side, and there's no session to expire. Change the token and
 every browser simply asks again.
 
-**On a phone, don't type it.** The bearer is 64 hex characters, which is not something anyone should be
+**On a phone, don't type it.** The access key is 64 hex characters, which is not something anyone should be
 entering on a handset — that's what the pairing page exists for, below.
 
 One wrinkle worth knowing, because it explains a link that would otherwise look inconsistent: when you
 *click through* to the control panel from one of these pages, a browser navigation can't attach a header.
-So the launch page quietly mints a **carrier cookie** for that hop. It's derived from your bearer rather
+So the launch page quietly mints a **carrier cookie** for that hop. It's derived from your access key rather
 than being it, no page script can read it back, and it lasts 30 days. That's the whole reason the panel
 opens by clicking instead of answering "unauthorized."
 
@@ -42,14 +42,14 @@ it would take effect. The write happens on a second, explicit confirm. A refusal
 everything untouched.
 
 **A file that shipped with Hearth is copied before it's changed, never edited in place** — your edit lands
-in your own data root, and one previous generation is kept beside it. Undo is a rename, not a rebuild.
+in your own data folder, and one previous generation is kept beside it. Undo is a rename, not a rebuild.
 
 ---
 
 ## `/admin/launch` — the standing surface
 
 The page to leave open. It works whether the companion is running or not, from any device that can reach
-the facade, and it never makes you remember a flag.
+Hearth, and it never makes you remember a flag.
 
 **When nothing is running**, it offers a start: who to bring up (the same companion card the panel carries —
 character, voice, persona, model), which **conversation** to open (a new one, or one off the shelf), and this
@@ -78,23 +78,23 @@ drops off within a poll. It is an honest is-anyone-running indicator no matter w
 around Hearth. Pressing **Run** holds until the command actually finishes; the wait *is* the progress bar.
 This is what makes a service recoverable from the couch instead of only from the desk.
 
-Two things this page deliberately won't do: it never restarts the facade underneath itself, and it never
-touches your LLM server. Stopping a companion stops the companion.
+Two things this page deliberately won't do: it never restarts Hearth underneath itself, and it never
+touches your model server. Stopping a companion stops the companion.
 
 ## `/admin/first-run` — the first session
 
 Offered by the launch page while an install is new — the selected model config still carries the shipped
 placeholder id, or no companion here has a session yet — and reachable at its address any time after.
-Three steps: **your LLM server** (is it answering at the address the facade uses, and which model ids it
+Three steps: **your model server** (is it answering at the address Hearth uses, and which model ids it
 advertises — pick one and it's recorded in the selected model config, verbatim, comments kept, previous
 file beside it), **bring the companion up** (the same companion card as the launch page, with Start —
-parked until the id is set, because a bot started against the placeholder can't reach a model), and **say
-something** (the bot's own turn counter, read through the facade: warming, then listening, then "heard
+parked until the id is set, because a companion started against the placeholder can't reach a model), and **say
+something** (the companion's own turn counter, read through Hearth: warming, then listening, then "heard
 you and answered"). It ends by pointing at the launch page, which is the front door from then on.
 
 Two honest edges. The page **never moves the server address**: if nothing answers, it shows the one
-command that does (`hearth.init --lm-url …`, run with the facade stopped), because an address saved here
-would look applied while the running facade kept using the old one. And the model id is the **one write
+command that does (`hearth.init --lm-url …`, run with Hearth stopped), because an address saved here
+would look applied while the running Hearth kept using the old one. And the model id is the **one write
 that skips the preview**: the value is the server's own listing, so what lands is what the server already
 answers to — an id the server doesn't list is refused unless you insist.
 
@@ -142,7 +142,7 @@ If your install has the richer memory backend switched off, this page still *sho
 counts and digests come from the record files themselves. It's the pruning verbs that stand down.
 
 You can also reach this page from the panel: the **review & prune** link on the Memory line is this page,
-which is why that link only resolves when you're viewing the panel through the facade.
+which is why that link only resolves when you're viewing the panel through Hearth.
 
 ## `/admin/pair/ui` — the six digits
 
@@ -166,7 +166,7 @@ persona, or branching a memory track. It has a chapter of its own —
 
 ## Net
 
-Unlock once per browser (or pair a phone with six digits), and the facade's pages cover the things that used
+Unlock once per browser (or pair a phone with six digits), and Hearth's pages cover the things that used
 to mean stopping to edit a file: **first run** walks a new install to its first words; **launch** starts,
 stops, resumes and switches; **settings** renders every
 knob as a control that refuses bad values; **memory** reviews and prunes what a companion holds; **roster**

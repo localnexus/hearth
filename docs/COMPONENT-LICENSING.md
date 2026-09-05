@@ -4,13 +4,13 @@ Inventory of every integrated component and its license, plus what the licensing
 
 Pipeline: `mic → Silero VAD → MLX-Whisper-turbo → an LLM (llama-server) → Chatterbox-Turbo (mlx-audio) → speaker`
 
-The **default** LLM server is `llama-server` from llama.cpp (**MIT**), so the default path is permissively licensed end to end. **LM Studio is a supported alternative**, and it is the one component with a proprietary EULA — Callout 1 covers what that does and doesn't allow.
+The **default** model server is `llama-server` from llama.cpp (**MIT**), so the default path is permissively licensed end to end. **LM Studio is a supported alternative**, and it is the one component with a proprietary EULA — Callout 1 covers what that does and doesn't allow.
 
 ---
 
 ## Master table
 
-> **Code license vs. model-weight terms** differ for the TTS and LLM layers; both are listed where relevant.
+> **Code license vs. model-weight terms** differ for the TTS and model layers; both are listed where relevant.
 
 ### Framework & libraries
 
@@ -23,17 +23,17 @@ The **default** LLM server is `llama-server` from llama.cpp (**MIT**), so the de
 | **transformers** (`==5.5.0`, pinned) | Tokeniser / model-config | [huggingface/transformers](https://github.com/huggingface/transformers/blob/main/LICENSE) | **Apache-2.0** | Yes |
 | **NLTK** | Sentence-boundary detection | [nltk/nltk](https://github.com/nltk/nltk/blob/develop/LICENSE.txt) | **Apache-2.0** | Yes |
 | **onnxruntime** | ONNX runtime for Silero (no PyTorch) | [microsoft/onnxruntime](https://github.com/microsoft/onnxruntime/blob/main/LICENSE) | **MIT** | Yes |
-| **aiohttp** (`>=3.14.1`) | Async HTTP (control server / LLM client) | [aio-libs/aiohttp](https://github.com/aio-libs/aiohttp/blob/master/LICENSE.txt) | **Apache-2.0** | Yes |
-| **llama.cpp `llama-server`** (not bundled — you install it) | **The default LLM server**: serves GGUF weights over an OpenAI-compatible API on `:8080` | [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp/blob/master/LICENSE) | **MIT** | Yes |
+| **aiohttp** (`>=3.14.1`) | Async HTTP (control server / model client) | [aio-libs/aiohttp](https://github.com/aio-libs/aiohttp/blob/master/LICENSE.txt) | **Apache-2.0** | Yes |
+| **llama.cpp `llama-server`** (not bundled — you install it) | **The default model server**: serves GGUF weights over an OpenAI-compatible API on `:8080` | [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp/blob/master/LICENSE) | **MIT** | Yes |
 
-### STT · LLM · TTS · VAD (models & engines)
+### STT · model · TTS · VAD (models & engines)
 
 | Component | Role | Source | License | Commercial? |
 |---|---|---|---|---|
 | **MLX-Whisper** (`>=0.4.3`) | STT library (Whisper on MLX) | [ml-explore/mlx-examples](https://github.com/ml-explore/mlx-examples/blob/main/LICENSE) | **MIT** | Yes |
 | **Whisper-large-v3-turbo** weights (`mlx-community/…`) | STT weights (~1.6 GB) | [openai/whisper-large-v3-turbo](https://huggingface.co/openai/whisper-large-v3-turbo) | **MIT** (OpenAI; conversion inherits) | Yes |
-| **Qwen3.6-35B-A3B** base (`qwen/…`, a stock default) | LLM content | [Qwen/Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) | **Apache-2.0** (not the custom Qwen license) | Yes |
-| **An uncensored re-quant** of the same base | Alt LLM (fewer refusals) | third-party publisher on Hugging Face | **Apache-2.0** (inherited from the base) | Yes |
+| **Qwen3.6-35B-A3B** base (`qwen/…`, a stock default) | model content | [Qwen/Qwen3.6-35B-A3B](https://huggingface.co/Qwen/Qwen3.6-35B-A3B) | **Apache-2.0** (not the custom Qwen license) | Yes |
+| **An uncensored re-quant** of the same base | Alt model (fewer refusals) | third-party publisher on Hugging Face | **Apache-2.0** (inherited from the base) | Yes |
 | **Chatterbox-Turbo** code | TTS engine (clone, streaming) | [resemble-ai/chatterbox](https://github.com/resemble-ai/chatterbox/blob/main/LICENSE) | **MIT** | Yes |
 | **Chatterbox-Turbo** weights (`mlx-community/chatterbox-turbo-fp16`, ~3 GB) | TTS weights (fp16) | [ResembleAI/chatterbox-turbo](https://huggingface.co/ResembleAI/chatterbox-turbo) | **MIT** — *but see watermark note below* | Yes |
 | **S3TokenizerV2** (Chatterbox dep, auto-fetched) | Speaker-embedding sub-model | [mlx-community/S3TokenizerV2](https://huggingface.co/mlx-community/S3TokenizerV2) | **MIT** (inherits Chatterbox) | Yes |
@@ -46,7 +46,7 @@ Neither is on the default path: one is an **optional alternative server**, the o
 
 | Component | Role | Governing framework |
 |---|---|---|
-| **LM Studio** (desktop app) — *alternative to `llama-server`* | Serves the LLM over an OpenAI-compat API at `:1234` | **Proprietary EULA, closed-source** — Callout 1 |
+| **LM Studio** (desktop app) — *alternative to `llama-server`* | Serves the model over an OpenAI-compat API at `:1234` | **Proprietary EULA, closed-source** — Callout 1 |
 | **The reference WAV** (operator-supplied) | Voice identity for cloning | **Not a software license — likeness / publicity rights** — Callout 2 |
 
 **TTS watermark (a fixed, model-inherent limit):** every Chatterbox clip carries Resemble AI's **Perth (PerTh) neural watermark** — imperceptible, survives re-encoding, built for synthetic-content detection. It's baked into the model regardless of which voice you clone. MIT doesn't *require* preserving it, but stripping it defeats its responsible-use purpose. This is a limit that no configuration choice removes.
@@ -112,7 +112,7 @@ never touches them.
 
 Net for publishing: **publish the code freely; document `llama-server` (MIT, BYO — nothing bundled) as the
 run path, with BYO-LM-Studio as a labelled alternative for operators who prefer its workbench.** A published
-build need not ship the exact pinned validated stack, so pin-fragility does not gate publishing.
+build need not ship the exact pinned validated stack, so pin-fragility does not switch publishing.
 
 ---
 
@@ -147,6 +147,6 @@ Chatterbox clones a voice acoustically from whatever reference WAV **the operato
 ## Caveat footer
 
 - **Licenses change.** Every entry is cited to its upstream source. Re-verify before any deployment — especially **LM Studio**, if you use it (its EULA has changed at least once — Callout 1 addendum), and **Qwen** (Alibaba uses custom licenses for some tiers).
-- **Code license ≠ model-weight terms** for the TTS/LLM layers; both are listed where they differ.
+- **Code license ≠ model-weight terms** for the TTS/model layers; both are listed where they differ.
 - **Descriptive, not legal advice.** This summarises what licenses say; it is not a legal opinion. The voice-likeness question in particular is the operator's, and needs qualified counsel — outside the scope of a licensing inventory.
 - **Unverified:** Silero VAD's HF card returned 401 — GitHub `LICENSE` (MIT) used instead, corroborated by PyPI. Smart Turn's active use is optional; its BSD-2-Clause license is verified regardless.

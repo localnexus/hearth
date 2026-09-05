@@ -5,7 +5,7 @@ shapes the whole setup, and the recovery moves when the phone stops connecting. 
 operator view — not the phone-tapping how-to.*
 
 > **Scope — this is a deployment, not the shipped install.** Hearth ships the desk voice loop, its panel,
-> and the optional facade ([The map of doors](the-map-of-doors.md)). The three pieces below — a media
+> and the optional Hearth ([The map of doors](the-map-of-doors.md)). The three pieces below — a media
 > server, a TURN relay, a phone-facing voice page — are things *you* add around it, so their ports, their
 > supervision, and their reboot behavior are yours. Read this chapter as the shape of a working away lane
 > and the traps it taught, not as a description of what's already on your machine.
@@ -25,7 +25,7 @@ session-launched pieces make it work:
 - **TURN / STUN** (:3478) — NAT traversal, embedded in the away-mode media server.
 - **The web voice client** (:3001) — the page you open on the phone to talk.
 
-All three bind the Mac's **overlay-network IP** (a tailnet `100.x` address), never `0.0.0.0`. The facade (:65001) and the voice engine
+All three bind the Mac's **overlay-network IP** (a tailnet `100.x` address), never `0.0.0.0`. Hearth (:65001) and the voice engine
 (:8555) stay on loopback behind them. (Full port map: [The map of doors](the-map-of-doors.md).)
 
 > **Tailnet only — never funnel.** Exposure is `tailscale serve` / a tailnet-IP bind, reachable only from
@@ -103,7 +103,7 @@ won't.
 The launchd note bears repeating here because it bites hardest on this lane:
 
 > **The away-mode media server (:8080/:3478) and the voice client (:3001) are session-launched, NOT launchd-managed.** After
-> a Mac reboot they are **down** until relaunched — the facade, Open WebUI, and the :8555 engine come back on
+> a Mac reboot they are **down** until relaunched — Hearth, Open WebUI, and the :8555 engine come back on
 > their own, but the away-voice trio does not. This is a known reboot-durability hole, not a fault to debug. If the phone can't
 > connect after the Mac restarted, **check whether these three were relaunched** before chasing anything
 > deeper.

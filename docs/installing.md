@@ -157,7 +157,7 @@ on first use and caches them on disk. That's why the script runs twice; judge ru
 | an offline / "cannot find … in cache" error | The weights weren't fetched — step 3. |
 | The log line `You are using a model of type chatterbox_turbo to instantiate a model of type ''` | Cosmetic. Ignore it. |
 
-## 5. Bring an LLM server
+## 5. Bring an model server
 
 Hearth ships **no language model and no inference server** — it talks to any OpenAI-compatible
 endpoint. The recommended default is **`llama-server`** from llama.cpp, listening on
@@ -177,7 +177,7 @@ Then confirm it answers:
 curl -s http://127.0.0.1:8080/v1/models | python3 -c 'import sys,json;[print(m["id"]) for m in json.load(sys.stdin)["data"]]'
 ```
 
-**Choosing a model.** Two hard rules, both explained in [the LLM config chapter](config-manual/llm.md):
+**Choosing a model.** Two hard rules, both explained in [the model config chapter](config-manual/llm.md):
 the model must be *loaded* by the server, and it must emit **no chain-of-thought** — a model
 that streams `reasoning_content` while `content` stays empty stalls the voice loop. Use a plain
 instruct model, or a hybrid-thinking model (Qwen3.6-class, GLM, …) with thinking forced off
@@ -256,10 +256,10 @@ holds the mic grant:
 ```
 
 Open **`http://127.0.0.1:65001/admin/launch`** and paste the key from step 6 when asked.
-On a fresh install that page offers **First run**: three steps that check your LLM server, record
+On a fresh install that page offers **First run**: three steps that check your model server, record
 the model id it advertises, start the companion, and confirm it heard you. After that the launch
 page is the front door: **Start** brings the voice loop up (~10–20 s to warm, plus the one-time
-kernel compile if step 4 didn't already pay it), the **companion switcher** picks who is live, and
+kernel compile if step 4 didn't already pay it), the **companion switcher** picks who is live, and <!-- manual-lint: allow: GPU/OS kernel, the technical sense -->
 the links lead to settings, memory, the roster, and the companion's own control panel (`:65000`).
 
 **Then speak first** — there is no greeting. A reply comes ~2–3 s after your pause (slower on the

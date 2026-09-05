@@ -8,7 +8,7 @@ The floor, Hindsight, and what setting one up actually involves.
 
 | backend | needs | recall |
 |---|---|---|
-| `floor` | nothing (ships with base) | dated digest of the last N conversations (recency, not semantic — deterministic, no LLM) |
+| `floor` | nothing (ships with base) | dated digest of the last N conversations (recency, not semantic — deterministic, no model) |
 | `hindsight` | client extra + a sidecar venv + a local extraction model (setup below) | semantic recall over typed, dated facts extracted at session end |
 
 ### Hindsight setup — sidecar topology
@@ -43,7 +43,7 @@ Run-verified 2026-08-29/30 against fully local models. Be aware:
 
 * **Embedded ≠ free**: it starts a bundled PostgreSQL (~15 processes) on fixed
   port **5432** with data under `~/.pg0`. One instance per machine — a second
-  concurrently running bot shares it (per-companion banks stay isolated) but
+  concurrently running companion shares it (per-companion banks stay isolated) but
   can't start its own.
 * **Startup cost**: ~5–14 s warm, paid once at session start.
 * **Egress**: the engine already sets `HF_HUB_OFFLINE=1`; the adapter sets

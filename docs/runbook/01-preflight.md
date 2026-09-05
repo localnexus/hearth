@@ -1,6 +1,6 @@
 # 1. BRING ONLINE — preflight (run before launching)
 
-*What this covers: the three copy-paste checks (LLM server + model, no stale bot, valid default mic/speaker) that must pass before launch — and how to read/fix each.* · Runbook index: [`README.md`](README.md)
+*What this covers: the three copy-paste checks (model server + model, no stale companion, valid default mic/speaker) that must pass before launch — and how to read/fix each.* · Runbook index: [`README.md`](README.md)
 
 ```bash
 cd <the Hearth tree>          # no absolute path is assumed — or just run ./start.sh --check
@@ -22,8 +22,8 @@ pgrep -f "python[0-9.]* -m hearth\.pipeline\.bot"
 
 | Check | PASS looks like | If it FAILS |
 |---|---|---|
-| LLM server | `LM ok, <model>: True` (the id ends in `: True`; on `llama-server` a `False` is only a label mismatch — it serves its loaded model regardless) | start `llama-server` with your GGUF. A hybrid-thinking model must have thinking forced off (`reasoning_effort = "none"` in the model's `model.toml`; if the template ignores it, a `llama-server` start-up switch — see [config-manual/llm.md](../config-manual/llm.md)). Change the selection via `model =` in `config/active.toml` (then restart). A `401` means the server wants a key — pass `LM_API_TOKEN` (`llama-server --api-key`). *If you use LM Studio instead:* open it, load the id the active config names verbatim, and export its token as `LM_API_TOKEN` plus `LM_PROVIDER=lmstudio`. |
-| stale bot | *(nothing printed)* | a previous run is live — stop it (§3) before relaunching, or you'll contend on the mic. |
+| model server | `LM ok, <model>: True` (the id ends in `: True`; on `llama-server` a `False` is only a label mismatch — it serves its loaded model regardless) | start `llama-server` with your GGUF. A hybrid-thinking model must have thinking forced off (`reasoning_effort = "none"` in the model's `model.toml`; if the template ignores it, a `llama-server` start-up switch — see [config-manual/llm.md](../config-manual/llm.md)). Change the selection via `model =` in `config/active.toml` (then restart). A `401` means the server wants a key — pass `LM_API_TOKEN` (`llama-server --api-key`). *If you use LM Studio instead:* open it, load the id the active config names verbatim, and export its token as `LM_API_TOKEN` plus `LM_PROVIDER=lmstudio`. |
+| stale companion | *(nothing printed)* | a previous run is live — stop it (§3) before relaunching, or you'll contend on the mic. |
 | **audio in/out** | prints a real **input AND output** name | either errors / wrong device → select it in System Settings → Sound. **Bluetooth: connect the earpiece *before* launch; to switch devices mid-session you must restart** — the stream grabs the default at startup and won't follow. An **output-only** device (A2DP earbuds, no mic) → no default input → `Errno -9996`. |
 | mic (first run only) | — | if STT hears nothing later, verify the iTerm mic grant with the probe in §5. |
 

@@ -1,4 +1,5 @@
 # GLOSSARY N–Z — terms, acronyms & shorthand
+<!-- manual-lint: allow-file — the glossary defines the technical names the manual avoids -->
 
 Alphabetical, N through Z (symbol-prefixed terms filed by their word, e.g. `--new` under N).
 Index + how-it's-organized: [`README.md`](README.md). A–M: [`A-M.md`](A-M.md). Numeric / ID schemes:

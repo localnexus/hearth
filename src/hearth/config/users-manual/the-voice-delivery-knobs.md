@@ -3,9 +3,9 @@
 *How the companion's cloned voice turns text into sound, and the four dials the panel's* **VOICE** *box
 gives you over that — live, per voice sample.*
 
-> **Not the same knobs as the words.** These are separate from — and unrelated to — the LLM sampling
+> **Not the same knobs as the words.** These are separate from — and unrelated to — the model sampling
 > knobs on [The generation knobs](generation-knobs-in-your-ear.md). Confusingly, two of them share a name:
-> the LLM has its own `top_p`/`top_k` (your LLM server's, not live here) and the *voice* has its own
+> the model has its own `top_p`/`top_k` (your model server's, not live here) and the *voice* has its own
 > `top_p`/`top_k` (Hearth's, live on this page). They never touch the same file or the same moment — one
 > shapes which words get picked, this one shapes how the picked words get spoken.
 
@@ -28,7 +28,7 @@ turns erratic, even garbled.
 flat. **Down when** the delivery starts to wander — odd emphasis, a warble, a line that doesn't sound like
 a sentence anymore.
 
-**Net:** the companion's answer to the LLM's `temperature`, but for *how it's said* rather than *what's
+**Net:** the companion's answer to the model's `temperature`, but for *how it's said* rather than *what's
 said*. 0.8 is the shipped middle; nudge up first if the voice sounds like it's reading off a card.
 
 ## top_p — the pronunciation net  · *ships at 0.95*
@@ -43,7 +43,7 @@ mispronunciation to slip through.
 **Turn it down when** you're hearing occasional stalls or dropped words. **Up when** the voice sounds
 repetitive in its phrasing even with `temperature` raised.
 
-**Net:** the guardrail around `temperature`, same relationship as the LLM's word-net has to its own
+**Net:** the guardrail around `temperature`, same relationship as the model's word-net has to its own
 temperature — just a different net, for sound instead of words.
 
 ## top_k — how many acoustic options get weighed  · *ships at 1000*

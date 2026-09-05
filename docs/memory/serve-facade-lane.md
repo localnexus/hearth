@@ -1,18 +1,18 @@
-# Memory — the serve facade lane
+# Memory — the served lane
 
 > Part of [Memory](../memory.md) — cross-session continuity, a backend per companion.
 
-Session anchors for a door that never closes: how the `/v1` facade gets a session start and a graceful close.
+Session anchors for a door that never closes: how the `/v1` Hearth gets a session start and a graceful close.
 
-## The serve facade lane
+## The Hearth lane
 
-The `/v1` facade (`config/serve.toml`) is stateless by construction: it resolves
+The `/v1` Hearth (`config/serve.toml`) is stateless by construction: it resolves
 identity once and re-composes `[system] + client turns` on every request, so it
 has no session start and no session end — the two anchors the seam needs. Turn
 this on and a small in-process **session table** supplies them, and the phone
 lane and chat clients get the same continuity the voice appliance has.
 
-Off by default. Absent or disabled, the facade is byte-identical.
+Off by default. Absent or disabled, Hearth is byte-identical.
 
 ```toml
 [memory.serve]
@@ -35,7 +35,7 @@ checkpoint = true       # snapshot after each exchange so a crash is recoverable
 **What each anchor does.** On a conversation's first request the seam recalls,
 and the augmented instruction is cached on the session entry — every later turn
 of that conversation costs a dict lookup, not a recall. Turns are accumulated
-**facade-side, verbatim**: the final request's message list is not a faithful
+**Hearth-side, verbatim**: the final request's message list is not a faithful
 transcript, because a voice client windows its own history. At close the turns
 become a standard record — `session_id = serve-<channel>[-<hint>]-<started>`,
 `name = "facade <channel>"` — which every backend, `rebuild`, and the archive
@@ -53,14 +53,14 @@ pool then consume with no changes anywhere.
    `idle_close_voice` and chat conversations after `idle_close_chat`. Voice's 5
    minutes is a transport fact; chat's default 8 hours sits above the longest
    plausible waking gap, so an errand never splits a day's thread in two.
-3. **Facade shutdown.** Every open conversation is closed gracefully first, so
+3. **Hearth shutdown.** Every open conversation is closed gracefully first, so
    stopping the service writes records rather than leaving orphans.
 4. **Orphan finalization.** With `checkpoint = true` an open session snapshots
    after every exchange to
-   `characters/<c>/memory/checkpoints/serve-<channel>[-<hint>].json` (0600, the
+   `characters/<c>/memory/checkpoints/serve-<channel>[-<hint>].json` (readable only by you, `0600`, the
    same atomic write as the records). If the process dies, the next start turns
    each leftover checkpoint into a record — stamped with the checkpoint's own
-   mtime, so `ended` is when the facade died, not when it came back — and then
+   mtime, so `ended` is when Hearth died, not when it came back — and then
    removes it. Checkpoints are transient: the record is the durable artifact.
 
 Every step is contained. A recall failure means the base instruction; a
@@ -70,7 +70,7 @@ dropped".
 
 ### Client-declared companions
 
-Memory attribution follows identity, so *who* the facade answers as decides
+Memory attribution follows identity, so *who* Hearth answers as decides
 whose memory a conversation becomes. `[serve.characters]` in `serve.toml` lists
 the companions a client may ask for and the voice bundle each one speaks with:
 
@@ -87,8 +87,8 @@ companion. Anything else falls back to the identity `[serve.identity]` (or
 the same roster: a request naming a listed character gets that character's
 bundle; every other request keeps the pinned voice untouched.
 
-Note that this widens who a bearer-token holder can talk to: any listed
-companion. The facade is loopback-only by default, and the roster is exactly as
+Note that this widens who an access key holder can talk to: any listed
+companion. Hearth is loopback-only by default, and the roster is exactly as
 long as you make it.
 
 ### Notes
