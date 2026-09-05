@@ -6,7 +6,7 @@
 function needToken(prompt) {
   show("tokencard", true); show("rostercard", false); show("wizardcard", false);
   show("editcard", false); show("voicecard", false); show("branchcard", false);
-  $("statusline").textContent = prompt || "locked — enter the bearer token";
+  $("statusline").textContent = prompt || "locked — enter your access key";
 }
 
 async function refresh() {
@@ -14,8 +14,8 @@ async function refresh() {
   let st;
   try { st = await api("/admin/roster/state"); }
   catch (e) {
-    if (e.message === "401") { needToken("that token was refused — try again"); return; }
-    $("statusline").textContent = "facade unreachable — retrying…";
+    if (e.message === "401") { needToken("that key was refused — try again"); return; }
+    $("statusline").textContent = "Hearth is not answering — retrying…";
     return;
   }
   show("tokencard", false); show("rostercard", true); show("wizardcard", true);
@@ -72,8 +72,8 @@ async function submit(confirmed) {
   let r;
   try { r = await api("/admin/roster/onboard", { method: "POST", body: formData(confirmed) }); }
   catch (e) {
-    if (e.message === "401") { needToken("that token was refused — try again"); return; }
-    report("facade unreachable", true); return;
+    if (e.message === "401") { needToken("that key was refused — try again"); return; }
+    report("Hearth is not answering", true); return;
   }
   const d = r.data || {};
   report(renderReport(d), !d.ok);

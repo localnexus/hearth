@@ -43,10 +43,11 @@
 <div id="statusline">connecting…</div>
 
 <div id="tokencard" class="card hidden">
-  <p>This surface needs the serve bearer token (asked once; kept only in this
+  <p>This page needs your access key — the one <code>hearth.init</code> printed
+     (asked once; kept only in this
      browser).</p>
   <div class="row">
-    <input type="password" id="token" autocomplete="off" placeholder="bearer token">
+    <input type="password" id="token" autocomplete="off" placeholder="access key">
     <button id="tokenbtn" class="primary">Unlock</button>
   </div>
   <p class="note">On a phone? <a href="/admin/pair/ui">Pair with a six-digit
@@ -119,7 +120,7 @@ let cookieMinted = false;  // the browser carrier for plain navigation
 function needToken(prompt) {
   show("tokencard", true); show("switchcard", false); show("stopcard", false);
   show("actuatorcard", false); show("firstrun", false);
-  $("statusline").textContent = prompt || "locked — enter the bearer token";
+  $("statusline").textContent = prompt || "locked — enter your access key";
 }
 
 // ── declared actuators (bring-up commands for the watched externals) ─────────
@@ -181,7 +182,7 @@ async function runActuator(name, btn) {
       report(name + " failed: " + why + " — the log is on the machine", true);
     }
   } catch (e) {
-    report(e.message === "401" ? "token refused" : name + " failed: " + e.message, true);
+    report(e.message === "401" ? "key refused" : name + " failed: " + e.message, true);
   } finally {
     actBusy.delete(name);
     btn.textContent = "Run"; btn.disabled = false;
@@ -196,8 +197,8 @@ async function refresh() {
   let st;
   try { st = await api("/admin/state"); }
   catch (e) {
-    if (e.message === "401") { needToken("that token was refused — try again"); return; }
-    $("statusline").textContent = "facade unreachable — retrying…";
+    if (e.message === "401") { needToken("that key was refused — try again"); return; }
+    $("statusline").textContent = "Hearth is not answering — retrying…";
     return;
   }
   show("tokencard", false);
@@ -243,8 +244,8 @@ async function refresh() {
   show("startextras", !up);   // session + memory are start-only
   show("stopcard", up);
   if (up) {
-    $("runline").textContent = "The voice bot is up" +
-      (bot.managed === false ? " (started at the desk — adopted)" : "") + ".";
+    $("runline").textContent = "The companion is up" +
+      (bot.managed === false ? " (started from the terminal)" : "") + ".";
   }
   // Repopulate on each transition in EITHER direction: the verb, the hold row
   // and the current selection all change when the bot comes up or goes down.
@@ -317,7 +318,7 @@ async function doCompact() {
     if (r.data && r.data.ok) report(r.data.note || "compaction requested");
     else report("refused: " + ((r.data && (r.data.note || r.data.error)) || r.status), true);
   } catch (e) {
-    report(e.message === "401" ? "token refused" : "compact failed: " + e.message, true);
+    report(e.message === "401" ? "key refused" : "compact failed: " + e.message, true);
   } finally { busy = false; refresh(); }
 }
 
@@ -330,7 +331,7 @@ async function doStop() {
     if (r.data && r.data.ok) { report("stopped" + (name ? " — session named " + name : "")); $("stopname").value = ""; }
     else report("stop failed: " + JSON.stringify((r.data && r.data.error) || r.status), true);
   } catch (e) {
-    report(e.message === "401" ? "token refused" : "stop failed: " + e.message, true);
+    report(e.message === "401" ? "key refused" : "stop failed: " + e.message, true);
   } finally { busy = false; refresh(); }
 }
 

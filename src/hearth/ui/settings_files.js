@@ -50,8 +50,8 @@ async function refresh() {
     const o = await api("/admin/settings");
     overview = o.data || { kinds: [] };
   } catch (e) {
-    if (e.message === "401") { needToken("that token was refused — try again"); return; }
-    $("statusline").textContent = "facade unreachable — retrying…";
+    if (e.message === "401") { needToken("that key was refused — try again"); return; }
+    $("statusline").textContent = "Hearth is not answering — retrying…";
     return;
   }
   show("tokencard", false); show("filescard", true);

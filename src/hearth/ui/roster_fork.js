@@ -13,8 +13,8 @@ $("b-load").addEventListener("click", async () => {
   let r;
   try { r = await api("/admin/memory/records?character=" + encodeURIComponent(character)); }
   catch (e) {
-    if (e.message === "401") { needToken("that token was refused — try again"); return; }
-    report("facade unreachable", true); return;
+    if (e.message === "401") { needToken("that key was refused — try again"); return; }
+    report("Hearth is not answering", true); return;
   }
   const d = r.data || {};
   if (r.status !== 200) { report(d.error || "load failed", true); return; }
@@ -79,8 +79,8 @@ async function forkSubmit(confirmed) {
       body: JSON.stringify(body),
     });
   } catch (e) {
-    if (e.message === "401") { needToken("that token was refused — try again"); return; }
-    report("facade unreachable", true); return;
+    if (e.message === "401") { needToken("that key was refused — try again"); return; }
+    report("Hearth is not answering", true); return;
   }
   const d = r.data || {};
   report(renderForkPlan(d), !d.ok);

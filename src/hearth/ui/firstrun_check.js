@@ -11,7 +11,7 @@ function needToken(prompt) {
   show("tokencard", true);
   for (const id of ["intro", "servercard", "startcard", "listencard", "donecard"])
     show(id, false);
-  $("statusline").textContent = prompt || "locked — enter the bearer token";
+  $("statusline").textContent = prompt || "locked — enter your access key";
 }
 
 async function refresh() {
@@ -19,8 +19,8 @@ async function refresh() {
   let st;
   try { st = await api("/admin/first-run/state"); }
   catch (e) {
-    if (e.message === "401") { needToken("that token was refused — try again"); return; }
-    $("statusline").textContent = "facade unreachable — retrying…";
+    if (e.message === "401") { needToken("that key was refused — try again"); return; }
+    $("statusline").textContent = "Hearth is not answering — retrying…";
     return;
   }
   show("tokencard", false); show("intro", true); show("servercard", true);
@@ -32,9 +32,9 @@ async function refresh() {
   show("startcard", ready); show("listencard", ready);
   if (!ready) show("donecard", false);
   $("statusline").textContent = [
-    ready ? "model id set ✓" : "model id: placeholder",
-    (fr.lm && fr.lm.reachable) ? "server ✓" : "server ✗",
-    "bot: " + ((fr.bot && fr.bot.state) || "?"),
+    ready ? "model ✓" : "model: not chosen",
+    (fr.lm && fr.lm.reachable) ? "model server ✓" : "model server ✗",
+    "companion: " + ((fr.bot && fr.bot.state) || "?"),
   ].join("  ·  ");
   if (ready) await renderListen(fr);
 }
@@ -45,15 +45,15 @@ function renderServer(d) {
   const ids = lm.models || [];
   $("lmline").textContent = lm.reachable
     ? "answering at " + lm.url + " — " + ids.length + " model" +
-      (ids.length === 1 ? "" : "s") + " advertised"
+      (ids.length === 1 ? "" : "s") + " listed"
     : "nothing answering at " + lm.url;
   show("lmhelp", lm.reachable === false);
   const name = "model config “" + (model.name || "?") + "”";
   $("modelline").textContent = model.id_set
-    ? name + " → id " + model.id + " ✓"
-    : name + " still carries the placeholder id" +
-      (ids.length ? " — pick the one to serve:"
-       : lm.reachable ? " — the server lists no models; load one there first" : "");
+    ? name + " → " + model.id + " ✓"
+    : name + " has no model chosen yet" +
+      (ids.length ? " — pick one:"
+       : lm.reachable ? " — your server lists no models; load one there first" : "");
   // Re-fill the picker only when nothing is in flight and the list changed: a
   // select that re-populates under the hand throws the choice away.
   const sel = $("lm-model");
@@ -69,14 +69,14 @@ function renderServer(d) {
 async function useModel() {
   const id = $("lm-model").value;
   if (!id) { report("pick a model first", true); return; }
-  modelBusy = true; report("recording the model id…");
+  modelBusy = true; report("recording your pick…");
   try {
     const r = await api("/admin/first-run/model", { json: { id } });
     const d = r.data || {};
     if (d.ok) report((d.written ? "recorded — " : "already set — ") + d.effect);
     else report("refused: " + (d.error || r.status), true);
   } catch (e) {
-    report(e.message === "401" ? "token refused" : "failed: " + e.message, true);
+    report(e.message === "401" ? "key refused" : "failed: " + e.message, true);
   } finally { modelBusy = false; refresh(); }
 }
 

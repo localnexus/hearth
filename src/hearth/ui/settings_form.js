@@ -10,8 +10,8 @@ async function openFile(label) {
   let r;
   try { r = await api("/admin/settings/file?file=" + encodeURIComponent(label)); }
   catch (e) {
-    if (e.message === "401") { needToken("that token was refused — try again"); return; }
-    report("facade unreachable", true); return;
+    if (e.message === "401") { needToken("that key was refused — try again"); return; }
+    report("Hearth is not answering", true); return;
   }
   if (r.status !== 200) { report((r.data || {}).error || "load failed", true); return; }
   current = r.data;

@@ -25,8 +25,8 @@ async function askSet(key, s, raw) {
       body: JSON.stringify({ file: current.file, key, value }),
     });
   } catch (e) {
-    if (e.message === "401") { needToken("that token was refused — try again"); return; }
-    report("facade unreachable", true); return;
+    if (e.message === "401") { needToken("that key was refused — try again"); return; }
+    report("Hearth is not answering", true); return;
   }
   const d = r.data || {};
   if (r.status !== 200 || !d.ok) {
@@ -51,8 +51,8 @@ async function confirmSet() {
       body: JSON.stringify({ file, key, value, yes: true }),
     });
   } catch (e) {
-    if (e.message === "401") { needToken("that token was refused — try again"); return; }
-    report("facade unreachable", true); return;
+    if (e.message === "401") { needToken("that key was refused — try again"); return; }
+    report("Hearth is not answering", true); return;
   }
   clearPending();
   const d = r.data || {};

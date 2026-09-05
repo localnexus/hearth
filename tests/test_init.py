@@ -162,19 +162,19 @@ class FirstRun(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(_loads(self.data, "config", "models", "example", "model.toml")["id"],
                          "your-model-id-here")
-        self.assertIn("2 models advertised", r.stdout)
+        self.assertIn("2 models listed", r.stdout)
 
     def test_model_id_flag_skips_probe(self):
         r = _init(self.data, "--model-id", "zz-given", "--lm-url", "http://127.0.0.1:9/v1")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(_loads(self.data, "config", "models", "example", "model.toml")["id"],
                          "zz-given")
-        self.assertNotIn("no LLM server answering", r.stdout)
+        self.assertNotIn("no model server answering", r.stdout)
 
     def test_unreachable_server_is_a_note_not_a_failure(self):
         r = _init(self.data, "--lm-url", "http://127.0.0.1:9/v1")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn("no LLM server answering", r.stdout)
+        self.assertIn("no model server answering", r.stdout)
 
     # 6 ────────────────────────────────────────────────────────────────────────
     def test_unparseable_serve_toml_refuses_and_leaves_bytes(self):

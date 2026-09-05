@@ -191,7 +191,7 @@ built around a ~35B-parameter, 3B-active MoE at Q8_0, ~37 GB — see HARDWARE-RE
 value as `LM_API_TOKEN` when launching Hearth.
 
 > **If you use LM Studio instead.** Start its server (`:1234`), load the model, generate an API
-> token, and in step 6 pass `--lm-url http://127.0.0.1:1234/v1`; the facade reads that server's
+> token, and in step 6 pass `--lm-url http://127.0.0.1:1234/v1`; Hearth reads that server's
 > token from the file `lm_token_source` names in `config/serve.toml`, and the terminal path takes
 > `LM_BASE_URL` / `LM_API_TOKEN` / `LM_PROVIDER=lmstudio`. LM Studio needs the model id to match
 > **verbatim**, and its stack is version-sensitive — the runbook's
@@ -205,14 +205,14 @@ One command turns the checkout into a configured install:
 .venv/bin/python -m hearth.init
 ```
 
-It copies the three templates into place (selection, example model config, facade gate), mints the facade's bearer token, switches the facade **and** its supervisor on,
-asks whether the companion should remember across sittings (default no — memory writes durable
-records about a person, so it is never turned on silently), and records your model id if the
-server from step 5 answers.
+It copies the three starter config files into place, creates your access key, switches on
+Hearth's web pages, asks whether the companion should remember you between conversations
+(default no — memory writes durable records about a person, so it is never turned on silently),
+and records your model if the server from step 5 answers.
 
-It prints the token **once** and the address to open next (that page asks for it one time and
-keeps it). Re-running is safe — anything already in place is left alone and named, and the token
-is never printed again (it lives at `config/serve-token`, 0600). `--help` lists the unattended
+It prints the key **once** and the address to open next (that page asks for it one time and
+keeps it). Re-running is safe — anything already in place is left alone and named, and the key
+is never printed again (it lives at `config/serve-token`, readable only by you). `--help` lists the unattended
 flags (`--yes`, `--memory on|off`, `--lm-url`, `--model-id`).
 
 It changes nothing that ships; the templates keep their everything-off defaults for anyone
@@ -220,7 +220,7 @@ copying files by hand. Which file does what: [The config layers](the-config-laye
 
 To keep everything you own **outside the checkout**, set `HEARTH_DATA` to any directory *before*
 you run it (same `characters/` + `config/` layout; the shipped example stays reachable). Unset,
-the checkout is the data root.
+the checkout is where Hearth keeps your files.
 
 Later: write your own companion ([Authoring a character](authoring-a-character.md)) and add a
 voice you have the rights to ([Bring your own voice](bring-your-own-voice.md)).
@@ -249,23 +249,23 @@ you talk means the process is getting silence — a permission problem, not a He
 
 ## 8. First launch
 
-With the LLM server up, from the terminal app that holds the mic grant, start the facade:
+With your model server up, from the terminal app that holds the mic grant, start Hearth:
 
 ```bash
 .venv/bin/python -m hearth.serve
 ```
 
-Then open **`http://127.0.0.1:65001/admin/launch`** and paste the token from step 6 when asked.
+Then open **`http://127.0.0.1:65001/admin/launch`** and paste the key from step 6 when asked.
 On a fresh install that page offers **First run**: three steps that check your LLM server, record
 the model id it advertises, start the companion, and confirm it heard you. After that the launch
 page is the front door: **Start** brings the voice loop up (~10–20 s to warm, plus the one-time
 kernel compile if step 4 didn't already pay it), the **companion switcher** picks who is live, and
-the links lead to settings, memory, the roster, and the bot's own `:65000` panel.
+the links lead to settings, memory, the roster, and the companion's own control panel (`:65000`).
 
 **Then speak first** — there is no greeting. A reply comes ~2–3 s after your pause (slower on the
 first turn if the server must load the model). Talking over it cuts it off: that's barge-in working.
 
-**The terminal path still works**: `./start.sh --check`, then `./start.sh` (no facade involved);
+**The terminal path still works**: `./start.sh --check`, then `./start.sh` (no web pages involved);
 `Ctrl-C` or `./stop.sh` stops it.
 
 From here the [runbook](runbook/README.md) is the operating manual, with a symptom → fix table in
@@ -278,7 +278,7 @@ git pull
 uv pip install -e ".[mac]"      # picks up any dependency change; re-applies the pins
 ```
 
-Your `config/active.toml`, `config/overrides.toml`, `config/serve.toml` + token, `config/memory.toml`, your own characters
+Your `config/active.toml`, `config/overrides.toml`, `config/serve.toml` + key, `config/memory.toml`, your own characters
 and model configs, and every companion's `sessions/` / `captures/` are gitignored (or live
 under `HEARTH_DATA`), so a pull never touches them.
 Model weights live in the Hugging Face cache and are untouched too.
@@ -292,9 +292,9 @@ Model weights live in the Hugging Face cache and are untouched too.
 | Startup fails loading Chatterbox/Whisper, mentions offline or cache | Weights not fetched — step 3. |
 | `./start.sh --check` says the server is unreachable | `llama-server` not running, or on another port — `LM_BASE_URL`. |
 | Server returns `401` | It wants a key — `LM_API_TOKEN`. |
-| Bot ready, you speak, nothing ever transcribes | Mic permission — step 7. |
+| Companion ready, you speak, nothing ever transcribes | Mic permission — step 7. |
 | `[Errno -9996] Invalid input device` | The default input is an output-only device (A2DP earbuds) — pick a real mic in System Settings → Sound. |
-| Bot goes quiet after `Generating chat` | The model is thinking out loud with no content — force thinking off ([llm.md](config-manual/llm.md)). |
+| The companion goes quiet after `Generating chat` | The model is thinking out loud with no content — force thinking off ([llm.md](config-manual/llm.md)). |
 | Reply arrives but the audio stutters | RTF ≥ 1 on this chip — try the `8bit` TTS variant, and check nothing else is hammering the GPU. |
 
 Anything deeper: [debugging notes](debugging/README.md).

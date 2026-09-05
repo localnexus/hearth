@@ -75,10 +75,11 @@
 <div id="statusline">connecting…</div>
 
 <div id="tokencard" class="card hidden">
-  <p>This surface needs the serve bearer token (asked once; kept only in this
+  <p>This page needs your access key — the one <code>hearth.init</code> printed
+     (asked once; kept only in this
      browser — shared with the other admin pages).</p>
   <div class="row">
-    <input type="password" id="token" autocomplete="off" placeholder="bearer token">
+    <input type="password" id="token" autocomplete="off" placeholder="access key">
     <button id="tokenbtn" class="primary">Unlock</button>
   </div>
 </div>
@@ -127,7 +128,7 @@ let pending = null;    // {file, key, value} awaiting confirm
 function needToken(prompt) {
   show("tokencard", true); show("filescard", false);
   show("formcard", false); show("confirmcard", false);
-  $("statusline").textContent = prompt || "locked — enter the bearer token";
+  $("statusline").textContent = prompt || "locked — enter your access key";
 }
 
 /*SETTINGS_SCHEMA_JS*/

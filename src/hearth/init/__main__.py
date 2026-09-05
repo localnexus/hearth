@@ -45,7 +45,7 @@ def _pick(ids: list[str], interactive: bool) -> str | None:
         return ids[0]
     if not interactive:
         return None
-    print("  the server advertises several models:")
+    print("  your model server lists several models:")
     for i, m in enumerate(ids, 1):
         print(f"    {i}. {m}")
     ans = input("  which one should the companion use? [number, or Enter to decide later] ").strip()
@@ -71,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
     interactive = sys.stdin.isatty() and not args.yes
 
     rep = Report()
-    print(f"Hearth first run — data root: {cl.DATA_DIR}")
+    print(f"Hearth first run — setting up in {cl.DATA_DIR}")
     try:
         paths = copy_templates(rep)
         mint_token(paths["serve"], rep)
@@ -80,8 +80,9 @@ def main(argv: list[str] | None = None) -> int:
             set_lm_url(paths["serve"], args.lm_url, rep)
 
         want_memory = (args.memory == "on") if args.memory else _ask_yes_no(
-            "Should the companion remember across sittings? This writes records under "
-            f"{cl.DATA_DIR / 'characters'}/<companion>/memory/ — local, 0600, deletable.",
+            "Should the companion remember you between conversations? This writes records "
+            f"under {cl.DATA_DIR / 'characters'}/<companion>/memory/ — on this machine only, "
+            "readable by your account alone, deletable.",
             interactive)
         if want_memory:
             enable_memory(rep)
@@ -94,14 +95,14 @@ def main(argv: list[str] | None = None) -> int:
         if chosen is None and not args.no_probe:
             ids = probe_models(args.lm_url, args.lm_token)
             if ids is None:
-                rep.add("note", f"no LLM server answering at {args.lm_url} — the model id "
+                rep.add("note", f"no model server answering at {args.lm_url} — the model "
                                 "is left for later")
             elif not ids:
-                rep.add("note", f"{args.lm_url} answers but advertises no model yet")
+                rep.add("note", f"{args.lm_url} answers but lists no model yet")
             else:
                 chosen = _pick(ids, interactive)
                 if chosen is None:
-                    rep.add("note", f"{len(ids)} models advertised — pick one on the launch "
+                    rep.add("note", f"{len(ids)} models listed — pick one on the launch "
                                     "page, or re-run with --model-id")
         if chosen:
             set_model_id(model_path, chosen, rep)
@@ -115,19 +116,19 @@ def main(argv: list[str] | None = None) -> int:
         _say(state, text)
     if rep.token:
         print()
-        print(f"  your bearer token (shown once — it lives in the file named above):")
+        print("  your access key (shown once — it lives in the file named above):")
         print(f"    {rep.token}")
     placeholder = current_model_id(model_path) == PLACEHOLDER_ID
     print()
     print("Next:")
-    print("  1. start the facade:   .venv/bin/python -m hearth.serve")
+    print("  1. start Hearth:       .venv/bin/python -m hearth.serve")
     print(f"  2. open                {facade_url(paths['serve'])}")
-    print("     and paste the token when the page asks — once; that browser keeps it.")
-    print("  From there Start brings the voice loop up and the companion switcher picks who")
-    print("  is live. (./start.sh is the terminal path and still works.)")
+    print("     and paste the key when the page asks — once; that browser keeps it.")
+    print("  From there, Start brings the companion up and the switcher picks who is live.")
+    print("  (./start.sh still works from the terminal.)")
     if placeholder:
-        print(f"  ! model id is still \"{PLACEHOLDER_ID}\" — set it to what your server")
-        print("    advertises before the first turn (settings page, or "
+        print(f"  ! no model chosen yet — the id is still \"{PLACEHOLDER_ID}\". The launch page")
+        print("    offers the first-run walk, which lists what your model server has (or edit "
               f"{model_path.relative_to(cl.DATA_DIR) if model_path.is_relative_to(cl.DATA_DIR) else model_path}).")
     return 0
 

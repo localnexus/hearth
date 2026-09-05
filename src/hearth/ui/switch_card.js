@@ -68,11 +68,11 @@ window.HearthSwitchCard = (function () {
     head.appendChild(cur);
     const legend = el("div", cls.legend);
     legend.textContent =
-      "Pick who's live. The daemon writes active.toml (the previous file is kept " +
-      "as .prev) and applies it the lightest way it can: LIVE at the next words " +
-      "when every changed piece has a live path (persona · voice · resident " +
-      "model), otherwise a warm restart of the voice bot. The LLM server is " +
-      "never touched either way. Models marked ● are loaded on the server now.";
+      "Pick who's live. Hearth writes active.toml (the previous file is kept as " +
+      ".prev) and applies it the lightest way it can: live at your next words " +
+      "when every changed piece can change in place (persona · voice · a loaded " +
+      "model), otherwise the companion restarts. Your model server is never " +
+      "touched either way. Models marked ● are loaded on the server now.";
 
     const selects = {};
     const rows = [];
@@ -250,7 +250,7 @@ window.HearthSwitchCard = (function () {
     // survives and only needs to let its own status poll catch up.
     function watchRestart(wasUp) {
       if (!adapters.selfDies) {
-        say(wasUp ? "restarting the voice bot — watch the state line"
+        say(wasUp ? "restarting the companion — watch the state line"
                   : "start requested — watch the state line");
         go.disabled = false;
         busy = false;

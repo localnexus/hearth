@@ -53,7 +53,7 @@ async function renderListen(d) {
     eng = (await api("/engine")).data;
   } catch (e) { /* proxy not ready yet — the next poll asks again */ }
   if (!usage || typeof usage.turns !== "number") {
-    line.textContent = "warming up" +
+    line.textContent = "starting up" +
       (bot.uptime_s != null ? " (" + Math.round(bot.uptime_s) + " s)" : "") + "…";
     return;
   }

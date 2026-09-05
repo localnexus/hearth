@@ -81,20 +81,20 @@ Sizing detail (memory floor, disk, measured latency, which chips are fast enough
    (LM Studio works too as an alternative workbench, but `llama-server` is the recommended,
    regression-stable default.)
 
-3. **First run.** One command configures the install — copies the templates, mints the
-   facade's token, opens the door, and records your model id if the server is up:
+3. **First run.** One command configures the install — copies the starter config files, creates
+   your access key, switches the web pages on, and records your model if the server is up:
 
    ```bash
    .venv/bin/python -m hearth.init
    ```
 
-   It prints the token once and the address to open next. Re-running is safe.
+   It prints the key once and the address to open next. Re-running is safe.
 
 4. **Add a voice.** A rights-clean default voice ships with `characters/example/`. To use your
    own, drop one clean 10–15 s reference clip into a voice bundle and point a `voice.toml` at
    it — see [Bring your own voice](docs/bring-your-own-voice.md).
 
-5. **Talk.** With your server up, start the facade in a terminal window (macOS grants the
+5. **Talk.** With your server up, start Hearth in a terminal window (macOS grants the
    microphone to the terminal app, not to Python), then open the launch page and press Start:
 
    ```bash

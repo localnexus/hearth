@@ -113,7 +113,7 @@ def mint_token(serve_path: Path, rep: Report) -> Path:
     src = str(_deep_get(doc, ["serve", "token_source"], "") or "config/serve-token")
     path = cl.resolve_data_path(src)
     if path.is_file():
-        rep.add("exists", f"token at {_rel(path)} (not shown again)")
+        rep.add("exists", f"access key at {_rel(path)} (not shown again)")
         return path
     path.parent.mkdir(parents=True, exist_ok=True)
     token = secrets.token_hex(32)
@@ -121,7 +121,7 @@ def mint_token(serve_path: Path, rep: Report) -> Path:
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(token + "\n")
     rep.token = token
-    rep.add("created", f"token at {_rel(path)} (0600)")
+    rep.add("created", f"access key at {_rel(path)} (readable only by you)")
     return path
 
 

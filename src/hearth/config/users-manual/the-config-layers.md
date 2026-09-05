@@ -97,6 +97,11 @@ Every change here needs a **restart** to apply. Per-knob meaning lives in `docs/
 
 ## `config/serve.toml` — the facade gate (manage, never print)
 
+Everywhere a person reads — the install guide, the launch and first-run pages — this process is
+simply **Hearth, the program you start** (`python -m hearth.serve`), and its token is **your access
+key**. *Facade* and *bearer* are the names the config, the logs and this manual use for the same two
+things; nothing else is meant by either.
+
 This is the switch that decides whether the **:65001 facade** runs at all, plus its auth. It's **yours to
 manage** — but it holds a **bearer token path**, so it has one hard rule:
 

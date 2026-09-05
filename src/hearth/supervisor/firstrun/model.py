@@ -32,8 +32,8 @@ _MAX_ID_LEN = 200
 #: The honest effect time. The bot reads model.toml when it starts; the facade
 #: snapshots the id at ITS start (serve/__main__.py), so its own /v1 chat leg
 #: keeps sending the old one until the facade is restarted.
-_EFFECT = ("the voice bot reads it at Start; the facade's own /v1 chat endpoint "
-           "follows at the facade's next restart")
+_EFFECT = ("the companion reads it at Start; Hearth's own /v1 chat endpoint "
+           "follows at its next restart")
 
 
 def _record(model_id: str, confirmed: bool, lm_url: str, lm_token: str):
@@ -52,9 +52,9 @@ def _record(model_id: str, confirmed: bool, lm_url: str, lm_token: str):
                                            "— run python -m hearth.init first"}
     advertised = init.probe_models(lm_url, lm_token)
     if model_id not in (advertised or []) and not confirmed:
-        why = (f"{model_id!r} is not among the ids the server advertises"
+        why = (f"{model_id!r} is not among the ids your model server lists"
                if advertised is not None else
-               "the LLM server did not answer, so the id cannot be checked")
+               "your model server did not answer, so the id cannot be checked")
         return 409, {"ok": False, "error": why, "advertised": advertised,
                      "confirm": 'repeat with "yes": true to record it anyway'}
     # Shipped tree: copy-on-write into the data root (the settings forms' rule).

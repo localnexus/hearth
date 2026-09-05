@@ -20,11 +20,11 @@ window.firstRun = (function () {
     h.textContent = "First run";
     const p = document.createElement("p");
     p.textContent = fr.needs_model
-      ? "The selected model config still carries the shipped placeholder id, so " +
-        "Start is parked. The first-run page lists what your server serves and " +
-        "records your pick."
-      : "Nothing has been said on this install yet. The first-run page walks the " +
-        "first sitting: server, model, companion, and the first words.";
+      ? "No model has been chosen yet, so Start waits. The first-run page lists " +
+        "what your model server has and records your pick."
+      : "Nothing has been said on this install yet. The first-run page walks you " +
+        "through the first conversation: model server, model, companion, and the " +
+        "first words.";
     const a = document.createElement("a");
     a.href = "/admin/first-run";
     a.textContent = "Walk through the first run →";

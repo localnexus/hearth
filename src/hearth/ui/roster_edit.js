@@ -65,8 +65,8 @@ $("e-load").addEventListener("click", async () => {
   try { r = await api("/admin/roster/persona?character=" + encodeURIComponent(character) +
                       "&persona=" + encodeURIComponent(variant)); }
   catch (e) {
-    if (e.message === "401") { needToken("that token was refused — try again"); return; }
-    report("facade unreachable", true); return;
+    if (e.message === "401") { needToken("that key was refused — try again"); return; }
+    report("Hearth is not answering", true); return;
   }
   const d = r.data || {};
   if (r.status !== 200) { report(d.error || "load failed", true); return; }
@@ -88,8 +88,8 @@ async function personaSubmit(confirmed) {
       body: JSON.stringify(body),
     });
   } catch (e) {
-    if (e.message === "401") { needToken("that token was refused — try again"); return; }
-    report("facade unreachable", true); return;
+    if (e.message === "401") { needToken("that key was refused — try again"); return; }
+    report("Hearth is not answering", true); return;
   }
   const d = r.data || {};
   if (d.errors) { report(d.errors.map(x => "✗ " + x).join("\n"), true); return; }
@@ -126,8 +126,8 @@ async function voiceSubmit(confirmed) {
   let r;
   try { r = await api("/admin/roster/voice", { method: "POST", body: voiceForm(confirmed) }); }
   catch (e) {
-    if (e.message === "401") { needToken("that token was refused — try again"); return; }
-    report("facade unreachable", true); return;
+    if (e.message === "401") { needToken("that key was refused — try again"); return; }
+    report("Hearth is not answering", true); return;
   }
   const d = r.data || {};
   report(renderReport(d), !d.ok);
