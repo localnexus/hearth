@@ -190,40 +190,40 @@ built around a ~35B-parameter, 3B-active MoE at Q8_0, ~37 GB — see HARDWARE-RE
 `llama-server` is keyless unless you start it with `--api-key`; if you do, export the same
 value as `LM_API_TOKEN` when launching Hearth.
 
-> **If you use LM Studio instead.** It works as an alternative: start its server (`:1234`),
-> load the model, generate an API token, and launch Hearth with
-> `LM_BASE_URL=http://127.0.0.1:1234/v1 LM_API_TOKEN=<token> LM_PROVIDER=lmstudio`. Two
-> differences to know: LM Studio needs the configured model id to match **verbatim** (it can
-> serve several models; `llama-server` serves its one loaded model regardless of the id), and
-> its serving stack is version-sensitive — some newer model architectures won't load on older
-> app/runtime builds, and the only useful error is in its server log, not the API response.
-> The runbook's [dependencies chapter](runbook/00-dependencies.md) keeps the LM-Studio-specific
-> version notes.
+> **If you use LM Studio instead.** Start its server (`:1234`), load the model, generate an API
+> token, and in step 6 pass `--lm-url http://127.0.0.1:1234/v1`; the facade reads that server's
+> token from the file `lm_token_source` names in `config/serve.toml`, and the terminal path takes
+> `LM_BASE_URL` / `LM_API_TOKEN` / `LM_PROVIDER=lmstudio`. LM Studio needs the model id to match
+> **verbatim**, and its stack is version-sensitive — the runbook's
+> [dependencies chapter](runbook/00-dependencies.md) keeps those notes.
 
-## 6. Configure who is live
+## 6. First run — one command
 
-Three plain files select the character, the model config, and the voice. Copy the templates
-into place — the live copies are gitignored, so updates never overwrite your choices:
+One command turns the checkout into a configured install:
 
 ```bash
-cp config/active.toml.example config/active.toml
-cp config/models/example/model.toml.example config/models/example/model.toml
+.venv/bin/python -m hearth.init
 ```
 
-Open `config/models/example/model.toml` and set `id` to the id your server listed in step 5
-(on `llama-server` a mismatch is only a warning; on LM Studio it is fatal). Leave
-`reasoning_effort = "none"` unless you know your model needs otherwise. `config/active.toml`
-already points at the `example` character, the `example` model config, and the `default`
-voice — that is a complete, runnable first configuration.
+It copies the three templates into place (selection, example model config, facade gate), mints the facade's bearer token, switches the facade **and** its supervisor on,
+asks whether the companion should remember across sittings (default no — memory writes durable
+records about a person, so it is never turned on silently), and records your model id if the
+server from step 5 answers.
 
-Later: write your own companion ([Authoring a character](authoring-a-character.md)), add a
-voice you have the rights to ([Bring your own voice](bring-your-own-voice.md)), and learn which
-files you edit versus which edit themselves ([The config layers](the-config-layers.md)).
-`config/overrides.toml` and `config/serve.toml` are optional and not needed to start.
+It prints the token **once** and the address to open next (that page asks for it one time and
+keeps it). Re-running is safe — anything already in place is left alone and named, and the token
+is never printed again (it lives at `config/serve-token`, 0600). `--help` lists the unattended
+flags (`--yes`, `--memory on|off`, `--lm-url`, `--model-id`).
 
-To keep your companions, selections, and conversations **outside the checkout**, set
-`HEARTH_DATA` to any directory before you launch — it uses the same `characters/` + `config/`
-layout, and the shipped example stays reachable from it. Unset, the checkout is the data root.
+It changes nothing that ships; the templates keep their everything-off defaults for anyone
+copying files by hand. Which file does what: [The config layers](the-config-layers.md).
+
+To keep everything you own **outside the checkout**, set `HEARTH_DATA` to any directory *before*
+you run it (same `characters/` + `config/` layout; the shipped example stays reachable). Unset,
+the checkout is the data root.
+
+Later: write your own companion ([Authoring a character](authoring-a-character.md)) and add a
+voice you have the rights to ([Bring your own voice](bring-your-own-voice.md)).
 
 ## 7. Microphone permission (do this before the first launch)
 
@@ -249,29 +249,25 @@ you talk means the process is getting silence — a permission problem, not a He
 
 ## 8. First launch
 
-With the LLM server up, from the terminal app that holds the mic grant:
+With the LLM server up, from the terminal app that holds the mic grant, start the facade:
 
 ```bash
-./start.sh --check     # server reachable, model id, no stale bot, a default mic + speaker
-./start.sh             # preflight again, then launch
+.venv/bin/python -m hearth.serve
 ```
 
-(Manual equivalent: `.venv/bin/python -m hearth.pipeline.bot`. `start.sh` reads
-`LM_BASE_URL` / `LM_API_TOKEN` / `LM_PROVIDER` if you set them.)
-
-**A healthy startup** takes ~10–20 s (Whisper warm-up, Chatterbox load, voice conditioning —
-plus that one-time kernel compile if step 4 didn't already pay it) and ends with:
-
-```
-StartFrame#0 reached the end of the pipeline, pipeline is now ready.
-```
+Then open **`http://127.0.0.1:65001/admin/launch`** and paste the token from step 6 when asked.
+That page is the front door from here on: **Start** brings the voice loop up (~10–20 s to warm,
+plus the one-time kernel compile if step 4 didn't already pay it), the **companion switcher**
+picks who is live, and the links along the top lead
+to settings, memory, the roster, and the bot's own `:65000` panel.
 
 **Then speak first.** There is no auto-greeting — the companion waits for you. Within ~2–3 s
 of your pause you should hear a reply; if your LLM server had to load the model, the first
 turn is slower and the second is the real measure. Talking over the reply cuts it off — that's
-barge-in working. The startup log also prints the address of a browser control panel
-(`http://127.0.0.1:65000/`) with a text box, mute, and push-to-talk. Stop with `Ctrl-C` or
-`./stop.sh`.
+barge-in working.
+
+**The terminal path still works** — `./start.sh --check` then `./start.sh` launches the voice
+loop directly, no facade involved; `Ctrl-C` or `./stop.sh` stops it.
 
 From here the [runbook](runbook/README.md) is the operating manual: preflight, launch, the
 control panel, stopping, session continuity, and a symptom → fix table in
@@ -284,7 +280,7 @@ git pull
 uv pip install -e ".[mac]"      # picks up any dependency change; re-applies the pins
 ```
 
-Your `config/active.toml`, `config/overrides.toml`, `config/serve.toml`, your own characters
+Your `config/active.toml`, `config/overrides.toml`, `config/serve.toml` + token, `config/memory.toml`, your own characters
 and model configs, and every companion's `sessions/` / `captures/` are gitignored (or live
 under `HEARTH_DATA`), so a pull never touches them.
 Model weights live in the Hugging Face cache and are untouched too.

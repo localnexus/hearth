@@ -49,8 +49,9 @@ Run standalone, it says exactly this on stderr and exits 2:
 ```
 
 **Fix:** if you *want* the facade up, turn the gate on and start it again — the **serve** section of
-`/admin/settings/ui` if you can already reach the facade, otherwise `enabled = true` in
-`config/serve.toml` by hand. (Manage that file, never print it — [The config layers](the-config-layers.md).)
+`/admin/settings/ui` if you can already reach the facade; otherwise the first-run bootstrap
+(`hearth.init`) sets `enabled = true` and touches nothing else, or set it by hand. (Manage that
+file, never print it — [The config layers](the-config-layers.md).)
 
 ### `{"error": "unauthorized"}` back from the facade
 

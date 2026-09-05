@@ -5,6 +5,7 @@
 ```bash
 cd <the Hearth tree>          # no absolute path is assumed
 ./start.sh                    # preflight + launch; manual equivalent: .venv/bin/python -m hearth.pipeline.bot
+# first time here? .venv/bin/python -m hearth.init  — templates, token, gates (docs/installing.md §6)
 ```
 (The bot talks to `llama-server` at `http://127.0.0.1:8080/v1` by default — `LM_BASE_URL` / `LM_API_TOKEN` / `LM_PROVIDER` override it, see `start.sh`. Run it in an **iTerm** window — the app that holds the mic grant. Prepend `T4_METRICS=1` to print per-turn STT latency to stderr.)
 

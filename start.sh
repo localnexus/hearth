@@ -66,7 +66,7 @@ ok "data root:   $(printf '%s\n' "$ROOTS" | sed -n 2p)   (companions, sessions, 
 
 # --- which model does the bot request? resolve it from config the same way the bot does ---
 MODEL="$("$VENV_PY" -c 'import hearth.config.config_loader as c; print(c.load_model(c.load_active_selection()["model"])["id"])' 2>/dev/null || true)"
-[ -n "$MODEL" ] || fail "could not resolve the active model from config — copy config/active.toml.example to config/active.toml and set config/models/<model>/model.toml (see docs/the-config-layers.md)"
+[ -n "$MODEL" ] || fail "no selection yet — run the first-run bootstrap: $VENV_PY -m hearth.init   (copies the templates, mints the token, opens the facade; by hand: docs/the-config-layers.md)"
 
 # --- 1. LLM server up, and what it advertises ---
 AUTH=()

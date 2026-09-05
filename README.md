@@ -81,29 +81,30 @@ Sizing detail (memory floor, disk, measured latency, which chips are fast enough
    (LM Studio works too as an alternative workbench, but `llama-server` is the recommended,
    regression-stable default.)
 
-3. **Point Hearth at your server.** Copy the example config and set your model id and the
-   character/voice you want live:
+3. **First run.** One command configures the install — copies the templates, mints the
+   facade's token, opens the door, and records your model id if the server is up:
 
    ```bash
-   cp config/active.toml.example config/active.toml
-   # edit config/active.toml — character, model, voice
+   .venv/bin/python -m hearth.init
    ```
+
+   It prints the token once and the address to open next. Re-running is safe.
 
 4. **Add a voice.** A rights-clean default voice ships with `characters/example/`. To use your
    own, drop one clean 10–15 s reference clip into a voice bundle and point a `voice.toml` at
    it — see [Bring your own voice](docs/bring-your-own-voice.md).
 
-5. **Talk.** With your server up, run the preflight, then launch — in a terminal window (macOS
-   grants the microphone to the terminal app, not to Python):
+5. **Talk.** With your server up, start the facade in a terminal window (macOS grants the
+   microphone to the terminal app, not to Python), then open the launch page and press Start:
 
    ```bash
-   ./start.sh --check   # server reachable, model id, no stale bot, mic + speaker
-   ./start.sh           # go online — speak first (no auto-greeting); Ctrl-C or ./stop.sh to stop
+   .venv/bin/python -m hearth.serve      # then open http://127.0.0.1:65001/admin/launch
    ```
 
-   `start.sh` expects `llama-server` at `http://127.0.0.1:8080/v1`. Point it elsewhere with
-   `LM_BASE_URL` (LM Studio: `http://127.0.0.1:1234/v1`, plus `LM_API_TOKEN` and
-   `LM_PROVIDER=lmstudio`). Manual launch: `.venv/bin/python -m hearth.pipeline.bot`.
+   Speak first — there is no auto-greeting. The terminal path is still there: `./start.sh
+   --check` then `./start.sh` launches the voice loop directly (`Ctrl-C` or `./stop.sh` to
+   stop); it expects `llama-server` at `http://127.0.0.1:8080/v1` and takes `LM_BASE_URL` /
+   `LM_API_TOKEN` / `LM_PROVIDER=lmstudio` for anything else.
 
 ## Bring-your-own philosophy
 

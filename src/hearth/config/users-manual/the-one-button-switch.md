@@ -29,7 +29,9 @@ Three things stay true, and they're the reason it's safe to leave on:
 
 ## Turning it on
 
-Four things have to be true, and the whole of it is one table in one file:
+Four things have to be true, and the whole of it is one table in one file. On a new install the
+first-run bootstrap (`hearth.init`) has already done the first two — this is what it did, and the
+by-hand path for an install that predates it:
 
 - **The facade is enabled** — `config/serve.toml` with `[serve] enabled = true` and a token minted at its
   `token_source` path.

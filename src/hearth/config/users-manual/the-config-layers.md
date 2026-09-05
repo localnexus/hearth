@@ -107,6 +107,10 @@ manage** — but it holds a **bearer token path**, so it has one hard rule:
 > curl -s -H "Authorization: Bearer $(cat config/serve-token)" http://127.0.0.1:65001/v1/models
 > ```
 
+On a new install this file, its token, and both gates come from the first-run bootstrap
+(`hearth.init`) — it copies the template, mints the token at `token_source` (0600), and sets
+`[serve] enabled` and `[serve.supervisor] enabled` without touching another byte.
+
 What the *committed template* (`config/serve.toml.example`, safe to read) tells you without exposing the live
 file:
 
