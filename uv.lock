@@ -2415,7 +2415,7 @@ wheels = [
 ]
 
 [[package]]
-name = "v2-pipecat"
+name = "hearth"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
