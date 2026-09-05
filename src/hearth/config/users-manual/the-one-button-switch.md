@@ -37,7 +37,10 @@ by-hand path for an install that predates it:
   `token_source` path.
 - **The daemon table is uncommented** in that same file (shown below).
 - **The facade runs standalone** — `python -m hearth.serve`. The daemon mounts *only* in the standalone
-  process; the bot's own in-process attach never mounts it.
+  process; the bot's own in-process attach never mounts it. A bot the daemon starts skips that attach
+  altogether (it inherits `HEARTH_SUPERVISED=1`; its parent already serves `/v1`), so its log notes the
+  hand-off at INFO. The *bind failed* WARNING is reserved for a real collision: a terminal `start.sh`
+  beside a running facade.
 - **The panel stays on loopback.** The panel's switcher refuses to register when the panel is LAN-exposed
   (`WEB_HOST` set to anything but loopback) — a relay must never widen an unauthenticated panel into a
   control door. From a LAN-exposed panel, use the facade's authed route directly instead.

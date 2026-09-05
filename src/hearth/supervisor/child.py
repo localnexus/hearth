@@ -31,6 +31,8 @@ from typing import Optional
 
 from loguru import logger
 
+from hearth.serve import SUPERVISED_ENV
+
 # stop.sh parity: matches python / python3 / python3.12 running the bot module.
 _PATTERN = r"python[0-9.]* -m hearth\.pipeline\.bot"
 
@@ -152,6 +154,7 @@ class BotChild:
 
         env = dict(os.environ)
         env.update(self._env_overlay)  # values never logged
+        env[SUPERVISED_ENV] = "1"  # tells the bot its parent is the facade (no attach)
         stdout = asyncio.subprocess.DEVNULL
         if self._log_path is not None:
             self._log_path.parent.mkdir(parents=True, exist_ok=True)
