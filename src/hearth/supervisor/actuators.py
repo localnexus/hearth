@@ -17,7 +17,11 @@ Containment shape:
   * output goes to a 0600 log file (DATA/logs/actuators/<name>.log), never
     into a response — a command may print what a route must not;
     routes carry names, exit codes, and durations only;
-  * one run per actuator at a time; a second press answers busy.
+  * one run per actuator at a time; a second press answers busy;
+  * an optional guard = "companion": refused while a companion is running,
+    unless the press carries ?force=1 — the shape for a command whose cost
+    the NEXT TURN pays (freeing the model server's models: a live session
+    owns its model's residency, and only a confirmed press may take it).
 """
 
 from __future__ import annotations
@@ -67,6 +71,7 @@ class ActuatorSet:
                 "cwd": str(entry.get("cwd") or ""),
                 "note": str(entry.get("note") or ""),
                 "probe_url": str(entry.get("probe_url") or ""),
+                "guard": str(entry.get("guard") or ""),
             }
 
     def __contains__(self, name: object) -> bool:
@@ -75,12 +80,17 @@ class ActuatorSet:
     def names(self) -> list[str]:
         return sorted(self._acts)
 
+    def guard(self, name: str) -> str:
+        """The declared guard for one actuator ("" = none)."""
+        return self._acts[name]["guard"]
+
     def probe_urls(self) -> dict[str, str]:
         return {n: a["probe_url"] for n, a in self._acts.items() if a["probe_url"]}
 
     def status(self) -> dict:
         """name → note/running/last record — no commands, no output."""
         return {n: {"note": a["note"],
+                    "guard": a["guard"],
                     "running": n in self._running,
                     "last": self._last.get(n)}
                 for n, a in self._acts.items()}

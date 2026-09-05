@@ -29,7 +29,11 @@ WebRTC). Open `http://<facade-host>:65001/admin/launch`; it asks for the serve b
   run's outcome — plus a **Run** button. The request holds until the command finishes, so a
   slow bring-up simply keeps the button disabled; `409` means it is already running. This is
   what makes a session-launched external (the away-voice server and its web client)
-  recoverable from a phone instead of only from the desk.
+  recoverable from a phone instead of only from the desk. An actuator declared with
+  `guard = "companion"` is **held while a companion is running**: the press comes back as a
+  question naming the cost (whatever the command frees, the next turn pays to bring back), and
+  only a confirmed press goes through. That is the shape for the "free the model server's
+  models" command — a live session owns its model's residency.
 - **First run** (new installs only): while the selected model config still carries the shipped
   placeholder id, or no companion on this install has a session yet, a card at the top offers the
   first-run page (`/admin/first-run`, [admin surface](admin-surface.md)) — and while the id is the

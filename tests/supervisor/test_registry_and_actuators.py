@@ -59,9 +59,10 @@ class RegistryParity(unittest.TestCase):
                             "watch": {"myservice": {"url": "http://127.0.0.1:8080"}},
                             "actuators": {"lm-unload": {
                                 "command": ["/x/lms", "unload", "--all"],
-                                "note": "cold stop"}}}},
+                                "note": "cold stop", "guard": "companion"}}}},
         )
         self.assertEqual([e for e in errors if "supervisor" in e], [], errors)
+        self.assertEqual(act.model_fields["guard"].default, "")
         # an empty command is a config error, not a runtime surprise
         errors, _ = sr.strict_check(
             "serve",
@@ -119,6 +120,15 @@ class ActuatorEngine(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(rec["ok"])
             with self.assertRaises(KeyError):
                 await acts.run("nope")
+
+    def test_guard_is_carried_and_reported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            acts = self._set({"cold": {"command": ["/bin/true"], "guard": "companion"},
+                              "any": {"command": ["/bin/true"]}}, tmp)
+            self.assertEqual(acts.guard("cold"), "companion")
+            self.assertEqual(acts.guard("any"), "")
+            self.assertEqual(acts.status()["cold"]["guard"], "companion")
+            self.assertEqual(acts.status()["any"]["guard"], "")
 
     def test_commandless_block_skipped_never_fatal(self):
         with tempfile.TemporaryDirectory() as tmp:

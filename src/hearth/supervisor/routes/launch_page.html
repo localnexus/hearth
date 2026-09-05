@@ -106,6 +106,7 @@
 <script>/*FIRST_RUN_JS*/</script>
 <script>/*KEY_HELP_JS*/</script>
 <script>/*HEARTH_RESTART_JS*/</script>
+<script>/*LAUNCH_ACTUATORS_JS*/</script>
 
 <script>
 "use strict";
@@ -115,80 +116,12 @@ let botUp = false;       // start-only riders ride a cold start, never a warm sw
 let lastBotState = null; // collapse repeated renders
 let busy = false;        // a start/stop is in flight — freeze the cards
 let tick = 0;            // poll counter — actuators refresh on a slower cadence
-const actBusy = new Set(); // actuator runs in flight — never re-render under one
 let cookieMinted = false;  // the browser carrier for plain navigation
 
 function needToken(prompt) {
   show("tokencard", true); show("switchcard", false); show("stopcard", false);
   show("actuatorcard", false); show("firstrun", false);
   $("statusline").textContent = prompt || "locked — enter your access key";
-}
-
-// ── declared actuators (bring-up commands for the watched externals) ─────────
-
-function actState(a) {
-  const bits = [];
-  if (a.probe === true) bits.push("up ✓");
-  else if (a.probe === false) bits.push("down ✗");
-  if (a.running) bits.push("running…");
-  const last = a.last;
-  if (last) {
-    bits.push("last " + (last.ok ? "ok" : last.timed_out ? "timed out"
-                         : "exit " + last.exit) + " · " + last.duration_s + "s");
-  }
-  return bits.join("  ·  ");
-}
-
-async function loadActuators() {
-  if (actBusy.size) return;   // a run is holding the request — leave the rows be
-  let r;
-  try { r = await api("/admin/actuators"); } catch { return; }
-  const acts = (r.data && r.data.actuators) || {};
-  const names = Object.keys(acts).sort();
-  show("actuatorcard", names.length > 0);
-  const host = $("actuators");
-  host.innerHTML = "";        // rebuilt from nodes below — never from API text
-  for (const n of names) {
-    const a = acts[n];
-    const left = el("div", "grow", n);
-    if (a.note) left.appendChild(el("div", "note", a.note));
-    left.appendChild(el("div", "state", actState(a)));
-    const btn = el("button", "", "Run");
-    btn.disabled = !!a.running;
-    btn.addEventListener("click", () => runActuator(n, btn));
-    const row = el("div", "row");
-    row.appendChild(left); row.appendChild(btn);
-    host.appendChild(row);
-  }
-}
-
-async function runActuator(name, btn) {
-  actBusy.add(name);
-  btn.disabled = true;
-  btn.textContent = "running…";
-  report("running " + name + " — this holds until the command finishes");
-  try {
-    const r = await api("/admin/actuators/" + encodeURIComponent(name) + "/run",
-                        { method: "POST" });
-    if (r.status === 409) report(name + " is already running", true);
-    else if (r.status === 404) report("unknown actuator: " + name, true);
-    else if (r.data && r.data.ok) report(name + " ok in " + r.data.duration_s + "s");
-    else {
-      const d = r.data || {};
-      // exit === null is a spawn that never happened (bad path, permissions) —
-      // a different failure from a command that ran and returned non-zero.
-      const why = d.timed_out ? "timed out"
-                : d.exit === null || d.exit === undefined ? "could not start"
-                : "exit " + d.exit;
-      report(name + " failed: " + why + " — the log is on the machine", true);
-    }
-  } catch (e) {
-    report(e.message === "401" ? "key refused" : name + " failed: " + e.message, true);
-  } finally {
-    actBusy.delete(name);
-    btn.textContent = "Run"; btn.disabled = false;
-    loadActuators();
-  }
 }
 
 // ── state poll ──────────────────────────────────────────────────────────────
@@ -211,7 +144,7 @@ async function refresh() {
   }
   // Externals move on their own clock (and each probe costs a request), so the
   // actuator card refreshes every fourth poll rather than every one.
-  if (tick++ % 4 === 0) loadActuators();
+  if (tick++ % 4 === 0) LaunchActuators.refresh(api, report);
   const bot = (st.data && st.data.bot) || {};
   const sw = st.data && st.data.switch;
   const ext = (st.data && st.data.externals) || {};

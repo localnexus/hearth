@@ -280,6 +280,28 @@ class AdminRoutes(AioHTTPTestCase):
         resp = await self.client.post("/admin/actuators/nope/run", headers=self.BEARER)
         self.assertEqual(resp.status, 404)
 
+    async def test_guarded_actuator_refuses_while_companion_runs_unless_forced(self):
+        self.app["actuators"] = actuators_mod.ActuatorSet(
+            {"cold": {"command": [_PY, "-c", "print('freed')"], "guard": "companion"}},
+            log_dir=Path(self._acts_tmp.name) / "actuators")
+        # No companion: the guard is silent.
+        resp = await self.client.post("/admin/actuators/cold/run", headers=self.BEARER)
+        self.assertEqual(resp.status, 200)
+        # A running companion: refused, with the guard named — and the record
+        # untouched (nothing ran).
+        resp = await self.client.post("/admin/bot/start", headers=self.BEARER, json={})
+        self.assertEqual(resp.status, 200, await resp.text())
+        resp = await self.client.post("/admin/actuators/cold/run", headers=self.BEARER)
+        self.assertEqual(resp.status, 409)
+        body = await resp.json()
+        self.assertEqual(body["guard"], "companion")
+        self.assertIn("companion is running", body["error"])
+        # The confirmed press goes through.
+        resp = await self.client.post("/admin/actuators/cold/run?force=1",
+                                      headers=self.BEARER)
+        self.assertEqual(resp.status, 200)
+        self.assertTrue((await resp.json())["ok"])
+
     async def test_state_carries_declared_watches_and_actuator_names(self):
         resp = await self.client.get("/admin/state", headers=self.BEARER)
         data = await resp.json()

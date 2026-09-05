@@ -12,6 +12,9 @@ poll of the launch page.
 Actuators are the one thing the daemon can push. They are operator-declared,
 fixed-argv, bounded, and never children of this process; the responses carry
 their names and records, never their commands and never their output.
+An actuator declared with guard = "companion" is refused (409, with the
+guard named) while a companion is running, unless the press says ?force=1 —
+a live session owns its model's residency, so freeing it is a confirmed act.
 
 One part of the /admin surface; the package __init__ carries the map of the
 whole, mounts the routes, and re-exports every name defined here.
@@ -114,6 +117,17 @@ async def _actuator_run(request: web.Request) -> web.Response:
     acts = request.app["actuators"]
     if name not in acts:
         return web.json_response({"error": f"unknown actuator {name!r}"}, status=404)
+    if acts.guard(name) == "companion" and request.query.get("force") != "1":
+        # Process truth first: a desk-started companion counts too.
+        child = request.app["bot_child"]
+        await child.reconcile()
+        if child.status().get("state") in ("starting", "running"):
+            return web.json_response(
+                {"error": f"{name} is held while a companion is running — "
+                          "the next turn would pay for what it frees; "
+                          "press again to confirm",
+                 "guard": "companion", "companion": child.status().get("state")},
+                status=409)
     try:
         record = await acts.run(name)
     except actuators_mod.ActuatorBusy:

@@ -71,6 +71,7 @@ from hearth.tts.params import SAMPLE_RATE  # engine-owned output rate (backend-n
 from hearth.stt.stt_service import MLXWhisperSTTService
 from hearth.control.control import start_web_server
 from hearth.control.engine_probe_llamaserver import fetch_engine_info_for
+from hearth.pipeline import model_residency
 from hearth.control.control_taps import MuteGate, SpeakingTap
 from hearth.session.session_cli import resolve_session
 from hearth.recording.recording import (
@@ -505,6 +506,15 @@ async def main(
     # output stream fails to open ('!obj'/-9986, the companion's voice dead for the session).
     # Must be the FIRST audio-touching act.
     await recording_repair_routing()
+
+    # A live session owns its model's residency: under LM Studio, load the
+    # profile's model NOW (bounded, logged) rather than let the first turn pay
+    # a just-in-time load — or every turn, on a build that expires JIT loads at
+    # once. llama-server owns its own model; the call steps aside there.
+    # Never raises; a failure is one printed line and the first turn retries.
+    await model_residency.ensure_resident(
+        LM_PROVIDER, LM_BASE_URL, LM_API_TOKEN, LM_MODEL,
+        log_dir=config_loader.DATA_DIR / "logs")
 
     (pipeline, transport, context, mute_gate, speaking_tap, measure_observer,
      recorder, memory_seam, live_switcher, system_instruction,

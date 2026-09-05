@@ -40,6 +40,7 @@ class _SupActuator(_Cfg):
     cwd: str = Field("", description="working directory for the command (empty = the daemon's)")
     note: str = Field("", description="human description shown on /admin/actuators")
     probe_url: str = Field("", description="optional reachability probe shown beside the actuator (any HTTP answer = up)")
+    guard: str = Field("", description="\"companion\" ⇒ refused (409) while a companion is running unless the press confirms with ?force=1 — for commands whose cost the next turn pays (freeing the model); empty ⇒ runs any time")
 
 
 class _ServeSupervisor(_Cfg):
