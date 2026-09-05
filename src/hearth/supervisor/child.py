@@ -134,9 +134,9 @@ class BotChild:
     async def start(self, mode: str = "new", name: Optional[str] = None,
                     memory: Optional[str] = None) -> dict:
         if self.state in ("starting", "running", "stopping"):
-            return {"ok": False, "error": f"bot is {self.state}", "pid": self.pid}
+            return {"ok": False, "error": f"the companion is {self.state} — wait a moment", "pid": self.pid}
         if await self.adopt():
-            return {"ok": False, "error": "a bot is already running — adopted, not restarted",
+            return {"ok": False, "error": "the companion is already running (started elsewhere) — taken over as is, not restarted",
                     "pid": self.pid, "adopted": True}
         if mode == "new":
             args = ["--new"]
@@ -188,7 +188,7 @@ class BotChild:
 
     async def stop(self, hold: bool = False, name: Optional[str] = None) -> dict:
         if self.state == "down" and not await self.adopt():
-            return {"ok": True, "note": "no bot running — nothing to stop"}
+            return {"ok": True, "note": "no companion running — nothing to stop"}
         pid = self.pid
         proc = self._proc  # captured now: the reaper clears it when the child dies
         if hold:
@@ -216,7 +216,7 @@ class BotChild:
             logger.warning("[supervisor] bot pid {} outlived {} — escalating", pid, sig.name)
         if not dead:
             self.state = "running"
-            return {"ok": False, "error": "could not stop the bot", "pid": pid}
+            return {"ok": False, "error": "the companion did not stop — see logs/bot.log", "pid": pid}
         code = None
         if proc is not None:  # our spawn: wait() is idempotent, returncode caches
             with contextlib.suppress(asyncio.TimeoutError):

@@ -33,7 +33,7 @@ _OFFLINE_PAGE = """<!doctype html><meta charset="utf-8">
 <title>Hearth — offline</title>
 <body style="font-family: system-ui; max-width: 34em; margin: 4em auto; line-height: 1.5">
 <h1>Hearth is resting</h1>
-<p>The voice bot is not running.
+<p>No companion is running.
 <a href="/admin/launch">Open the launch page</a> to start it.</p>
 <p>API: <code>POST /admin/bot/start {"mode": "new"}</code> · state:
 <code>GET /admin/state</code></p></body>"""
@@ -58,7 +58,7 @@ async def _panel_proxy(request: web.Request) -> web.Response:
         if request.path == "/" and request.method == "GET":
             return web.Response(text=_OFFLINE_PAGE, content_type="text/html")
         return web.json_response(
-            {"error": "voice bot offline", "bot": app["bot_child"].status(),
+            {"error": "no companion running", "bot": app["bot_child"].status(),
              "hint": "POST /admin/bot/start"},
             status=503,
         )

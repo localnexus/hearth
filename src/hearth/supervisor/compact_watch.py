@@ -218,7 +218,7 @@ async def submit(app, character: str, session: str) -> dict:
     """
     child = app.get("bot_child") if hasattr(app, "get") else app["bot_child"]
     if child is not None and child.status().get("state") in ("starting", "running"):
-        return {"ok": False, "note": "the voice bot is running — stop it first"}
+        return {"ok": False, "note": "the companion is running — stop it first"}
 
     qdir = queue_dir()
     qdir.mkdir(parents=True, exist_ok=True)
