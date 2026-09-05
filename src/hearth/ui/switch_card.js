@@ -88,12 +88,12 @@ window.HearthSwitchCard = (function () {
     }
 
     const holdRow = el("label", cls.row);
-    holdRow.title = "drop a hold marker before stopping, so the current session " +
+    holdRow.title = "drop a hold marker before stopping, so the current conversation " +
                     "is kept (named) instead of discarded";
     const hold = el("input");
     hold.type = "checkbox";
     holdRow.appendChild(hold);
-    holdRow.appendChild(document.createTextNode(" keep this session (hold)"));
+    holdRow.appendChild(document.createTextNode(" keep this conversation (hold)"));
 
     const btns = el("div", cls.btns);
     const go = el("button", "", "Switch");

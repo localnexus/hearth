@@ -59,17 +59,17 @@
   <h2>Companion</h2>
   <div id="switchmount"></div>
   <div id="startextras">
-    <div class="row"><label for="pick-session">Session</label>
+    <div class="row"><label for="pick-session">Conversation</label>
       <select id="pick-session"></select></div>
     <div class="row"><label for="pick-memory">Memory</label>
       <select id="pick-memory">
-        <option value="">default (full · a resumed session keeps its own mode)</option>
+        <option value="">default (full · a resumed conversation keeps its own mode)</option>
         <option value="full">full — recall and retain</option>
-        <option value="recall-only">recall-only — the companion remembers, this sitting leaves no record</option>
+        <option value="recall-only">recall-only — the companion remembers, this session leaves no record</option>
         <option value="off">off — a fresh meeting</option>
       </select></div>
     <div class="row">
-      <button id="compactbtn" title="Compact the selected session's transcript with the local model before starting — pick a session first">Compact selected session</button></div>
+      <button id="compactbtn" title="Compact the selected conversation with the local model before starting — pick a session first">Compact selected session</button></div>
     <div id="compactqueue" class="hidden"></div>
   </div>
 </div>
@@ -80,7 +80,7 @@
   <p><a href="/">Open the control panel</a></p>
   <div class="row">
     <input type="text" id="stopname" autocomplete="off"
-           placeholder="name this session (optional — it saves either way)">
+           placeholder="name this conversation (optional — it saves either way)">
     <button id="stopbtn">Stop</button>
   </div>
 </div>
@@ -290,7 +290,7 @@ async function loadStartForm() {
 async function loadSessions() {
   const name = card.character();
   const ss = $("pick-session");
-  ss.innerHTML = "<option value=''>— new session —</option>";
+  ss.innerHTML = "<option value=''>— new conversation —</option>";
   try {
     const r = await api("/admin/sessions?character=" + encodeURIComponent(name));
     for (const m of (r.data && r.data.sessions) || []) {
@@ -309,7 +309,7 @@ async function loadSessions() {
 async function doCompact() {
   const character = card.character();
   const sessionId = $("pick-session").value;
-  if (!sessionId) { report("pick a session above first — compaction needs a target", true); return; }
+  if (!sessionId) { report("pick a conversation above first — compaction needs a target", true); return; }
   busy = true; report("requesting compaction…");
   try {
     const r = await api("/admin/compact", { json: { character, session: sessionId } });
@@ -326,7 +326,7 @@ async function doStop() {
   busy = true; report("stopping…");
   try {
     const r = await api("/admin/bot/stop", { json: body });
-    if (r.data && r.data.ok) { report("stopped" + (name ? " — session named " + name : "")); $("stopname").value = ""; }
+    if (r.data && r.data.ok) { report("stopped" + (name ? " — conversation named " + name : "")); $("stopname").value = ""; }
     else report("stop failed: " + JSON.stringify((r.data && r.data.error) || r.status), true);
   } catch (e) {
     report(e.message === "401" ? "key refused" : "stop failed: " + e.message, true);

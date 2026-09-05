@@ -16,6 +16,12 @@ Numeric / ID schemes: [`0-9.md`](0-9.md).
 - **config_loader** (`config_loader.py`) — the startup loader that resolves `active.toml` → `model.toml` + `persona.md` + the voice descriptor, and composes the system prompt. **Fail-fast:** a missing/malformed file raises `ConfigError` naming the exact file. Externalizes the model, voice, and system-prompt selection from code into config files.
 - **config_reload** (`config_reload.py`) — the **turn-boundary reloader** implementing **live-config**: re-reads `config/overrides.toml` at each turn boundary and dispatches the FREE / HIDEABLE updates. Distinct from `config_loader` (which resolves the pre-runtime selection once at startup).
 - **context-budget gauge / zones (ok · warn · over)** — the control panel's `Tokens`-line gauge that measures held-tokens against the **reliable-usable line** (`reliable_context`), not the advertised window. Zones: **ok** `<75%` (blue) · **warn** `75–100%` (amber + banner) · **over** `≥100%` (red/bold + banner); the `⚠ approaching reliable context line` banner (`#ctxwarn`) shows in warn/over. Falls back to the advertised window when `reliable_context` is unset.
+- **conversation** — one thread of talk with a companion, however many times you come back to it: the saved
+  message list (**the saved conversation**, `characters/<name>/sessions/<id>.json`) plus the memory records
+  its sessions left behind. It is what the launch page's **Conversation** picker opens (new, or one off the
+  shelf), what a switch keeps, what **Stop** saves and names, what compaction shrinks, and what a fork
+  branches. In the config, the code and the logs it keeps its older name, *session*; in every page and
+  every sentence a person reads it is *conversation*. Adopted 2026-09-05.
 - **CoT** — Chain-of-Thought. Model "thinking" tokens; must be **off** (empty spoken `content` stalls TTS).
 - **ephemeral session** — a `--memory recall-only` sitting's session file: truly deleted on graceful stop unless held, and its crash leftover is swept by the next fresh start. The ONLY ephemeral class since sessions became saved-by-default (every other session is kept; deleting is the explicit act). Contrast *held session*.
 - **browser carrier (cookie)** — the facade's answer to a structural gap: a browser navigating to a link cannot attach an `Authorization` header, so the bearer-guarded proxy to the :65000 panel is unreachable by clicking. `POST /admin/cookie` (itself authed by header) sets an `HttpOnly`, `SameSite=Lax` cookie whose value is an HMAC of the bearer — same power, different carrier, and the raw secret never enters a cookie jar nor works as a header. Rotating the bearer invalidates it; no server-side session state exists. See *facade*.
@@ -30,6 +36,12 @@ Numeric / ID schemes: [`0-9.md`](0-9.md).
 - **held-in-ctx** — the context the model holds *this turn* (last prompt *plus its reply*); the panel labels it **`held`**, with an **`est.` marker** (chars/4 pre-fill seed) until the first turn's server report.
 - **HFP** — Hands-Free Profile. Bluetooth low-fi (~16 kHz mono) two-way; the only BT mode with a **mic**.
 - **HIDEABLE tier** (live-config) — the one live-config param that costs a short re-prepare: voice `ref_wav`. `tts.set_ref_wav(path)` re-runs `prepare_conditionals` on the single-worker executor (~0.2 s); applied and **awaited before** the turn's first `run_tts`. (The EXPENSIVE tier — model / character swap — still needs a restart via `active.toml`.)
+- **history** — everything a companion knows of you across *all* your conversations: the fact index and
+  the summaries that outlive any single thread. Picture the difference this way: a *conversation* is one
+  notebook you can reopen and keep writing in; *history* is what the companion has learned from every
+  notebook so far, and it is theirs, not the notebook's — a new conversation starts on a blank page, yet the
+  companion still knows you. Recorded per character, never per voice or persona (see `the-memory-thread.md`).
+  A fork branches a conversation; it never rewrites history. Adopted 2026-09-05.
 - **hold-request marker** — the file `.hold-request` in the live companion's `sessions/` dir, written by `./stop.sh --hold` before signaling the bot. The bot's `finally` block reads and consumes the marker to promote the session to held. A marker is used (instead of writing directly into the live JSON) because the bot rewrites the session file every turn; the marker is the race-free channel for stop-time intent.
 - **in-process** — TTS/STT run *inside* the `bot.py` process (no external app or port).
 - **KV (cache)** — Key-Value cache. The attention cache; "KV-cached tokens" aren't emitted by these backends (panel field dropped). Cross-turn prompt-prefix KV reuse works on full-attention models, not on some large hybrid-attention models (which keep no reusable per-token KV).

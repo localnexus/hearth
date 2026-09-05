@@ -22,7 +22,7 @@ the mic opens for as long as you hold it, then drops back to whatever the baseli
 above the buttons always tells you which of the three states you're actually in — **LIVE**, **MUTED**, or
 **OPEN (PTT held)**.
 
-## Recording the sitting
+## Recording the session
 
 **Record** always captures the companion's spoken side (TTS) of the conversation. The two tickboxes add
 more: **my mic** adds your side, **background music** mirrors whatever audio is currently playing on your
@@ -56,15 +56,15 @@ without a Hearth restart.
 live from the **VOICE** box's Sample dropdown (see [The live knobs panel](the-live-knobs-panel.md)), this
 line shows both — the session's real baseline voice, and the one you're currently hearing instead.
 
-**`Misc`** carries the session name, this sitting's memory mode (`off` / `recall-only` / `full` — the mode
+**`Misc`** carries the conversation's name, this session's memory mode (`off` / `recall-only` / `full` — the mode
 it *started* with; see [The config layers](the-config-layers.md)), the turn count, net context growth, and
 total tokens sent so far.
 
 ## The Memory line
 
 When this companion has cross-session memory attached, a fifth line appears: which backend answered,
-whether it's running **recall-only** (remembers nothing new this sitting), what per-turn recall is doing
-(`off`, `chat`, or `chat + voice`), how many facts were recalled at the start of the sitting and from where,
+whether it's running **recall-only** (remembers nothing new this session), what per-turn recall is doing
+(`off`, `chat`, or `chat + voice`), how many facts were recalled at the start of the session and from where,
 and how many extra facts the last turn pulled in and from where. A recall source is always named honestly —
 a fallback path never poses as the primary backend.
 
@@ -77,15 +77,15 @@ directly instead (see [The map of doors](the-map-of-doors.md)). What you'll find
 
 ### The one runtime button: pause / resume voice recall
 
-If this sitting started with per-turn voice recall on, a small button sits next to the Memory line reading
+If this session started with per-turn voice recall on, a small button sits next to the Memory line reading
 **pause voice recall** or **resume voice recall**. Pressing it flips whether the *voice* lane keeps pulling
 in fresh recall each turn — text chat recall is untouched either way. It takes effect from the next turn:
 pausing also clears anything already pulled in for the current turn, resuming picks recall back up from
 there.
 
-This is deliberately **runtime-only** — it pokes the live sitting and nothing else. `config/memory.toml`
+This is deliberately **runtime-only** — it pokes the live session and nothing else. `config/memory.toml`
 is never touched, so a restart or a live companion switch always returns to whatever the file says,
-regardless of where you last left this button. The button itself only appears when the sitting actually
+regardless of where you last left this button. The button itself only appears when the session actually
 built the voice-recall machinery at startup (voice recall has to have been on when the bot started) and the
 current companion's per-turn chat gate is on — if either isn't true, there's nothing here to pause, so the
 button stays hidden rather than offering a control that would just refuse.
@@ -95,7 +95,7 @@ button stays hidden rather than offering a control that would just refuse.
 ## Net
 
 The panel's core loop — type or speak, mute or PTT, optionally record — sits above a status block that's
-read-only except for one thing: the Memory line's pause/resume button, a same-sitting-only knob that never
+read-only except for one thing: the Memory line's pause/resume button, a same-session-only knob that never
 writes a file. Everything else you can *change* here (CHARACTER/VOICE/LISTENING sliders, the COMPANION
 switcher) has its own page: [The live knobs panel](the-live-knobs-panel.md) and
 [The one-button switch](the-one-button-switch.md).

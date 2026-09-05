@@ -67,7 +67,7 @@ async function pollUsage() {
       `Tokens | ${fmt(held)}${u.estimated ? ' est.' : ''} held [${pct} of ${fmt(budget)} reliable] · ${remaining} to line · advertised ${fmt(allot)} · model max: ${fmt(engine.model_max)}`;
     $('ctxwarn').classList.toggle('hidden', zone === 'ok' || zone === 'na');
     $('s-misc').textContent =
-      `Misc   | Session: ${engine.session || DASH} · Memory: ${engine.memory_mode || DASH} · Turns: ${fmt(u.turns)} · net turn growth: ${fmt(u.net_turn_growth)} · total tok. xmitted: ${fmt(u.prompt)}`;
+      `Misc   | Conversation: ${engine.session || DASH} · Memory: ${engine.memory_mode || DASH} · Turns: ${fmt(u.turns)} · net turn growth: ${fmt(u.net_turn_growth)} · total tok. xmitted: ${fmt(u.prompt)}`;
     $('leak').classList.toggle('hidden', !u.leak);
   } catch(e) { /* transient; next tick retries */ }
 }

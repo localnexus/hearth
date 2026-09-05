@@ -23,8 +23,17 @@ Index + how-it's-organized: [`README.md`](README.md). A–M: [`A-M.md`](A-M.md).
 - **RTF** — Real-Time Factor. Gen-time ÷ audio-duration; **< 1.0 = gapless** (faster than playback). Two measured figures, different layers: **~0.24 TTS-layer** steady-state (≈4× realtime; the hardware doc's number) · **~0.34 end-to-end** for the whole wired loop (≈3×). The installing smoke test's ≈0.35 bar is the standalone script's conservative pass line, not the in-process figure.
 - **S3Gen / T3** — Chatterbox-Turbo internal sub-models (speaker + speech-token conditioning); cited to explain why cloning is textless / robust to transcription error. (S3Gen decoder conditions on the first ~10 s of a clip; the speaker encoder on the first ~15 s.)
 - **settings (forms)** — the facade's `/admin/settings/ui` (supervisor on): a generated, schema-driven form for every file-configurable knob (no separate front-end build — plain JS walking the served settings registry as JSON Schema), so a knob can't exist without appearing. Reads use the same strict verdict as `python -m hearth.config.check`; writes are one scalar key at a time via comment-preserving line surgery, refused rather than guessing if the edit can't reproduce the file exactly. A knob that's panel-managed or secret-marked is refused with a pointer to the right place instead (the **:65000** panel, or the desk).
+- **session** (in full: **conversation session**, also written *conversational session*) — one run of the
+  companion from **Start** to **Stop**, inside a conversation: a *sitting*. Every session belongs to some
+  conversation (Start always opens a new one or resumes one), and one conversation can hold many sessions
+  across days. A session has its own memory mode (`full` · `recall-only` · `off`) and, when memory is on,
+  writes **one memory record at its close** — so a companion switch that restarts the process ends one
+  session and begins another inside the same conversation. Reserved for this meaning: nothing about the
+  browser, the pairing code or the access key is called a session. Adopted 2026-09-05.
 - **session snapshot** — the atomic per-turn write of the LLM message list to the companion's `sessions/<id>.json`, via `<id>.json.tmp` → `os.replace`. The only durable conversational state that needs preserving (persona prompt is injected per-request from settings and is never stored in the file).
 - **Silero** — the VAD model (via onnxruntime; no torch needed).
+- **sitting** — the everyday gloss for a *session* (one stretch at the desk or on a walk). Older pages and
+  code comments use it; the glossary word is *session*.
 - **Smart Turn** (v3.x) — pipecat's semantic end-of-turn model, loaded alongside VAD; can end or hold a turn beyond raw silence.
 - **STT** — Speech-to-Text. Transcription (MLX-Whisper).
 - **TCC** — Transparency, Consent & Control. macOS privacy framework; grants mic **per-app** (the terminal), not per-process → the silent-STT failure if unset.

@@ -35,39 +35,49 @@ they sound and what they attend to, not what they know about you.
 persona text and the identical voice and they still keep two separate memories that never meet. The
 character name is the whole boundary.
 
-## A sitting is not a memory
+## Three words: conversation, session, history
 
-You will see conversations described by *channel* — a desk sitting and a walk on the phone are tracked
+Hearth uses three words for three different things, and the pages keep to them:
+
+- A **conversation** is one thread of talk you can come back to — the saved conversation on disk, plus
+  the memories it has left behind. The launch page lets you open a new one or pick one off the shelf.
+- A **session** (in full, a *conversation session*) is one sitting inside it: from **Start** to **Stop**,
+  today. A conversation can hold many sessions across weeks. Each session picks its own memory mode.
+- **History** is what the companion knows of you across *all* your conversations. Think of a conversation
+  as one notebook you can reopen and keep writing in; history is what your companion has learned from every
+  notebook so far. A new conversation starts on a blank page, and the companion still knows you.
+
+You will see conversations described by *channel* — a desk session and a walk on the phone are tracked
 separately while they are open, so two live conversations can't overwrite each other mid-sentence.
 
-That separation ends when they close. Both land in the same place. A walk and a desk session are two
-sittings with one companion, not two companions — and the next conversation recalls from all of it.
+That separation ends when they close. Both land in the same history. A walk and a desk session are two
+sessions with one companion, not two companions — and the next conversation recalls from all of it.
 
-## The three modes, per sitting
+## The three modes, per session
 
-Each sitting runs in one of three modes, chosen when the session starts and shown on the panel's **Memory**
+Each session runs in one of three modes, chosen when it starts and shown on the panel's **Memory**
 line while it runs:
 
 | Mode | Recall | Retain |
 |---|---|---|
-| `full` | yes | yes — this sitting becomes part of the thread |
-| `recall-only` | yes | **no** — they remember everything, this sitting leaves no record |
+| `full` | yes | yes — this session becomes part of the thread |
+| `recall-only` | yes | **no** — they remember everything, this session leaves no record |
 | `off` | no | no — a fresh meeting, and nothing is written |
 
 `recall-only` is the useful middle one: a conversation you'd rather not add to the record, held by someone
 who still knows you. The mode is picked on the launch page before starting, and it is a property of *that
-sitting* — a resumed session keeps its own mode unless you say otherwise.
+session* — a resumed conversation keeps its own mode unless you say otherwise.
 
-## How a sitting becomes a memory
+## How a session becomes a memory
 
-A conversation is written to the running checkpoint as you go, so a crash never costs the whole sitting. The
+A conversation is written to the running checkpoint as you go, so a crash never costs the whole session. The
 durable record is written when the conversation **closes**, and there are three ways that happens: you close
 it deliberately, it goes quiet long enough to be swept, or the facade shuts down. A checkpoint left behind by
 something that died is finalized at the next start.
 
-**One honest gap.** Only a *deliberate* close captures the sitting's intent — the "here's what we decided"
+**One honest gap.** Only a *deliberate* close captures the session's intent — the "here's what we decided"
 marker. Walking away from a conversation still keeps the record, in full; it just doesn't leave that marker
-behind. If a sitting mattered, ending it on purpose is worth the ten seconds.
+behind. If a session mattered, ending it on purpose is worth the ten seconds.
 
 ## When you actually want a separate thread
 

@@ -52,18 +52,18 @@ The page to leave open. It works whether the companion is running or not, from a
 the facade, and it never makes you remember a flag.
 
 **When nothing is running**, it offers a start: who to bring up (the same companion card the panel carries —
-character, voice, persona, model), which **session** to open (a new one, or one off the shelf), and this
-sitting's **memory posture** — remembering and recording normally, remembering but leaving no record behind,
-or a fresh meeting with no memory at all. There's also a button to **compact** a selected session first,
+character, voice, persona, model), which **conversation** to open (a new one, or one off the shelf), and this
+session's **memory posture** — remembering and recording normally, remembering but leaving no record behind,
+or a fresh meeting with no memory at all. There's also a button to **compact** a selected conversation first,
 which shrinks a long transcript before it's reopened.
 
-Session and memory are **start-only, on purpose.** The posture is decided when the companion comes up and
+Conversation and memory are **start-only, on purpose.** The posture is decided when the companion comes up and
 doesn't change underneath a live conversation, so those two controls disappear once one is running rather
 than offering something that would be refused.
 
 **When someone is running**, the same card reads **Switch** instead of Start — that's the one-press
 companion change, and it's covered in [The one-button switch](the-one-button-switch.md). Beside it: a
-**Stop** button, with an optional field to name the sitting on the way out (it saves either way), and a link
+**Stop** button, with an optional field to name the conversation on the way out (it saves either way), and a link
 straight into the control panel.
 
 **The state line at the top is process truth, not a memory of what this page did.** It's re-checked every few
@@ -77,7 +77,7 @@ This is what makes a service recoverable from the couch instead of only from the
 Two things this page deliberately won't do: it never restarts the facade underneath itself, and it never
 touches your LLM server. Stopping a companion stops the companion.
 
-## `/admin/first-run` — the first sitting
+## `/admin/first-run` — the first session
 
 Offered by the launch page while an install is new — the selected model config still carries the shipped
 placeholder id, or no companion here has a session yet — and reachable at its address any time after.
@@ -119,14 +119,14 @@ edit rather than half-rendered as a form.
 
 ## `/admin/memory/ui` — review and prune
 
-Three steps, narrowing: the companions who have records, with counts → one companion's sittings, each with
+Three steps, narrowing: the companions who have records, with counts → one companion's sessions, each with
 its date, name, turn count, and a short digest → forgetting one, permanently.
 
 **You read a digest, never the transcript.** That's deliberate and it holds everywhere in this surface —
-reviewing what a sitting contained means reading a summary of it, not reopening the conversation.
+reviewing what a session contained means reading a summary of it, not reopening the conversation.
 
 Forgetting always **names the companion explicitly.** There's no "the active one" shortcut here, because
-the failure this guards against is forgetting the wrong companion's sitting from a page that has no one in
+the failure this guards against is forgetting the wrong companion's session from a page that has no one in
 front of it. And it works in the safe order: the remembered facts go first, the record second. If it fails
 partway you can simply press it again — nothing ends up half-forgotten.
 
