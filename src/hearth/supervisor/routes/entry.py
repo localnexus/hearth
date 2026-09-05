@@ -31,7 +31,7 @@ from aiohttp import web
 from loguru import logger
 
 from hearth.ui import (
-    admin_shell, brand, compact_queue, first_run_offer, pages, switch_card)
+    admin_shell, brand, compact_queue, first_run_offer, key_help, pages, switch_card)
 
 # The standing launch surface: pure static chrome (no names, no state, no
 # tokens baked in — the serve middleware exempts this ONE page from auth, so
@@ -44,7 +44,7 @@ from hearth.ui import (
 _LAUNCH_PAGE = pages.Page(
     Path(__file__).parent / "launch_page.html",
     pages.chain(switch_card.splice, compact_queue.splice, first_run_offer.splice,
-                admin_shell.splice, brand.splice))
+                key_help.splice, admin_shell.splice, brand.splice))
 # The pairing page takes neither shared script: it is what a device WITHOUT the
 # bearer opens, so the admin shell has nothing to carry for it.
 _PAIR_PAGE = pages.Page(Path(__file__).parent / "pair_page.html", brand.splice)

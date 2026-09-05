@@ -1,11 +1,8 @@
 <!doctype html>
-<!-- launch_page.html — the standing launch surface (served at /admin/launch).
-
-     SECURITY CONTRACT: this file is served WITHOUT auth (a static-chrome
-     exemption beside /health and the roster wizard shell), so it must stay
-     pure chrome — no names, no state, no tokens baked in. Every fact on
-     screen arrives via an authed fetch; the bearer is entered once, kept in
-     this browser's localStorage, and sent only as an Authorization header. -->
+<!-- launch_page.html — the standing launch surface (/admin/launch).
+     SECURITY CONTRACT: served WITHOUT auth, so pure chrome — no names, no
+     state, no tokens baked in; every fact arrives via an authed fetch, the
+     bearer lives in localStorage and travels only as a header. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -52,12 +49,12 @@
   </div>
   <p class="note">On a phone? <a href="/admin/pair/ui">Pair with a six-digit
      code</a> instead of typing the key.</p>
+  <div id="keyhelp" class="note"></div>
 </div>
 
 <div id="firstrun" class="card hidden"></div>
 
-<!-- The selection is the SHARED card (ui/switch_card.js — the panel's file too):
-     "Start" bot-down, "Switch" bot-up. Session and memory stay here: start-only. -->
+<!-- The SHARED card (ui/switch_card.js): Start bot-down, Switch bot-up. -->
 <div id="switchcard" class="card hidden">
   <h2>Companion</h2>
   <div id="switchmount"></div>
@@ -105,6 +102,7 @@
 <script>/*SWITCH_CARD_JS*/</script>
 <script>/*COMPACT_QUEUE_JS*/</script>
 <script>/*FIRST_RUN_JS*/</script>
+<script>/*KEY_HELP_JS*/</script>
 
 <script>
 "use strict";

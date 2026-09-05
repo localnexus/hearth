@@ -21,7 +21,7 @@ from pathlib import Path
 
 from aiohttp import web
 
-from hearth.ui import admin_shell, brand, firstrun_sections, pages, switch_card
+from hearth.ui import admin_shell, brand, firstrun_sections, key_help, pages, switch_card
 
 from .detect import is_fresh, model_facts, selection
 
@@ -32,7 +32,7 @@ _PROBE_TIMEOUT_S = 2.5
 # the launch page and the panel), its own two sections, the admin shell and
 # the brand layer — the same composition the launch page uses, plus sections.
 _PAGE = pages.Page(Path(__file__).parent / "first_run_page.html",
-                   pages.chain(switch_card.splice, firstrun_sections.splice,
+                   pages.chain(switch_card.splice, key_help.splice, firstrun_sections.splice,
                                admin_shell.splice, brand.splice))
 
 
