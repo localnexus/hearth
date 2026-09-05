@@ -80,8 +80,8 @@ directly instead (see [The map of doors](the-map-of-doors.md)). What you'll find
 If this session started with per-turn voice recall on, a small button sits next to the Memory line reading
 **pause voice recall** or **resume voice recall**. Pressing it flips whether the *voice* lane keeps pulling
 in fresh recall each turn — text chat recall is untouched either way. It takes effect from the next turn:
-pausing also clears anything already pulled in for the current turn, resuming picks recall back up from
-there.
+what was pulled in rides only the turn it was fetched for, so pausing simply stops the next fetch, and
+resuming picks recall back up from there.
 
 This is deliberately **runtime-only** — it pokes the live session and nothing else. `config/memory.toml`
 is never touched, so a restart or a live companion switch always returns to whatever the file says,

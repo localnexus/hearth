@@ -107,6 +107,36 @@ class TestPerTurnRecall(unittest.TestCase):
             self.assertEqual(off.augment_turn("BASE", self.CUE), off_open)
             self.assertEqual(len(off.backend.queries), 1)    # the open query only
 
+    def test_turn_block_is_the_tail_shape_and_folds_into_the_newest_user_turn(self):
+        # 2026-09-05: the extras ride the TAIL of the prompt, never the system
+        # instruction (a per-turn system rewrite re-evaluates the whole prompt).
+        with tempfile.TemporaryDirectory() as tmp:
+            backend = _CueBackend()
+            seam = self._seam(backend, Path(tmp))
+            opened = seam.augment("BASE")
+            block = seam.turn_block(self.CUE)
+            self.assertTrue(block.startswith(seam_mod._TURN_BLOCK_HEADER))
+            self.assertIn("Knight Rider", block)
+            self.assertNotIn("vanilla", block)                # open-time lines stay put
+            self.assertEqual(seam.turn_block("hi"), "")       # guards ⇒ empty
+            self.assertEqual(seam.turn_block("tell me about vanilla ice cream"), "")
+            self.assertIn("vanilla", opened)                  # and the open block is unchanged
+            msgs = [{"role": "system", "content": opened},
+                    {"role": "user", "content": "earlier"},
+                    {"role": "assistant", "content": "yes"},
+                    {"role": "user", "content": self.CUE}]
+            out = seam_mod.with_turn_block(msgs, block)
+            self.assertIsNot(out, msgs)
+            self.assertEqual(out[:3], msgs[:3])               # prefix byte-identical
+            self.assertEqual(out[3]["content"], f"{self.CUE}\n\n{block}")
+            self.assertEqual(msgs[3]["content"], self.CUE)    # input never mutated
+            parts = [{"role": "user", "content": [{"type": "text", "text": "q"}]}]
+            self.assertEqual(seam_mod.with_turn_block(parts, "B")[0]["content"][-1],
+                             {"type": "text", "text": "B"})
+            self.assertIs(seam_mod.with_turn_block(msgs, ""), msgs)
+            no_user = [{"role": "assistant", "content": "a"}]
+            self.assertIs(seam_mod.with_turn_block(no_user, "B"), no_user)
+
     def test_per_turn_limit_caps_the_extras(self):
         with tempfile.TemporaryDirectory() as tmp:
             seam = self._seam(_CueBackend(), Path(tmp), limit=1)
@@ -199,34 +229,33 @@ class TestServeGluePerTurn(unittest.TestCase):
             async def scenario():
                 base = "SYSTEM PROMPT"
                 cue = "what was my favorite show as a kid? knight rider?"
-                # the OPENING request already benefits: the cue rides call one
+                # the instruction is the OPEN composition — byte-stable across
+                # the conversation whatever the cue (prompt-cache rule, 09-05)
                 first = await glue.instruction("testchar", "default", "chat", "",
                                                base, cue=cue)
-                self.assertIn("Knight Rider", first)
-                self.assertIn(seam_mod._TURN_HEADER, first)
+                self.assertIn("vanilla", first)
+                self.assertNotIn("Knight Rider", first)
+                # the cue's extras come back as a TAIL block
+                block = await glue.turn_block("testchar", "chat", "", cue)
+                self.assertIn("Knight Rider", block)
+                self.assertTrue(block.startswith(seam_mod._TURN_BLOCK_HEADER))
                 calls = len(backend.queries)
                 # the same cue again ⇒ the one-slot cache answers, no new recall
-                again = await glue.instruction("testchar", "default", "chat", "",
-                                               base, cue=cue)
-                self.assertEqual(again, first)
+                self.assertEqual(await glue.turn_block("testchar", "chat", "", cue), block)
                 self.assertEqual(len(backend.queries), calls)
-                # a short cue serves the cached OPEN instruction
-                open_str = await glue.instruction("testchar", "default", "chat", "",
-                                                  base, cue="hi")
-                self.assertNotIn("Knight Rider", open_str)
-                self.assertIn("vanilla", open_str)
+                # a short cue ⇒ no block
+                self.assertEqual(await glue.turn_block("testchar", "chat", "", "hi"), "")
                 # the voice channel is out of scope this stroke: no turn query
+                await glue.instruction("testchar", "default", "voice", "", base, cue=cue)
                 voice_calls = len(backend.queries)
-                voiced = await glue.instruction("testchar", "default", "voice", "",
-                                                base, cue=cue)
-                self.assertNotIn("Knight Rider", voiced)
-                self.assertEqual(len(backend.queries), voice_calls + 1)  # its OPEN only
+                self.assertEqual(await glue.turn_block("testchar", "voice", "", cue), "")
+                self.assertEqual(len(backend.queries), voice_calls)
+                # an unopened conversation ⇒ no block, no error
+                self.assertEqual(await glue.turn_block("nobody", "chat", "", cue), "")
                 # a failing targeted recall costs only the extras
                 backend.fail_on_cue = True
-                degraded = await glue.instruction(
-                    "testchar", "default", "chat", "", base,
-                    cue="knight rider, once more with feeling")
-                self.assertEqual(degraded, open_str)
+                self.assertEqual(await glue.turn_block(
+                    "testchar", "chat", "", "knight rider, once more with feeling"), "")
                 await glue.stop()
 
             asyncio.run(scenario())

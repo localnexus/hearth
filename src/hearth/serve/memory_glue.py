@@ -198,7 +198,7 @@ class _Session:
     exchanges: int = 0
     seq: int = 0              # bumped per exchange; the closure check's staleness guard
     last_cue: str = ""        # per-turn recall: one-slot cache (same words, same answer)
-    last_cue_instruction: str = ""
+    last_cue_block: str = ""
 
 
 # ── the glue ─────────────────────────────────────────────────────────────────
@@ -324,35 +324,47 @@ class ServeMemory:
         return await self._turn_instruction(session, cue)
 
     async def _turn_instruction(self, session: _Session, cue: str) -> str:
-        """Per-turn targeted recall (design lane (b)) — or the cached string.
+        """The instruction a request sends: the OPEN-time composition, always.
 
-        Guards are decided here cheaply (gate, chat lane only, cue length,
-        one-slot cue cache); the recall itself runs on the worker thread under
-        a deadline. Every failure path serves the OPEN instruction: an extra
-        must never cost the turn."""
+        Per-turn extras no longer ride here (2026-09-05): rewriting the system
+        instruction per turn made the model server re-evaluate the whole
+        prompt every turn. They ride the tail instead — see turn_block()."""
+        return session.instruction
+
+    async def turn_block(self, companion: str, channel: Any, hint: Any,
+                         cue: str) -> str:
+        """Per-turn targeted recall (design lane (b)) as a framed block for the
+        newest user message (memory.with_turn_block), or "".
+
+        Guards are decided here cheaply (open session, gate, chat lane only,
+        cue length, one-slot cue cache); the recall itself runs on the worker
+        thread under a deadline. Every failure path answers "": an extra must
+        never cost the turn."""
+        session = self._sessions.get(session_key(companion, channel, hint))
+        if session is None:
+            return ""
         seam = session.seam
         if not getattr(seam, "per_turn_enabled", False):
-            return session.instruction
+            return ""
         if session.channel != "chat":
             # Design lane (b) scope: chat only — a synchronous recall would
             # tax every voice turn (latency doctrine); the voice lane's
             # prefetch-behind variant is its own stroke.
-            return session.instruction
+            return ""
         cue = " ".join(str(cue or "").split())
         if len(cue) < int(getattr(seam, "per_turn_min_chars", 12)):
-            return session.instruction
-        if cue == session.last_cue and session.last_cue_instruction:
-            return session.last_cue_instruction
+            return ""
+        if cue == session.last_cue:
+            return session.last_cue_block
         try:
-            result = await asyncio.wait_for(
-                self._run(seam.augment_turn, session.base_instruction, cue),
-                timeout=PER_TURN_DEADLINE_S)
-        except Exception as exc:  # noqa: BLE001 — contained: the open string serves
-            logger.warning("[serve-memory] turn recall failed ({}) — "
-                           "open-time instruction", type(exc).__name__)
-            return session.instruction
-        session.last_cue, session.last_cue_instruction = cue, str(result)
-        return session.last_cue_instruction
+            block = await asyncio.wait_for(
+                self._run(seam.turn_block, cue), timeout=PER_TURN_DEADLINE_S)
+        except Exception as exc:  # noqa: BLE001 — contained: the request goes as built
+            logger.warning("[serve-memory] turn recall failed ({}) — no extras",
+                           type(exc).__name__)
+            return ""
+        session.last_cue, session.last_cue_block = cue, str(block or "")
+        return session.last_cue_block
 
     async def _open(self, key: tuple, companion: str, persona: str,
                     base_instruction: str) -> Optional[_Session]:

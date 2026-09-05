@@ -45,6 +45,7 @@ from aiohttp import web
 from loguru import logger
 
 from hearth.config import config_loader
+from hearth.memory.fold import with_turn_block
 from hearth.ui import brand
 
 from . import stt_prep, tts_prep
@@ -333,11 +334,17 @@ async def _chat(request: web.Request) -> web.StreamResponse:
                 last_user = _text_of(m.get("content"))
         if deps.memory is not None:
             # Opens the conversation on its first turn (recall paid once) and
-            # returns the AUGMENTED instruction; later turns are a dict lookup —
-            # unless [memory.per_turn] is enabled, where the user's own words
-            # (the cue) can add a targeted recall to THIS request's instruction.
+            # returns the AUGMENTED instruction; later turns are a dict lookup.
+            # The instruction is byte-stable across the conversation on purpose:
+            # a per-turn rewrite re-evaluates the whole prompt at the model
+            # server. With [memory.per_turn] enabled, the user's own words (the
+            # cue) fetch a targeted block that rides the TAIL — folded into the
+            # newest user message of this request only, never into the history.
             instruction = await deps.memory.instruction(
                 character, persona, tap_channel, hint, instruction, cue=last_user)
+            block = await deps.memory.turn_block(character, tap_channel, hint, last_user)
+            if block:
+                client_turns = with_turn_block(client_turns, block)
         messages = [{"role": "system", "content": instruction}, *client_turns]
 
     out = {

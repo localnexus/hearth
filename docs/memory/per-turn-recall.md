@@ -9,8 +9,8 @@ Recall that re-asks the bank on the user's own words, mid-conversation.
 Boot recall ([intent-primed](session-modes.md#intent-primed-boot-recall))
 queries the bank *once*, at session start. Per-turn recall
 re-asks it **on every turn**, with the user's own latest words as the query, and
-appends whatever new surfaces to that turn's memory block — so a mid-conversation
-topic the opening didn't anticipate can still pull the relevant facts up. Off by
+hands whatever new surfaces to that turn as a framed memory block — so a
+mid-conversation topic the opening didn't anticipate can still pull the relevant facts up. Off by
 default; it ships behind `[memory.per_turn]` and runs only where the whole seam
 is already on.
 
@@ -22,15 +22,26 @@ min_cue_chars = 12      # skip cues shorter than this (bare greetings/closes)
 voice = false           # ALSO run the voice loop (prefetch-behind); needs enabled = true
 ```
 
-The re-query itself is `augment_turn`: it recalls against the cue, **dedupes the
+The re-query itself is `turn_block`: it recalls against the cue, **dedupes the
 result against the open-time block** (nothing already recalled repeats), keeps at
-most `limit` genuinely-new items, and lists them under their own labeled line —
-*"Also surfaced by what the user just said…"* — inside the same MEMORY block. The
-open-time lines and any intent line stay exactly as they were; the intent slot is
-**not** touched here (it is consumed once, at boot). Every guard and every failure
-falls back to the byte-identical open-time composition — gate off, a cue below
-`min_cue_chars`, or nothing new surfaced all yield the same block boot recall
-produced. Containment is the seam's usual ladder: backend → floor → empty.
+most `limit` genuinely-new items, and frames them under their own heading —
+*"MEMORY — surfaced by what the user just said"*. The open-time lines and any
+intent line stay exactly as they were; the intent slot is **not** touched here (it
+is consumed once, at boot). Every guard and every failure yields an empty block —
+gate off, a cue below `min_cue_chars`, or nothing new surfaced all send the
+request exactly as it would have gone without the feature. Containment is the
+seam's usual ladder: backend → floor → empty.
+
+**Where the block lands — the tail, never the system instruction.** The block is
+folded into the **newest user message of that one request** (a per-request copy;
+the conversation's own history never carries it, and neither does the session
+snapshot). This was measured on 2026-09-05, not assumed: model servers in the
+llama.cpp family cache the prompt as a prefix, and *any* change to the system
+message — even a line appended at its end — throws the whole transcript out of
+that cache. Rewriting the system instruction each turn cost a full re-evaluation
+every turn (6,000–14,000 tokens, 3–8 seconds, growing with the sitting). A change
+at the tail of the prompt costs only its own tokens. So the system instruction stays
+byte-stable for the whole sitting, and the per-turn block rides where it is cheap.
 
 The feature has two lanes, one per surface:
 
@@ -44,8 +55,8 @@ The feature has two lanes, one per surface:
 * **Voice lane (prefetch-behind).** Set `voice = true` (needs `enabled = true`
   too — the chat gate alone stays chat-only) and the voice loop gets a
   latency-free variant: after the user's turn *N* is transcribed, its recall runs
-  **in the background, off the event loop**; the extras it finds are injected into
-  the system instruction **before turn *N+1***. Zero added latency, a one-turn lag —
+  **in the background, off the event loop**; the block it finds rides the newest
+  user message of **turn *N+1*** (a request copy — see above). Zero added latency, a one-turn lag —
   *ask, they check, next turn they know*. The background recall carries the same 5 s
   deadline (`PREFETCH_DEADLINE_S`) and is discarded if a newer turn or a live
   companion switch supersedes it. Synchronous voice recall is rejected outright by
@@ -60,7 +71,7 @@ The extras themselves cost **context** every turn they ride, and that adds up in
 a long sitting. So the voice lane has a live valve: in a sitting that started
 with `voice = true`, the control panel's Memory line shows a **pause/resume
 voice recall** button (`POST /memory/per-turn-voice`). It is a runtime-only
-poke — effect next turn, already-applied extras cleared, nothing written; this
+poke — effect next turn (the block is per-request, so there is nothing to clear), nothing written; this
 file stays the between-sessions truth and a restart or live switch returns to
 it. A sitting that started voice-off has no prefetch processor to light, and
 the route says so instead of pretending.

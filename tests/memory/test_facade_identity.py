@@ -57,11 +57,16 @@ class _RecordingMemory:
         self.opened: list = []
         self.exchanges: list = []
         self.cues: list = []
+        self.turn_cues: list = []
 
     async def instruction(self, companion, persona, channel, hint, base, cue=""):  # noqa: ANN001
         self.opened.append((companion, persona, channel, hint, base))
         self.cues.append(cue)
         return base + "\n\n[MEMORY]"
+
+    async def turn_block(self, companion, channel, hint, cue):  # noqa: ANN001
+        self.turn_cues.append(cue)
+        return "[TURN BLOCK]" if cue and "favorite" in cue else ""
 
     def note_exchange(self, companion, channel, hint, user_text, reply_text):  # noqa: ANN001
         self.exchanges.append((companion, channel, hint, user_text, reply_text))
@@ -202,6 +207,12 @@ class TestFacadeCuePassthrough(unittest.TestCase):
         self.assertIn("[MEMORY]", sent[0]["content"])
         self.assertEqual([m["role"] for m in sent[1:]],
                          ["user", "assistant", "user"])
+        # the per-turn block rides the TAIL (the newest user message of the
+        # outgoing body), never the system layer — the prompt-cache rule
+        self.assertEqual(memory.turn_cues, ["what was my favorite show?"])
+        self.assertEqual(sent[-1]["content"], "what was my favorite show?\n\n[TURN BLOCK]")
+        self.assertEqual(sent[1]["content"], "first line")
+        self.assertNotIn("[TURN BLOCK]", sent[0]["content"])
 
 if __name__ == "__main__":
     unittest.main()

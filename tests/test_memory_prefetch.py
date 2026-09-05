@@ -5,14 +5,15 @@ background after turn N, its extras injected before turn N+1 — zero added
 latency, one-turn lag. Proves:
 
   1. cue extraction — last user turn, string and multimodal-parts content
-  2. launch  — a long, new cue schedules recall; the result lands in _pending
-  3. guards  — a below-floor cue clears applied extras (pending → clean base);
-               a repeat cue relaunches nothing
-  4. rebase  — a changed seam (live switch) drops the old prefetch + rebases
-  5. gate    — voice OFF (or per-turn OFF) launches nothing
-  6. frames  — through real pipecat run_test: the prefetched settings frame
-               reaches the LLM stand-in ahead of the context frame; gate OFF
-               pushes no settings frame
+  2. launch  — a long, new cue schedules recall; the (cue, block) lands in _pending
+  3. guards  — a below-floor cue launches nothing (nothing rides: the block is
+               ephemeral); a repeat cue re-rides the last block without a recall
+  4. rebase  — a changed seam (live switch) drops the old prefetch
+  5. gate    — voice OFF (or per-turn OFF) launches nothing and pends nothing
+  6. frames  — through real pipecat run_test: the prefetched block rides the
+               newest user message of a REQUEST COPY of the context; the live
+               context is untouched; no settings frame is ever pushed (the
+               system instruction stays byte-stable — 2026-09-05 measurement)
 
 Run:  ./.venv/bin/python tests/test_memory_prefetch.py
 """
@@ -41,11 +42,11 @@ class _FakeSeam:
         self.per_turn_min_chars = min_chars
         self.calls = []
 
-    def augment_turn(self, base, cue):
+    def turn_block(self, cue):
         self.calls.append(cue)
         if cue and "knight" in cue.lower():
-            return base + "\n[EXTRA knight rider]"
-        return base  # clean (no extras / empty cue)
+            return "[EXTRA knight rider]"
+        return ""  # nothing surfaced
 
 
 class _FakeSwitcher:
@@ -92,49 +93,43 @@ class TestPrefetchLogic(unittest.TestCase):
             proc, _ = self._proc(seam, _user("what was my favorite knight show as a kid"))
             proc._launch(seam)
             await proc._task
-            self.assertIsNotNone(proc._pending)
-            cue, instr = proc._pending
-            self.assertIn("[EXTRA knight rider]", instr)
-            self.assertEqual(cue, "what was my favorite knight show as a kid")
+            self.assertEqual(proc._pending,
+                             ("what was my favorite knight show as a kid",
+                              "[EXTRA knight rider]"))
+            self.assertEqual(proc._last_block, "[EXTRA knight rider]")
         asyncio.run(go())
 
-    def test_below_floor_clears_applied(self):
+    def test_below_floor_launches_nothing(self):
         seam = _FakeSeam(min_chars=12)
         proc, _ = self._proc(seam, _user("hi"))
-        proc._applied_cue = "an earlier question"
         proc._launch(seam)
-        self.assertIsNone(proc._task and None)  # no task expected; pending is the clean base
-        self.assertEqual(proc._pending, (None, "BASE"))
+        self.assertIsNone(proc._task)
+        self.assertIsNone(proc._pending)   # nothing rides; nothing to clear
         self.assertIsNone(proc._last_launched)
+        self.assertEqual(seam.calls, [])
 
-    def test_below_floor_noop_when_already_clean(self):
-        seam = _FakeSeam()
-        proc, _ = self._proc(seam, _user("ok"))
-        proc._applied_cue = None
-        proc._launch(seam)
-        self.assertIsNone(proc._pending)
-
-    def test_repeat_cue_relaunches_nothing(self):
+    def test_repeat_cue_rides_the_last_block_without_recall(self):
         seam = _FakeSeam()
         proc, _ = self._proc(seam, _user("the same long question again"))
         proc._last_launched = "the same long question again"
+        proc._last_block = "[EXTRA knight rider]"
         proc._launch(seam)
         self.assertEqual(seam.calls, [])
-        self.assertIsNone(proc._pending)
+        self.assertEqual(proc._pending,
+                         ("the same long question again", "[EXTRA knight rider]"))
 
     def test_rebase_on_switch(self):
         seam1 = _FakeSeam()
         proc, sw = self._proc(seam1, _user("x"), base="BASE-1")
         proc._pending = ("old", "stale")
-        proc._applied_cue = "old"
+        proc._last_launched = "old"
+        proc._last_block = "stale"
         gen0 = proc._gen
-        seam2 = _FakeSeam()
-        sw.current_seam = seam2
-        sw.current_base_instruction = "BASE-2"
+        sw.current_seam = _FakeSeam()
         proc._rebase_if_switched()
-        self.assertEqual(proc._raw_base, "BASE-2")
         self.assertIsNone(proc._pending)
-        self.assertIsNone(proc._applied_cue)
+        self.assertIsNone(proc._last_launched)
+        self.assertEqual(proc._last_block, "")
         self.assertGreater(proc._gen, gen0)
 
     def test_gate_off_launches_nothing(self):
@@ -144,18 +139,17 @@ class TestPrefetchLogic(unittest.TestCase):
             self.assertEqual(seam.calls, [])
             self.assertIsNone(proc._pending)
 
-    def test_runtime_poke_off_clears_applied(self):
+    def test_runtime_poke_off_stops_the_cost(self):
         # The panel's per-turn-voice pause (runtime-only poke): gates are read
-        # every turn, and a mid-sitting OFF must stop PAYING — extras already
-        # applied get cleared next turn, and any in-flight recall is superseded
-        # so it cannot overwrite the clear.
+        # every turn; a mid-sitting OFF drops the pending block and supersedes
+        # any in-flight recall. Nothing else to clear — the block was ephemeral.
         seam = _FakeSeam()
         proc, _ = self._proc(seam, _user("a long knight rider question here"))
-        proc._applied_cue = "an earlier question"
+        proc._pending = ("an earlier question", "[EXTRA knight rider]")
         gen0 = proc._gen
         seam.per_turn_voice = False  # the poke
         proc._launch(seam)
-        self.assertEqual(proc._pending, (None, "BASE"))  # clean base next turn
+        self.assertIsNone(proc._pending)
         self.assertGreater(proc._gen, gen0)              # in-flight result discarded
         self.assertIsNone(proc._last_launched)
 
@@ -172,36 +166,49 @@ class TestPrefetchLogic(unittest.TestCase):
 
 
 class TestPrefetchFrames(unittest.TestCase):
-    def test_prefetched_settings_frame_precedes_context(self):
-        # The background launch is covered by TestPrefetchLogic; here the
-        # already-prefetched instruction must reach the LLM stand-in AS a
-        # settings frame, AHEAD of the context frame (T3 ordering), so it lands
-        # this turn. Short cue in the fake context ⇒ no new launch to interfere.
+    def test_prefetched_block_rides_a_request_copy(self):
+        # The block from the PRIOR turn's cue must reach the LLM stand-in inside
+        # the context frame's messages — folded into the newest user message of
+        # a COPY — while the live context stays byte-identical and no settings
+        # frame is pushed. Short cue in the fake context ⇒ no new launch.
         async def go():
             seam = _FakeSeam()
-            ctx = _FakeContext(_user("ok"))
-            proc = mp.MemoryPrefetch(switcher=_FakeSwitcher(seam), context=ctx)
-            proc._pending = ("a prior turn cue", "BASE\n[EXTRA knight rider]")
-            down, _up = await run_test(proc, frames_to_send=[
-                LLMContextFrame(context=LLMContext())])
-            names = [type(f).__name__ for f in down]
-            self.assertIn("LLMUpdateSettingsFrame", names)
-            self.assertIn("LLMContextFrame", names)
-            self.assertLess(names.index("LLMUpdateSettingsFrame"),
-                            names.index("LLMContextFrame"))
-            settings = [f for f in down if isinstance(f, LLMUpdateSettingsFrame)]
-            self.assertIn("[EXTRA knight rider]",
-                          getattr(settings[0].delta, "system_instruction", ""))
+            live = LLMContext(messages=[{"role": "system", "content": "S"},
+                                        {"role": "user", "content": "ok"}])
+            proc = mp.MemoryPrefetch(switcher=_FakeSwitcher(seam), context=live)
+            proc._pending = ("a prior turn cue", "[EXTRA knight rider]")
+            down, _up = await run_test(proc, frames_to_send=[LLMContextFrame(context=live)])
+            self.assertFalse([f for f in down if isinstance(f, LLMUpdateSettingsFrame)])
+            ctx_frames = [f for f in down if isinstance(f, LLMContextFrame)]
+            self.assertEqual(len(ctx_frames), 1)
+            sent = ctx_frames[0].context
+            self.assertIsNot(sent, live)
+            self.assertEqual(sent.messages[0], {"role": "system", "content": "S"})
+            self.assertEqual(sent.messages[-1]["content"], "ok\n\n[EXTRA knight rider]")
+            self.assertEqual(live.messages[-1]["content"], "ok")   # never mutated
+            self.assertIsNone(proc._pending)                        # consumed
         asyncio.run(go())
 
-    def test_gate_off_pushes_no_settings_frame(self):
+    def test_empty_block_passes_the_live_frame_through(self):
+        async def go():
+            seam = _FakeSeam()
+            live = LLMContext(messages=[{"role": "user", "content": "ok"}])
+            proc = mp.MemoryPrefetch(switcher=_FakeSwitcher(seam), context=live)
+            proc._pending = ("a prior turn cue", "")
+            frame = LLMContextFrame(context=live)
+            down, _up = await run_test(proc, frames_to_send=[frame])
+            ctx_frames = [f for f in down if isinstance(f, LLMContextFrame)]
+            self.assertIs(ctx_frames[0].context, live)
+        asyncio.run(go())
+
+    def test_gate_off_pushes_no_settings_frame_and_no_copy(self):
         async def go():
             seam = _FakeSeam(voice=False)
-            ctx = _FakeContext(_user("a long knight rider question with plenty of chars"))
-            proc = mp.MemoryPrefetch(switcher=_FakeSwitcher(seam), context=ctx)
-            down, _up = await run_test(proc, frames_to_send=[
-                LLMContextFrame(context=LLMContext())])
+            live = LLMContext(messages=_user("a long knight rider question with plenty of chars"))
+            proc = mp.MemoryPrefetch(switcher=_FakeSwitcher(seam), context=live)
+            down, _up = await run_test(proc, frames_to_send=[LLMContextFrame(context=live)])
             self.assertFalse([f for f in down if isinstance(f, LLMUpdateSettingsFrame)])
+            self.assertIs([f for f in down if isinstance(f, LLMContextFrame)][0].context, live)
         asyncio.run(go())
 
 

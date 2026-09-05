@@ -44,11 +44,12 @@ from typing import Optional
 from loguru import logger
 
 from .backend import MemoryItem, SessionRecord
+from .fold import with_turn_block
 from .floor import FloorBackend
 from . import intent as intent_mod
 from . import records as records_mod
 
-__all__ = ["maybe_attach", "MemorySeam", "MemoryItem", "SessionRecord"]
+__all__ = ["maybe_attach", "MemorySeam", "MemoryItem", "SessionRecord", "with_turn_block"]
 
 _HEADER = (
     "## MEMORY — from earlier conversations\n"
@@ -61,6 +62,18 @@ _HEADER = (
 # MEMORY block, under their own label, so provenance stays legible (design
 # lane (b), decision 4 — labeled, never silently merged).
 _TURN_HEADER = "Also surfaced by what the user just said (may bear on this turn):"
+
+# The per-turn block as a TRAILING message part (measured 2026-09-05: any edit
+# to the system message — even appended at its end — re-evaluates the whole
+# transcript on llama.cpp-family servers, 3–8 s a turn in a long sitting; a
+# change at the tail of the prompt costs only its own tokens). So the targeted
+# extras ride the newest user turn of a per-request COPY, framed as memory,
+# and the system instruction stays byte-stable across the sitting.
+_TURN_BLOCK_HEADER = (
+    "## MEMORY — surfaced by what the user just said\n"
+    "From your own earlier conversations with the user; may bear on this turn.\n"
+    "Dated where known; better to say you don't recall than to invent:\n"
+)
 
 
 def _now_iso() -> str:
@@ -229,13 +242,11 @@ class MemorySeam:
                                type(exc).__name__)
         return [], ""
 
-    def augment_turn(self, system_instruction: str, cue: str) -> str:
-        """The per-request instruction: the open-time block + targeted extras.
-
-        Every guard falls back to the open composition, byte-identical to what
-        augment() returned: gate off, cue below min_cue_chars, nothing new
-        surfaced. The intent slot is untouched here — consumed once, at
-        augment(); its cached line rides every composition."""
+    def turn_extras(self, cue: str) -> list[MemoryItem]:
+        """The targeted extras for one turn — recalled on the cue, deduped
+        against the open-time block, capped at per_turn_limit. Every guard
+        (gate off, cue below min_cue_chars, nothing new) yields []. The intent
+        slot is untouched here — consumed once, at augment()."""
         cue = " ".join(str(cue or "").split())
         extras: list[MemoryItem] = []
         if (self.per_turn_enabled and self.per_turn_limit > 0
@@ -256,7 +267,29 @@ class MemorySeam:
             # included (honest); guard-skipped turns leave the last one standing.
             self._turn_recall = {"extras": len(extras), "source": source,
                                  "at": _now_iso()}
-        return self._compose(system_instruction, extras)
+        return extras
+
+    def turn_block(self, cue: str) -> str:
+        """The per-turn extras as a framed block for the TAIL of the prompt
+        (with_turn_block folds it into the newest user message of a request
+        copy). "" when nothing surfaced — the request then goes out exactly as
+        the client built it. This is the path both lanes use since 2026-09-05;
+        the system instruction is never rewritten per turn."""
+        extras = self.turn_extras(cue)
+        if not extras:
+            return ""
+        lines = []
+        for item in extras:
+            prefix = f"({item.when}) " if item.when else ""
+            lines.append(f"- {prefix}{item.text}")
+        return _TURN_BLOCK_HEADER + "\n".join(lines)
+
+    def augment_turn(self, system_instruction: str, cue: str) -> str:
+        """The open-time block + targeted extras as ONE system instruction.
+        Kept for callers that want the composed string (tests, tooling); the
+        live lanes use turn_block(), because a per-turn system rewrite costs
+        a full prompt re-evaluation every turn (see _TURN_BLOCK_HEADER)."""
+        return self._compose(system_instruction, self.turn_extras(cue))
 
     def status(self) -> dict:
         """JSON-safe seam status for the panel's read-only memory line
