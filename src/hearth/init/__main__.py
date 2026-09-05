@@ -14,6 +14,7 @@ else is decided by the flags or their defaults, and every step is reported.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
 from hearth.config import config_loader as cl
@@ -54,6 +55,19 @@ def _pick(ids: list[str], interactive: bool) -> str | None:
     return None
 
 
+def want_serve(serve: bool, no_serve: bool, interactive: bool, ask) -> bool:
+    """Whether init ends by BECOMING the facade (D-f, signed 2026-09-05).
+
+    The flags decide when given; otherwise a person at a terminal is asked
+    (default yes — one command, one URL), and nobody there means no: an
+    unattended run must never turn into a process that does not return."""
+    if serve:
+        return True
+    if no_serve or not interactive:
+        return False
+    return bool(ask())
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m hearth.init",
                                  description="first-run bootstrap: templates, token, gates")
@@ -67,6 +81,10 @@ def main(argv: list[str] | None = None) -> int:
                     help="bearer for that server, only if it wants one (never stored)")
     ap.add_argument("--model-id", help="model id to record, skipping the probe")
     ap.add_argument("--no-probe", action="store_true", help="do not contact the LLM server")
+    ap.add_argument("--serve", action="store_true",
+                    help="when done, start Hearth in this terminal without asking")
+    ap.add_argument("--no-serve", action="store_true",
+                    help="when done, only print what to run next (never ask)")
     args = ap.parse_args(argv)
     interactive = sys.stdin.isatty() and not args.yes
 
@@ -119,17 +137,28 @@ def main(argv: list[str] | None = None) -> int:
         print("  your access key (shown once — it lives in the file named above):")
         print(f"    {rep.token}")
     placeholder = current_model_id(model_path) == PLACEHOLDER_ID
-    print()
-    print("Next:")
-    print("  1. start Hearth:       .venv/bin/python -m hearth.serve")
-    print(f"  2. open                {facade_url(paths['serve'])}")
-    print("     and paste the key when the page asks — once; that browser keeps it.")
-    print("  From there, Start brings the companion up and the switcher picks who is live.")
-    print("  (./start.sh still works from the terminal.)")
+    url = facade_url(paths["serve"])
     if placeholder:
+        print()
         print(f"  ! no model chosen yet — the id is still \"{PLACEHOLDER_ID}\". The launch page")
         print("    offers the first-run walk, which lists what your model server has (or edit "
               f"{model_path.relative_to(cl.DATA_DIR) if model_path.is_relative_to(cl.DATA_DIR) else model_path}).")
+    print()
+    serve_now = want_serve(args.serve, args.no_serve, interactive, lambda: _ask_yes_no(
+        "Start Hearth now, in this terminal? (Ctrl-C stops it; the mic prompt lands here.)",
+        True, default=True))
+    if serve_now:
+        print(f"Starting Hearth. Open   {url}")
+        print("  and paste the key when the page asks — once; that browser keeps it. From there,")
+        print("  Start brings the companion up.")
+        print(flush=True)
+        os.execv(sys.executable, [sys.executable, "-m", "hearth.serve"])
+    print("Next:")
+    print("  1. start Hearth:       .venv/bin/python -m hearth.serve")
+    print(f"  2. open                {url}")
+    print("     and paste the key when the page asks — once; that browser keeps it.")
+    print("  From there, Start brings the companion up and the switcher picks who is live.")
+    print("  (./start.sh still works from the terminal.)")
     return 0
 
 

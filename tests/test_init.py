@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import stat
 import subprocess
 import sys
@@ -192,3 +193,55 @@ class FirstRun(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ServeOffer(unittest.TestCase):
+    """D-f (2026-09-05): init ends by offering to BECOME the facade — one
+    command, one URL — and never does so when nobody is there to say yes."""
+
+    def test_the_decision_table(self):
+        from hearth.init.__main__ import want_serve
+        never = lambda: self.fail("asked when the answer was already known")
+        self.assertTrue(want_serve(True, False, False, never))        # --serve wins
+        self.assertFalse(want_serve(False, True, True, never))        # --no-serve wins
+        self.assertFalse(want_serve(False, False, False, never))      # unattended → no
+        self.assertTrue(want_serve(False, False, True, lambda: True))
+        self.assertFalse(want_serve(False, False, True, lambda: False))
+
+    def test_unattended_runs_print_the_command_and_return(self):
+        d = Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, d)
+        r = _init(d, "--no-probe")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("1. start Hearth", r.stdout)
+        self.assertNotIn("Starting Hearth", r.stdout)
+
+    def test_serve_flag_becomes_the_facade(self):
+        """The real thing: exec into hearth.serve, answer on the configured port."""
+        import socket
+        import time
+        import urllib.request
+        d = Path(tempfile.mkdtemp()); self.addCleanup(shutil.rmtree, d)
+        self.assertEqual(_init(d, "--no-probe", "--no-serve").returncode, 0)
+        with socket.socket() as sk:
+            sk.bind(("127.0.0.1", 0)); port = sk.getsockname()[1]
+        serve = d / "config" / "serve.toml"
+        serve.write_text(serve.read_text().replace("port = 65001", f"port = {port}"))
+        env = {**os.environ, "HEARTH_DATA": str(d), "HEARTH_ROOT": str(_ROOT)}
+        proc = subprocess.Popen([_PY, "-m", "hearth.init", "--no-probe", "--serve"],
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                text=True, env=env)
+        self.addCleanup(proc.kill)
+        url = f"http://127.0.0.1:{port}/admin/launch"
+        deadline = time.time() + 30
+        status = None
+        while time.time() < deadline and proc.poll() is None:
+            try:
+                status = urllib.request.urlopen(url, timeout=1).status
+                break
+            except OSError:
+                time.sleep(0.25)
+        self.assertEqual(status, 200, f"facade never answered; exit={proc.poll()}")
+        proc.terminate()
+        out, _ = proc.communicate(timeout=20)
+        self.assertIn("Starting Hearth. Open", out)
+        self.assertIn(url, out)

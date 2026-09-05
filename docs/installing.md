@@ -2,8 +2,8 @@
 
 This is the full walkthrough behind the README's quickstart: every system prerequisite,
 the two failures that look like Python problems and aren't, how the speech models get onto
-the machine, and what a healthy first launch looks like. Budget an hour the first time,
-most of it waiting on downloads.
+the machine, and what a healthy first launch looks like. Budget an hour the first time, mostly
+waiting on downloads.
 
 Hearth's speech chain (Whisper STT, Chatterbox-Turbo TTS) runs on Apple's MLX framework, so
 the **gold tier — an Apple Silicon Mac with generous unified memory — is the only path this
@@ -17,8 +17,8 @@ What you'll end up with:
 mic → VAD → STT (in-process) → your llama-server → TTS (in-process) → speaker
 ```
 
-Two of the three heavy pieces live *inside* Hearth's process. The third — the language
-model — is a separate server you run yourself.
+Two of the three heavy pieces live *inside* Hearth's process. The third, the language
+model, is a server you run yourself.
 
 ---
 
@@ -29,8 +29,7 @@ model — is a separate server you run yourself.
 - **Network for the first run.** Hearth downloads nothing at runtime by default (it starts
   in Hugging Face *offline* mode) — the speech models are fetched once, in step 3.
 - **A terminal app you'll keep using** — Terminal.app, iTerm, VS Code's terminal. macOS
-  grants microphone access to *that app*, not to Python, so pick one and launch Hearth from
-  it (step 7).
+  grants the microphone to *that app*, not to Python, so pick one and launch from it (step 7).
 - A working mic and speaker. Built-in, wired, or USB is safest; Bluetooth has caveats
   (see [HARDWARE-REQUIREMENTS → Audio input](HARDWARE-REQUIREMENTS.md#audio-input)).
 
@@ -59,9 +58,8 @@ pins 3.12). `uv` fetches a 3.12 interpreter for you; you never install Python by
 
 ## 2. Get Hearth and build its environment
 
-Hearth is **not on PyPI** — the `hearth` name there belongs to an unrelated project. Clone
-and install from source, *editable*, so the engine finds its `config/` and `characters/`
-trees next to the code:
+Hearth is **not on PyPI** (that name belongs to an unrelated project). Clone and install from
+source, *editable*, so the engine finds its `config/` and `characters/` trees beside the code:
 
 ```bash
 git clone https://github.com/localnexus/hearth
@@ -106,8 +104,8 @@ for repo in ("mlx-community/chatterbox-turbo-fp16",       # TTS,  ~3 GB
 PY
 ```
 
-They land in `~/.cache/huggingface/hub` and are reused by every later run. (The alternative
-is to launch once with `HF_HUB_OFFLINE=0 ./start.sh`, which downloads on demand.)
+They land in `~/.cache/huggingface/hub` and are reused by every later run. (Or launch once
+with `HF_HUB_OFFLINE=0 ./start.sh`, which downloads on demand.)
 
 > Use the pre-converted `mlx-community/chatterbox-turbo-fp16` repo — **not** the original
 > ResembleAI weights. The raw layout has no `config.json`, and the MLX loader fails on it with
@@ -210,10 +208,11 @@ Hearth's web pages, asks whether the companion should remember you between conve
 (default no — memory writes durable records about a person, so it is never turned on silently),
 and records your model if the server from step 5 answers.
 
-It prints the key **once** and the address to open next (that page asks for it one time and
-keeps it). Re-running is safe — anything already in place is left alone and named, and the key
-is never printed again (it lives at `config/serve-token`, readable only by you). `--help` lists the unattended
-flags (`--yes`, `--memory on|off`, `--lm-url`, `--model-id`).
+It prints the key **once**, then offers to **start Hearth right there** — say yes and it becomes
+the running program in that terminal (Ctrl-C stops it), showing the address to open. Re-running
+is safe — anything in place is left alone and named, and the key is never printed again (it lives
+at `config/serve-token`, readable only by you). `--help` lists the unattended flags (`--yes`,
+`--memory on|off`, `--lm-url`, `--model-id`, `--serve`/`--no-serve`).
 
 It changes nothing that ships; the templates keep their everything-off defaults for anyone
 copying files by hand. Which file does what: [The config layers](the-config-layers.md).
@@ -249,13 +248,14 @@ you talk means the process is getting silence — a permission problem, not a He
 
 ## 8. First launch
 
-With your model server up, from the terminal app that holds the mic grant, start Hearth:
+If step 6 already started Hearth, skip to the address. Otherwise, from the terminal app that
+holds the mic grant:
 
 ```bash
 .venv/bin/python -m hearth.serve
 ```
 
-Then open **`http://127.0.0.1:65001/admin/launch`** and paste the key from step 6 when asked.
+Open **`http://127.0.0.1:65001/admin/launch`** and paste the key from step 6 when asked.
 On a fresh install that page offers **First run**: three steps that check your LLM server, record
 the model id it advertises, start the companion, and confirm it heard you. After that the launch
 page is the front door: **Start** brings the voice loop up (~10–20 s to warm, plus the one-time
@@ -263,7 +263,7 @@ kernel compile if step 4 didn't already pay it), the **companion switcher** pick
 the links lead to settings, memory, the roster, and the companion's own control panel (`:65000`).
 
 **Then speak first** — there is no greeting. A reply comes ~2–3 s after your pause (slower on the
-first turn if the server must load the model). Talking over it cuts it off: that's barge-in working.
+first turn while the server loads the model). Talking over it cuts it off: that's barge-in working.
 
 **The terminal path still works**: `./start.sh --check`, then `./start.sh` (no web pages involved);
 `Ctrl-C` or `./stop.sh` stops it.
@@ -293,7 +293,7 @@ Model weights live in the Hugging Face cache and are untouched too.
 | `./start.sh --check` says the server is unreachable | `llama-server` not running, or on another port — `LM_BASE_URL`. |
 | Server returns `401` | It wants a key — `LM_API_TOKEN`. |
 | Companion ready, you speak, nothing ever transcribes | Mic permission — step 7. |
-| `[Errno -9996] Invalid input device` | The default input is an output-only device (A2DP earbuds) — pick a real mic in System Settings → Sound. |
+| `[Errno -9996] Invalid input device` | The default input is output-only (A2DP earbuds) — pick a real mic in System Settings → Sound. |
 | The companion goes quiet after `Generating chat` | The model is thinking out loud with no content — force thinking off ([llm.md](config-manual/llm.md)). |
 | Reply arrives but the audio stutters | RTF ≥ 1 on this chip — try the `8bit` TTS variant, and check nothing else is hammering the GPU. |
 

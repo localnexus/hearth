@@ -88,14 +88,14 @@ Sizing detail (memory floor, disk, measured latency, which chips are fast enough
    .venv/bin/python -m hearth.init
    ```
 
-   It prints the key once and the address to open next. Re-running is safe.
+   It prints the key once, then offers to start Hearth right there. Re-running is safe.
 
 4. **Add a voice.** A rights-clean default voice ships with `characters/example/`. To use your
    own, drop one clean 10–15 s reference clip into a voice bundle and point a `voice.toml` at
    it — see [Bring your own voice](docs/bring-your-own-voice.md).
 
-5. **Talk.** With your server up, start Hearth in a terminal window (macOS grants the
-   microphone to the terminal app, not to Python), then open the launch page and press Start:
+5. **Talk.** If step 3 started Hearth, open the address it showed. Otherwise start it in a
+   terminal window (macOS grants the microphone to the terminal app, not to Python):
 
    ```bash
    .venv/bin/python -m hearth.serve      # then open http://127.0.0.1:65001/admin/launch
