@@ -49,6 +49,7 @@ source of truth** (`docs/config-manual/`, `docs/runbook/`, `docs/bring-your-own-
 | [`the-phone-lane-away-mode.md`](the-phone-lane-away-mode.md) | ⚠️ **A deployment, not the shipped install** — away mode from the server side: overlay-network-only exposure, the TURN-over-TCP workaround, the fragile insecure-origin flag, and the reboot-durability gap. |
 | [`the-openclaw-voice-lane.md`](the-openclaw-voice-lane.md) | ⚠️ **UNTESTED** — how OpenClaw *should* speak in a Hearth voice via the :8555 shim, honest about what's unconfirmed. |
 | [`onboarding-a-character.md`](onboarding-a-character.md) | Bringing in a new companion — the persona/model split, the voice bundle, the personal-use-only licensing that rides the clip, and the ear test. |
+| [`the-memory-thread.md`](the-memory-thread.md) | **What a memory is attached to** — the character, not the voice and not the persona; what survives a persona or voice swap, the three per-sitting modes, how a sitting becomes a record, and when you want a branch instead. |
 | [`the-config-layers.md`](the-config-layers.md) | Who writes what — the two roots, `active.toml` (you), `overrides.toml` (the panel), model dirs (you), the shipped baselines, `serve.toml` (manage, never print), and the memory / OpenClaw gates. |
 | [`when-it-misbehaves.md`](when-it-misbehaves.md) | A router: symptom → the authoritative doc that fixes it, plus the two facade cases written out here (the `serve.toml` gate, the bearer 401). |
 
