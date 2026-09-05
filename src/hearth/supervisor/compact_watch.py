@@ -18,7 +18,8 @@ Execution contract:
   ``.running`` whose character lock is FREE and whose claim is stale means
   the run died before reporting — surfaced as ``.failed``, never retried.
 - The compactor itself is operator machinery, not part of this tree:
-  ``DATA/ops/compact-companion-session.sh``. Absent, requests stay parked
+  ``DATA/ops/compaction/compact-companion-session.sh`` (pre-split installs:
+  ``DATA/ops/compact-companion-session.sh``). Absent, requests stay parked
   and one log line says so per facade life.
 - Spawned **detached** (own session): a facade bounce must not kill a
   mid-run compaction. Output appends to ``DATA/logs/compact-auto.log``.
@@ -51,8 +52,23 @@ def queue_dir() -> Path:
     return Path(config_loader.DATA_DIR) / "ops" / "compact-queue"
 
 
+#: Where the operator's compactor lives, newest layout first. It moved into
+#: ``ops/compaction/`` on 2026-09-04 when its queue-lifecycle half was split
+#: out to a sourced lib beside it; the flat path stays readable so an install
+#: that has not moved yet keeps working rather than silently parking requests.
+_COMPACTOR_PATHS = (("compaction", "compact-companion-session.sh"),
+                    ("compact-companion-session.sh",))
+
+
 def compactor_path() -> Path:
-    return Path(config_loader.DATA_DIR) / "ops" / "compact-companion-session.sh"
+    """First installed compactor, else the preferred path (so the 'not
+    installed' log line names where to put it)."""
+    root = Path(config_loader.DATA_DIR) / "ops"
+    candidates = [root.joinpath(*parts) for parts in _COMPACTOR_PATHS]
+    for path in candidates:
+        if path.is_file():
+            return path
+    return candidates[0]
 
 
 #: Queue file suffix → the state a person should read it as.

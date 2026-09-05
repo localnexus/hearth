@@ -118,8 +118,8 @@ class CompactWatchTick(unittest.IsolatedAsyncioTestCase):
                                    "est_tokens": 50_000}))
         return req
 
-    def _script(self):
-        script = self.root / "ops" / "compact-companion-session.sh"
+    def _script(self, parts=("compaction", "compact-companion-session.sh")):
+        script = self.root.joinpath("ops", *parts)
         script.parent.mkdir(parents=True, exist_ok=True)
         script.write_text("#!/bin/sh\n"
                           f"printf '%s\\n' \"$@\" > '{self.root}/spawn-args.txt'\n")
@@ -140,6 +140,19 @@ class CompactWatchTick(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(await compact_watch.tick(app))
         self.assertTrue(req.exists())
         self.assertTrue(app.get("compact_watch_no_script_logged"))
+
+    async def test_compactor_resolves_new_layout_and_pre_split_fallback(self):
+        """The compactor moved into ops/compaction/ on 2026-09-04. An install
+        that has not moved yet must still be FOUND, not silently parked."""
+        from hearth.supervisor import compact_watch
+        want = self.root / "ops" / "compaction" / "compact-companion-session.sh"
+        # Nothing installed: the preferred path is named, so the log line
+        # tells a person where to put it.
+        self.assertEqual(compact_watch.compactor_path(), want)
+        legacy = self._script(("compact-companion-session.sh",))
+        self.assertEqual(compact_watch.compactor_path(), legacy)
+        self._script()  # both present → the new layout wins
+        self.assertEqual(compact_watch.compactor_path(), want)
 
     async def test_fires_and_claims(self):
         from hearth.supervisor import compact_watch
