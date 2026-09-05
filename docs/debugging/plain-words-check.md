@@ -22,8 +22,8 @@ with the plain word to use.
 ```
 
 Output is `path:line: [word] 'context' — plain word: …`, one line per finding, then
-a `CLEAN` / `WARN` summary. It is **warning-level**: exit 0 whatever it finds.
-`--strict` exits 1 on findings, for the day it becomes a gate.
+a `CLEAN` / `WARN` summary. Run bare it is warning-level: exit 0 whatever it
+finds. `--strict` exits 1 on findings, and that is how the pre-commit hook runs it.
 
 ## What it reads
 
@@ -43,6 +43,8 @@ the subject, as in a glossary entry or this page.
 
 ## Where it runs
 
-The pre-commit hook prints its one-line summary after the scrub gate. It never
-blocks a commit. Promotion to a gate is a decision to take once the count is
-down and the false-positive rate is known.
+The pre-commit hook runs it with `--strict` after the scrub gate, so a new
+finding blocks the commit (a pilot since 2026-09-05, once the whole corpus was
+clean). Use the plain word, or where the technical name is the right one, put
+`manual-lint: allow` on the line (or `allow-file` at the top). The mark is in
+the diff, so an exception is a visible decision. Relaxing it is one flag.
