@@ -102,7 +102,7 @@ def _apply(label: str, dotted: str, value, confirmed: bool):
                                   f"file — edit DATA/{rel} instead"}
         target.parent.mkdir(parents=True, exist_ok=True)
         copied = True
-        target_label = (f"copied to the data root (shipped file untouched): "
+        target_label = (f"copied to your data folder (shipped file untouched): "
                         f"DATA/{rel}")
 
     try:

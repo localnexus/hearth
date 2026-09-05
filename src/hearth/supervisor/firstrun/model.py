@@ -81,7 +81,7 @@ def _record(model_id: str, confirmed: bool, lm_url: str, lm_token: str):
         logger.info("[first-run] model id recorded for {}", facts["name"])
     return 200, {"ok": True, "written": written, "model": facts["name"], "id": model_id,
                  "advertised": model_id in (advertised or []),
-                 "target": ("copied to the data root (shipped file untouched)"
+                 "target": ("copied to your data folder (shipped file untouched)"
                             if copied else "in place"),
                  "backup": backup.name if backup is not None else None,
                  "effect": _EFFECT}

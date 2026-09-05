@@ -128,10 +128,10 @@ def write_selection(sel: dict, path: Optional[Path] = None) -> dict:
     stamp = datetime.now().astimezone().isoformat(timespec="seconds")
     lines = [
         "# config/active.toml — the selection pointer.",
-        f"# Written by the supervisor's /admin/switch on {stamp}"
+        f"# Written by Hearth's /admin/switch on {stamp}"
         + (" (previous file: active.toml.prev)." if previous is not None else "."),
         "# Hand-edits still work exactly as before: edit + restart. Comments do not",
-        "# survive a daemon switch; see config/active.toml.example for the field docs.",
+        "# survive a switch from the panel; see config/active.toml.example for the field docs.",
         "",
     ]
     for key in SELECTION_KEYS:

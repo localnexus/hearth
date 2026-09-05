@@ -70,17 +70,17 @@ def want_serve(serve: bool, no_serve: bool, interactive: bool, ask) -> bool:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m hearth.init",
-                                 description="first-run bootstrap: templates, token, gates")
+                                 description="first-run setup: templates, access key, switches")
     ap.add_argument("--yes", "-y", action="store_true",
                     help="take every default and ask nothing (memory stays off)")
     ap.add_argument("--memory", choices=("on", "off"),
                     help="enable cross-sitting memory without being asked (default: ask; off)")
     ap.add_argument("--lm-url", default=DEFAULT_LM_URL,
-                    help=f"your OpenAI-compatible LLM server (default {DEFAULT_LM_URL})")
+                    help=f"your OpenAI-compatible model server (default {DEFAULT_LM_URL})")
     ap.add_argument("--lm-token", default="",
-                    help="bearer for that server, only if it wants one (never stored)")
+                    help="access key for that server, only if it wants one (never stored)")
     ap.add_argument("--model-id", help="model id to record, skipping the probe")
-    ap.add_argument("--no-probe", action="store_true", help="do not contact the LLM server")
+    ap.add_argument("--no-probe", action="store_true", help="do not contact the model server")
     ap.add_argument("--serve", action="store_true",
                     help="when done, start Hearth in this terminal without asking")
     ap.add_argument("--no-serve", action="store_true",

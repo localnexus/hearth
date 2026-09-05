@@ -276,7 +276,7 @@ class FirstRun(AioHTTPTestCase):
         with mock.patch.object(config_loader, "_ROOT", shipped):
             status, data = await self._record({"id": "zz-model-b"})
         self.assertEqual(status, 200, data)
-        self.assertIn("copied to the data root", data["target"])
+        self.assertIn("copied to your data folder", data["target"])
         self.assertIsNone(data["backup"], "a fresh copy has no previous generation")
         self.assertIn('id = "zz-model-b"', self.model.read_text(encoding="utf-8"))
         self.assertIn("your-model-id-here", src.read_text(encoding="utf-8"),

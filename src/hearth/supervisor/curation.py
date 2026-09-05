@@ -144,7 +144,7 @@ async def _facts(request: web.Request) -> web.Response:
     glue = request.app["deps"].memory
     if glue is None:
         return web.json_response(
-            {**base, "note": "facade memory lane disabled ([memory.serve])"})
+            {**base, "note": "Hearth's memory lane disabled ([memory.serve])"})
     backend = await asyncio.to_thread(glue.curation_backend, character)
     if backend is None:
         return web.json_response(
@@ -212,7 +212,7 @@ async def _forget(request: web.Request) -> web.Response:
     glue = request.app["deps"].memory
     if glue is None:
         return web.json_response(
-            {"error": "facade memory lane disabled ([memory.serve]) — curate at "
+            {"error": "Hearth's memory lane disabled ([memory.serve]) — curate at "
                       "the desk: python -m hearth.memory forget --session "
                       f"{session_id} --character {character}"}, status=409)
 

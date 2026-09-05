@@ -112,7 +112,7 @@ def _resolve_bearer(cfg: dict) -> str:
             f"serve.toml token_source unusable ({type(exc).__name__}): {src}"
         )
     if not tok:
-        raise config_loader.ConfigError(f"empty serve bearer token in {src}")
+        raise config_loader.ConfigError(f"empty access key in {src}")
     return tok
 
 
@@ -373,7 +373,7 @@ async def _chat(request: web.Request) -> web.StreamResponse:
         )
     except aiohttp.ClientError as exc:
         return web.json_response(
-            {"error": {"message": f"LLM upstream unreachable ({type(exc).__name__})"}}, status=502
+            {"error": {"message": f"model server unreachable ({type(exc).__name__})"}}, status=502
         )
 
     if upstream.status != 200:
@@ -692,6 +692,6 @@ async def start(active, cfg: dict, lm_base_url: str, lm_token: str,
         await runner.cleanup()
         return None
     mem_note = ", memory=on" if glue is not None else ""
-    print(f"[serve] /v1 facade → http://{host}:{port}/v1 "
+    print(f"[serve] Hearth /v1 → http://{host}:{port}/v1 "
           f"(character={character}{pin_note}{mem_note})", flush=True)
     return runner

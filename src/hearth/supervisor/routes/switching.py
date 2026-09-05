@@ -33,7 +33,7 @@ from ..child import _MEMORY_MODES, _now_iso
 from .. import switch as switch_mod
 
 _FACADE_NOTE = ("untouched — a [serve.identity] pin keeps its own voice; unpinned "
-                "LLM-leg params follow at the next facade restart")
+                "LLM-leg params follow at the next Hearth restart")
 
 
 async def _switch_get(request: web.Request) -> web.Response:
@@ -72,7 +72,7 @@ async def _switch_live_get(request: web.Request) -> web.Response:
     app = request.app
     deps = app["deps"]
     if not await app["bot_child"].reconcile():
-        return web.json_response({"ok": False, "reason": "bot is down"})
+        return web.json_response({"ok": False, "reason": "the companion is down"})
     if deps.session is None:
         return web.json_response({"ok": False, "reason": "no probe session"})
     try:
@@ -80,13 +80,13 @@ async def _switch_live_get(request: web.Request) -> web.Response:
                 app["panel_url"] + "/switch/live",
                 timeout=aiohttp.ClientTimeout(total=5)) as r:
             if r.status == 404:
-                return web.json_response({"ok": False, "reason": "bot has no live-switch route"})
+                return web.json_response({"ok": False, "reason": "the companion has no live-switch route"})
             try:
                 data = await r.json()
             except Exception:  # noqa: BLE001 — a non-JSON body is not an answer
-                return web.json_response({"ok": False, "reason": f"bot answered HTTP {r.status}"})
+                return web.json_response({"ok": False, "reason": f"the companion answered HTTP {r.status}"})
             if not isinstance(data, dict):
-                return web.json_response({"ok": False, "reason": "malformed bot response"})
+                return web.json_response({"ok": False, "reason": "malformed reply from the companion"})
             data.setdefault("ok", r.status == 200)
             return web.json_response(data)
     except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as exc:
@@ -150,7 +150,7 @@ async def _switch_post(request: web.Request) -> web.Response:
              "wrote": merged}, status=409)
     if apply_mode == "live" and not running:
         return web.json_response(
-            {"ok": False, "errors": ['apply "live" needs a running bot'],
+            {"ok": False, "errors": ['apply "live" needs a running companion'],
              "wrote": merged}, status=409)
     if running and apply_mode != "restart" and (live_eligible or apply_mode == "live"):
         live_result = await _try_live(app, merged, body)
@@ -193,7 +193,7 @@ async def _switch_post(request: web.Request) -> web.Response:
         "kept_extras": wrote["extras"],
         "applied": "restart" if restart else "none",
         "restart": ("scheduled — watch GET /admin/state" if restart else
-                    'not scheduled — bot not running (pass "start": true to launch)'),
+                    'not scheduled — the companion is not running (pass "start": true to launch)'),
         "facade": _FACADE_NOTE,
     }
     if live_result is not None:
@@ -208,7 +208,7 @@ async def _try_live(app: web.Application, merged: dict, body: dict) -> dict:
     sidecar spin — the arm PREPARES the new companion's recall eagerly."""
     deps = app["deps"]
     if deps.session is None:
-        return {"ok": False, "errors": ["no probe session — cannot reach the bot"]}
+        return {"ok": False, "errors": ["no probe session — cannot reach the companion"]}
     payload = {k: merged[k] for k in switch_mod.SELECTION_KEYS}
     for key in ("hold", "hold_name", "mode", "name"):
         if body.get(key):
@@ -219,13 +219,13 @@ async def _try_live(app: web.Application, merged: dict, body: dict) -> dict:
                 timeout=aiohttp.ClientTimeout(total=40)) as r:
             if r.status == 404:
                 return {"ok": False,
-                        "errors": ["bot has no live-switch route (older build)"]}
+                        "errors": ["the companion has no live-switch route (older build)"]}
             try:
                 data = await r.json()
             except Exception:  # noqa: BLE001 — a non-JSON body is a refusal
-                return {"ok": False, "errors": [f"bot answered HTTP {r.status}"]}
+                return {"ok": False, "errors": [f"the companion answered HTTP {r.status}"]}
             if not isinstance(data, dict):
-                return {"ok": False, "errors": ["malformed bot response"]}
+                return {"ok": False, "errors": ["malformed reply from the companion"]}
             data.setdefault("ok", r.status == 200)
             return data
     except (aiohttp.ClientError, asyncio.TimeoutError, OSError) as exc:

@@ -54,7 +54,7 @@
 <div id="statusline">connecting…</div>
 
 <div id="tokencard" class="card hidden">
-  <p>This surface needs the serve bearer token (asked once; kept only in this
+  <p>This page needs the access key (asked once; kept only in this
      browser — shared with the launch and roster pages).</p>
   <div class="row">
     <input type="password" id="token" autocomplete="off" placeholder="bearer token">
@@ -103,7 +103,7 @@ let pending = null;                      // {character, session} awaiting confir
 function needToken(prompt) {
   show("tokencard", true); show("compcard", false);
   show("reccard", false); show("confirmcard", false);
-  $("statusline").textContent = prompt || "locked — enter the bearer token";
+  $("statusline").textContent = prompt || "locked — enter the access key";
 }
 
 function clearPending() { pending = null; show("confirmcard", false); }
@@ -114,7 +114,7 @@ async function refresh() {
   try { st = await api("/admin/memory"); }
   catch (e) {
     if (e.message === "401") { needToken("that token was refused — try again"); return; }
-    $("statusline").textContent = "facade unreachable — retrying…";
+    $("statusline").textContent = "Hearth unreachable — retrying…";
     return;
   }
   show("tokencard", false); show("compcard", true);
@@ -146,7 +146,7 @@ async function select(character) {
   try { r = await api("/admin/memory/records?character=" + encodeURIComponent(character)); }
   catch (e) {
     if (e.message === "401") { needToken("that token was refused — try again"); return; }
-    $("records").textContent = "facade unreachable"; return;
+    $("records").textContent = "Hearth unreachable"; return;
   }
   renderRecords((r.data || {}).records || []);
   // The lazy fact count — one deliberate backend call, only on selection.
@@ -194,7 +194,7 @@ async function askForget(session) {
     });
   } catch (e) {
     if (e.message === "401") { needToken("that token was refused — try again"); return; }
-    report("facade unreachable", true); return;
+    report("Hearth unreachable", true); return;
   }
   const d = r.data || {};
   if (!d.ok) { report(d.error || "preview failed", true); return; }
@@ -218,7 +218,7 @@ async function confirmForget() {
     });
   } catch (e) {
     if (e.message === "401") { needToken("that token was refused — try again"); return; }
-    report("facade unreachable", true); return;
+    report("Hearth unreachable", true); return;
   }
   clearPending();
   const d = r.data || {};

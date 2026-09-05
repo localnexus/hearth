@@ -152,5 +152,5 @@ async def _persona_post(request: web.Request) -> web.Response:
     logger.info("[roster] persona written: {} ({})", character, variant or "default")
     return web.json_response({
         "ok": True, "written": True, **result,
-        "effect": "composed at bot start / live-switch prepare — switch or "
+        "effect": "composed at companion start / live-switch prepare — switch or "
                   "restart to hear it (nothing re-composes mid-sitting)"})

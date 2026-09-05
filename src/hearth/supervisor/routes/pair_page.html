@@ -63,7 +63,7 @@ async function claim() {
     msg.textContent = (data && data.error) || "that code was refused";
   } catch (e) {
     msg.className = "err";
-    msg.textContent = "could not reach the facade — check the address";
+    msg.textContent = "could not reach Hearth — check the address";
   }
 }
 

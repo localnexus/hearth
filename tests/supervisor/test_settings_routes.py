@@ -266,7 +266,7 @@ class SettingsRoutes(AioHTTPTestCase):
                                yes=True)
         self.assertEqual(resp.status, 200, await resp.text())
         d = await resp.json()
-        self.assertIn("data root", d["target"])
+        self.assertIn("data folder", d["target"])
         self.assertEqual(before, shipped.read_text(encoding="utf-8"))  # untouched
         copy = self.data / "config" / "vad.toml"
         self.assertIn("# shipped calibration", copy.read_text(encoding="utf-8"))
