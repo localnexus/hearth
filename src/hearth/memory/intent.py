@@ -344,9 +344,14 @@ def capture(companion: str, messages, session_id: str, cfg: dict,
         plan named mid-conversation is still the plan;
       * a deliberate close with no topic ⇒ nothing written: the companion was told
         goodbye, not what to pick up;
-      * no deliberate closure ⇒ nothing written, because the conversation did
-        not actually end — an idle timeout is not a goodbye, and inventing one
-        is how a wrong memory gets asserted at the next boot.
+      * no closure and no topic ⇒ nothing written, and nothing inferred: an idle
+        timeout is not a goodbye, and inventing a topic from one is how a wrong
+        memory gets asserted at the next boot.
+
+    The closure verdict gates NOTHING here — a stated topic is kept whether the
+    session ended by goodbye or by idle sweep (a walk that trails off still
+    carries its "next time"). Closure's consumer is the serve lane's turn-time
+    check (serve/memory_glue.py); it shares this call so the seat is asked once.
 
     Returns the captured topic, or None. Never raises: this runs at session
     close, behind the canonical record, and close must complete regardless.
