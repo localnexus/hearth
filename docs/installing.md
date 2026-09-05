@@ -256,21 +256,19 @@ With the LLM server up, from the terminal app that holds the mic grant, start th
 ```
 
 Then open **`http://127.0.0.1:65001/admin/launch`** and paste the token from step 6 when asked.
-That page is the front door from here on: **Start** brings the voice loop up (~10–20 s to warm,
-plus the one-time kernel compile if step 4 didn't already pay it), the **companion switcher**
-picks who is live, and the links along the top lead
-to settings, memory, the roster, and the bot's own `:65000` panel.
+On a fresh install that page offers **First run**: three steps that check your LLM server, record
+the model id it advertises, start the companion, and confirm it heard you. After that the launch
+page is the front door: **Start** brings the voice loop up (~10–20 s to warm, plus the one-time
+kernel compile if step 4 didn't already pay it), the **companion switcher** picks who is live, and
+the links lead to settings, memory, the roster, and the bot's own `:65000` panel.
 
-**Then speak first.** There is no auto-greeting — the companion waits for you. Within ~2–3 s
-of your pause you should hear a reply; if your LLM server had to load the model, the first
-turn is slower and the second is the real measure. Talking over the reply cuts it off — that's
-barge-in working.
+**Then speak first** — there is no greeting. A reply comes ~2–3 s after your pause (slower on the
+first turn if the server must load the model). Talking over it cuts it off: that's barge-in working.
 
-**The terminal path still works** — `./start.sh --check` then `./start.sh` launches the voice
-loop directly, no facade involved; `Ctrl-C` or `./stop.sh` stops it.
+**The terminal path still works**: `./start.sh --check`, then `./start.sh` (no facade involved);
+`Ctrl-C` or `./stop.sh` stops it.
 
-From here the [runbook](runbook/README.md) is the operating manual: preflight, launch, the
-control panel, stopping, session continuity, and a symptom → fix table in
+From here the [runbook](runbook/README.md) is the operating manual, with a symptom → fix table in
 [fast recovery](runbook/05-fast-recovery.md).
 
 ## 9. Updating

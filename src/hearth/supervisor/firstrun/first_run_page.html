@@ -1,0 +1,137 @@
+<!doctype html>
+<!-- first_run_page.html — the guided first sitting (served at /admin/first-run).
+
+     SECURITY CONTRACT: this file is served WITHOUT auth (the sixth static-chrome
+     exemption, beside /admin/launch), so it must stay pure chrome — no names,
+     no state, no tokens baked in. Every fact on screen arrives via an authed
+     fetch; the bearer is entered once, kept in this browser's localStorage
+     (shared with the other admin pages), sent only as a header. Everything
+     renders with textContent: names are data, never markup. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hearth — first run</title>
+<link rel="icon" type="image/png" href="/ui/brand/favicon.png">
+<style>
+  /*BRAND_CSS*/
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; max-width: 36em; margin: 3em auto;
+         padding: 0 1em; line-height: 1.5; }
+  h1 { font-size: 1.4em; }
+  h2 { font-size: 1.1em; }
+  h2 .n { display: inline-block; width: 1.6em; height: 1.6em; line-height: 1.6em;
+          text-align: center; border-radius: 50%; margin-right: 0.45em;
+          font-size: 0.85em;
+          background: color-mix(in srgb, currentColor 18%, transparent); }
+  .card { border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+          border-radius: 8px; padding: 1em 1.2em; margin: 1em 0; }
+  .card.done { border-color: #3a3; }
+  .row { margin: 0.5em 0; display: flex; gap: 0.6em; align-items: center;
+         flex-wrap: wrap; }
+  select, input[type=password] { flex: 1; min-width: 12em; padding: 0.3em 0.4em;
+         font: inherit; }
+  button { font: inherit; padding: 0.4em 1.2em; cursor: pointer; }
+  button.primary { font-weight: 600; }
+  #statusline { font-family: ui-monospace, monospace; font-size: 0.9em;
+                opacity: 0.85; }
+  #msg { min-height: 1.5em; font-size: 0.9em; white-space: pre-wrap; }
+  .note { opacity: 0.75; font-size: 0.9em; }
+  .state { font-family: ui-monospace, monospace; font-size: 0.9em;
+           white-space: pre-wrap; }
+  .err { color: #c33; }
+  .hidden { display: none; }
+  code { font-size: 0.9em; }
+  a { color: inherit; }
+</style>
+</head>
+<body class="brand-adaptive">
+<!--BRANDHEAD:first run-->
+<div id="statusline">connecting…</div>
+
+<div id="tokencard" class="card hidden">
+  <p>This page needs the serve bearer token — the one <code>hearth.init</code>
+     printed (asked once; kept only in this browser, shared with the other admin
+     pages).</p>
+  <div class="row">
+    <input type="password" id="token" autocomplete="off" placeholder="bearer token">
+    <button id="tokenbtn" class="primary">Unlock</button>
+  </div>
+</div>
+
+<p id="intro" class="note hidden">Three steps, then the companion is talking.
+   Nothing here changes a file you did not ask it to, and every fact on this
+   page is re-read from disk and from your server as you go.</p>
+
+<div id="servercard" class="card hidden">
+  <h2><span class="n">1</span>Your LLM server</h2>
+  <p class="state" id="lmline">…</p>
+  <div id="lmhelp" class="hidden">
+    <p class="note">Nothing answered there. Start your server (the install
+       guide's step 5) and this line updates on its own. If it runs somewhere
+       else, stop the facade and point the bootstrap at it — it records the
+       model too — then start the facade again:</p>
+    <pre class="state">.venv/bin/python -m hearth.init --lm-url http://127.0.0.1:1234/v1
+.venv/bin/python -m hearth.serve</pre>
+  </div>
+  <p class="state" id="modelline">…</p>
+  <div id="modelform" class="row hidden">
+    <label for="lm-model">Serve with</label>
+    <select id="lm-model"></select>
+    <button id="modelbtn" class="primary">Use this model</button>
+  </div>
+  <p class="note">The id is copied verbatim from the server's own listing into
+     the selected model config — comments kept, the previous file beside it as
+     <code>.prev</code>.</p>
+</div>
+
+<div id="startcard" class="card hidden">
+  <h2><span class="n">2</span>Bring the companion up</h2>
+  <p class="note">The shipped example companion is selected; bring in your own
+     later on the <a href="/admin/roster">roster page</a>. Press <b>Start</b>.
+     The first start on a Mac also asks for the <b>microphone</b> — the prompt
+     is addressed to the terminal app that runs the facade, so look there.
+     Warming takes 10–20 s; the very first start also compiles kernels once.</p>
+  <div id="switchmount"></div>
+</div>
+
+<div id="listencard" class="card hidden">
+  <h2><span class="n">3</span>Say something</h2>
+  <p class="state" id="listenline">…</p>
+  <p class="note">There is no greeting — the companion waits for you. Within a
+     few seconds of your pause you should hear a reply; talking over it cuts it
+     off, which is barge-in working. This line reads the bot's own turn counter
+     through the facade — no words cross.</p>
+</div>
+
+<div id="donecard" class="card done hidden">
+  <h2>That is the whole loop.</h2>
+  <p>From here the <a href="/admin/launch">launch page</a> is the front door:
+     start, stop, resume, switch companion. The <a href="/">control panel</a>
+     is the room you sit in while one is running. This page stops being offered
+     once a session exists and the model id is set; it stays at
+     <code>/admin/first-run</code> if you want it back.</p>
+</div>
+
+<div id="msg"></div>
+
+<p><small><a href="/admin/launch">Launch page</a> ·
+  <a href="/admin/settings/ui">Settings</a> — every config file ·
+  <a href="/admin/roster">Roster</a> — onboard a companion</small></p>
+
+<!-- ui/switch_card.js — shared with the launch page and the panel. -->
+<script>/*SWITCH_CARD_JS*/</script>
+
+<script>
+"use strict";
+/*ADMIN_SHELL_JS*/
+
+/*FIRSTRUN_CHECK_JS*/
+
+/*FIRSTRUN_LISTEN_JS*/
+
+wireToken(refresh);
+poll(refresh, 3000);
+</script>
+</body>
+</html>

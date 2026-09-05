@@ -3,7 +3,7 @@
 Every page is `read_text()` at IMPORT and served from that one string. That is the
 right production property — the bytes a request gets cannot change under it, and no
 request ever touches the disk — and it is also why editing a page costs a process
-restart: the facade for its five pages, the bot for the control panel. On page work
+restart: the facade for its six pages, the bot for the control panel. On page work
 that restart is the whole tax, and it is paid per edit.
 
 `HEARTH_DEV_RELOAD=1` inverts it for the process you set it on: every read goes back

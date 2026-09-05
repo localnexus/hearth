@@ -41,6 +41,7 @@ file edit and a restart. This table says *what each one is for*;
 | Page | What you do there |
 |---|---|
 | `/admin/launch` | Start and stop the companion, see whether they're running, and switch who's live — the standing surface you can leave open |
+| `/admin/first-run` | The first sitting on a new install — is the LLM server answering, which model it serves, Start, did it hear you. The launch page offers it until those are true |
 | `/admin/roster` | Bring in a new companion, add a voice to an existing one, edit a persona, or branch their memory onto a new track |
 | `/admin/settings/ui` | **Every config file, as a form** — the selection pointer, model facts, voice descriptors, the listening calibration, the gates. Generated from the same schema that validates them, so a bad value is refused before it's written |
 | `/admin/memory/ui` | Review what a companion remembers and prune it — read what a record says, forget one, clear a companion |
@@ -51,7 +52,7 @@ file edit and a restart. This table says *what each one is for*;
 > then both are behind the one door.
 
 The settings page is the general answer to "where do I change this without opening a file" — and
-[The pages behind the door](the-pages-behind-the-door.md) is the chapter for all five. The rest of
+[The pages behind the door](the-pages-behind-the-door.md) is the chapter for all six. The rest of
 this manual names the files anyway, because they're **yours** and you should know what you own — but
 naming a file is not the same as being told to open it.
 

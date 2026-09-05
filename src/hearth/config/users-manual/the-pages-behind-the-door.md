@@ -1,6 +1,6 @@
 # The pages behind the door — the `/admin` surface at :65001
 
-*The five pages the facade serves when the supervisor gate is on: what each one lets you do, the single
+*The six pages the facade serves when the supervisor gate is on: what each one lets you do, the single
 unlock they share, and the two habits that repeat on every page that writes something. This is the sibling
 of [Reading the panel](reading-the-panel.md) — that page covers the `:65000` panel you sit at, this one
 covers the pages on the other port.*
@@ -15,7 +15,7 @@ this is there.
 
 ## Getting in, once
 
-All five pages arrive **empty**. They're plain chrome with nothing baked in — no names, no state, no key —
+All six pages arrive **empty**. They're plain chrome with nothing baked in — no names, no state, no key —
 and everything you see fills in afterward, fetched with your key attached. So a page that looks blank is
 almost always **locked, not broken**.
 
@@ -76,6 +76,23 @@ This is what makes a service recoverable from the couch instead of only from the
 
 Two things this page deliberately won't do: it never restarts the facade underneath itself, and it never
 touches your LLM server. Stopping a companion stops the companion.
+
+## `/admin/first-run` — the first sitting
+
+Offered by the launch page while an install is new — the selected model config still carries the shipped
+placeholder id, or no companion here has a session yet — and reachable at its address any time after.
+Three steps: **your LLM server** (is it answering at the address the facade uses, and which model ids it
+advertises — pick one and it's recorded in the selected model config, verbatim, comments kept, previous
+file beside it), **bring the companion up** (the same companion card as the launch page, with Start —
+parked until the id is set, because a bot started against the placeholder can't reach a model), and **say
+something** (the bot's own turn counter, read through the facade: warming, then listening, then "heard
+you and answered"). It ends by pointing at the launch page, which is the front door from then on.
+
+Two honest edges. The page **never moves the server address**: if nothing answers, it shows the one
+command that does (`hearth.init --lm-url …`, run with the facade stopped), because an address saved here
+would look applied while the running facade kept using the old one. And the model id is the **one write
+that skips the preview**: the value is the server's own listing, so what lands is what the server already
+answers to — an id the server doesn't list is refused unless you insist.
 
 ## `/admin/settings/ui` — every config file, as a form
 
@@ -146,7 +163,8 @@ persona, or branching a memory track. It has a chapter of its own —
 ## Net
 
 Unlock once per browser (or pair a phone with six digits), and the facade's pages cover the things that used
-to mean stopping to edit a file: **launch** starts, stops, resumes and switches; **settings** renders every
+to mean stopping to edit a file: **first run** walks a new install to its first words; **launch** starts,
+stops, resumes and switches; **settings** renders every
 knob as a control that refuses bad values; **memory** reviews and prunes what a companion holds; **roster**
 brings companions in; **pairing** gets a device through the door. Every one of them shows you the change
 before it makes it, and keeps the previous version behind you.

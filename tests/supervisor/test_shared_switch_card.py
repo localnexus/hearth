@@ -20,6 +20,7 @@ import unittest
 from pathlib import Path
 
 from hearth.control import control as control_mod
+from hearth.supervisor import firstrun as firstrun_mod
 from hearth.supervisor import routes as routes_mod
 from hearth.ui import switch_card
 
@@ -41,6 +42,7 @@ class SharedSwitchCard(unittest.TestCase):
         source = CARD.read_text(encoding="utf-8")
         self.assertEqual(switch_card.JS, source)
         for name, page in (("launch", routes_mod._LAUNCH_PAGE()),
+                           ("firstrun", firstrun_mod._PAGE()),
                            ("control", control_mod._HTML())):
             with self.subTest(page=name):
                 self.assertIn(source, page, f"{name} serves a different card")
@@ -53,6 +55,7 @@ class SharedSwitchCard(unittest.TestCase):
     def test_both_pages_actually_splice_it(self):
         """A page that ships the placeholder ships a switcher that cannot run."""
         for name, page in (("launch", routes_mod._LAUNCH_PAGE()),
+                           ("firstrun", firstrun_mod._PAGE()),
                            ("control", control_mod._HTML())):
             with self.subTest(page=name):
                 self.assertNotIn("/*SWITCH_CARD_JS*/", page,
@@ -63,6 +66,7 @@ class SharedSwitchCard(unittest.TestCase):
     def test_the_card_appears_exactly_once_per_page(self):
         """Two copies in one page would mean two switchers fighting over ids."""
         for name, page in (("launch", routes_mod._LAUNCH_PAGE()),
+                           ("firstrun", firstrun_mod._PAGE()),
                            ("control", control_mod._HTML())):
             with self.subTest(page=name):
                 self.assertEqual(page.count("window.HearthSwitchCard = (function"), 1)
@@ -73,6 +77,7 @@ class SharedSwitchCard(unittest.TestCase):
         # the page's own markup. Each Page knows where it was read from, which
         # is one fewer path to keep in step with the tree.
         for name, page_obj in (("launch", routes_mod._LAUNCH_PAGE),
+                               ("firstrun", firstrun_mod._PAGE),
                                ("control", control_mod._HTML)):
             page = page_obj.path.read_text(encoding="utf-8")
             for bad in RETIRED_IDS:

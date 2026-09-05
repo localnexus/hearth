@@ -1,9 +1,10 @@
-"""Three pages are split into their own files now, and the seams have to hold.
+"""Four pages are split into their own files now, and the seams have to hold.
 
 The control panel (6 sections), the roster page (3) and the settings page (4)
 were each one file with several unrelated jobs sharing one scope. Their sections
 live under `ui/` and are spliced back in at render, so the SERVED pages are what
-they always were — only the sources are separable.
+they always were — only the sources are separable. The first-run page (2) was
+born split, on the same pattern.
 
 These are NOT the shared layer. `brand.css`, `switch_card.js` and
 `admin_shell.js` are spliced into several pages BECAUSE they must not drift
@@ -37,10 +38,12 @@ from pathlib import Path
 
 from hearth.control import control as control_mod
 from hearth.supervisor import curation as curation_mod
+from hearth.supervisor import firstrun as firstrun_mod
 from hearth.supervisor import roster as roster_mod
 from hearth.supervisor import routes as routes_mod
 from hearth.supervisor import settings as settings_mod
-from hearth.ui import panel, pages, roster_sections, settings_sections
+from hearth.ui import (
+    firstrun_sections, panel, pages, roster_sections, settings_sections)
 
 #: A top-level declaration in a spliced file: these become the PAGE's bindings.
 DECL = re.compile(r"(?m)^(?:async function|function|const|let|var)\s+(\w+)")
@@ -53,6 +56,8 @@ SETS = {
                Path(roster_mod.__file__).parent / "roster_page.html"),
     "settings": (settings_sections.SECTIONS, settings_mod._PAGE,
                  Path(settings_mod.__file__).parent / "settings_page.html"),
+    "firstrun": (firstrun_sections.SECTIONS, firstrun_mod._PAGE,
+                 Path(firstrun_mod.__file__).parent / "first_run_page.html"),
 }
 
 #: Pages with no sections of their own — nothing here may reach them.
@@ -77,6 +82,7 @@ ORDER = {
     "roster": ("roster_onboard.js", "roster_edit.js", "roster_fork.js"),
     "settings": ("settings_schema.js", "settings_files.js",
                  "settings_form.js", "settings_confirm.js"),
+    "firstrun": ("firstrun_check.js", "firstrun_listen.js"),
 }
 
 #: The `let`/`const` bindings one section declares and ANOTHER reads — the
@@ -89,6 +95,7 @@ COUPLINGS = {
     "roster": (("roster", "roster_edit.js", "roster_onboard.js"),
                ("roster", "roster_edit.js", "roster_fork.js")),
     "settings": (),  # the four `let`s live in the page, above every placeholder
+    "firstrun": (),  # the two sections meet only through hoisted functions
 }
 
 

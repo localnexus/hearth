@@ -1,6 +1,6 @@
 """The admin pages' shell is ONE file, spliced into four pages.
 
-Four authed pages (launch, roster, settings, memory) each carried their own copy
+Five authed pages (launch, first-run, roster, settings, memory) each carried their own copy
 of the same preamble: the `$`/`el` helpers, the bearer in localStorage, the
 authed `api()`, `show`/`report`, the token-entry wiring, the poll loop. They had
 already drifted — the launch page's `api()` grew a `json:` convenience the others
@@ -25,15 +25,17 @@ import unittest
 
 from hearth.control import control as control_mod
 from hearth.supervisor import curation as curation_mod
+from hearth.supervisor import firstrun as firstrun_mod
 from hearth.supervisor import roster as roster_mod
 from hearth.supervisor import routes as routes_mod
 from hearth.supervisor import settings as settings_mod
 from hearth.ui import admin_shell
 from hearth.ui import switch_card
 
-#: The four pages that take the shell, as served.
+#: The five pages that take the shell, as served.
 SHELLED = {
     "launch": routes_mod._LAUNCH_PAGE,
+    "firstrun": firstrun_mod._PAGE,
     "roster": roster_mod._PAGE,
     "settings": settings_mod._PAGE,
     "memory": curation_mod._PAGE,

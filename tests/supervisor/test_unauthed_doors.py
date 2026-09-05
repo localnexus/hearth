@@ -3,8 +3,9 @@
 Every path in the exempt set is something a caller can open WITHOUT the key, so
 the set is worth stating out loud in one place and checking against the prose
 that describes it. The count has drifted twice (four shells became five when
-device pairing landed, and the docs lagged both times), which is why this is a
-test and not a comment.
+device pairing landed, and the docs lagged both times) and moved once more,
+deliberately, to six with the first-run walk — which is why this is a test and
+not a comment.
 
 Run:  .venv/bin/python -m unittest discover -s tests
 """
@@ -31,6 +32,7 @@ class UnauthedDoorsAreDocumented(unittest.TestCase):
     def test_the_exempt_set_is_exactly_what_we_think(self):
         from hearth.serve.app import _AUTH_EXEMPT
         self.assertEqual(sorted(_AUTH_EXEMPT), [
+            "/admin/first-run",
             "/admin/launch",
             "/admin/memory/ui",
             "/admin/pair/claim",
@@ -43,14 +45,14 @@ class UnauthedDoorsAreDocumented(unittest.TestCase):
         ], "the unauthed set changed — update " + " and ".join(self.DOCS))
 
     def test_the_docs_state_the_right_shell_count(self):
-        """Five static shells; /health and the pairing claim make seven paths."""
+        """Six static shells; /health and the pairing claim make eight paths."""
         import hearth
         root = Path(hearth.__file__).parents[2]  # src/hearth/__init__.py → repo
         for rel in self.DOCS:
             text = (root / rel).read_text(encoding="utf-8")
             with self.subTest(doc=rel):
-                self.assertIn("five unauthed static shells", text)
-                self.assertNotIn("four unauthed static shells", text)
+                self.assertIn("six unauthed static shells", text)
+                self.assertNotIn("five unauthed static shells", text)
 
     def test_the_only_unauthed_assets_are_artwork(self):
         """The brand exemption is for two images and must never become a

@@ -38,12 +38,14 @@ from pathlib import Path
 
 from hearth.control import control as control_mod
 from hearth.supervisor import curation as curation_mod
+from hearth.supervisor import firstrun as firstrun_mod
 from hearth.supervisor import roster as roster_mod
 from hearth.supervisor import routes as routes_mod
 from hearth.supervisor import settings as settings_mod
 
 PAGES = {
     "launch": routes_mod._LAUNCH_PAGE,
+    "firstrun": firstrun_mod._PAGE,
     "pair": routes_mod._PAIR_PAGE,
     "roster": roster_mod._PAGE,
     "settings": settings_mod._PAGE,

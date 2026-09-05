@@ -30,13 +30,18 @@ WebRTC). Open `http://<facade-host>:65001/admin/launch`; it asks for the serve b
   slow bring-up simply keeps the button disabled; `409` means it is already running. This is
   what makes a session-launched external (the away-voice server and its web client)
   recoverable from a phone instead of only from the desk.
+- **First run** (new installs only): while the selected model config still carries the shipped
+  placeholder id, or no companion on this install has a session yet, a card at the top offers the
+  first-run page (`/admin/first-run`, [admin surface](admin-surface.md)) — and while the id is the
+  placeholder the companion card is parked, since a bot started now could not reach a model.
+  `/admin/state` carries the two facts as `first_run`.
 
 The page never bounces the facade itself — it starts and stops the **bot** only. First supervised
 spawn on a fresh macOS install is a desk moment (the mic permission attributes to the daemon).
 
 ## One look across both ports
 
-The launch page and its siblings (roster, settings, memory, pairing) share their palette,
+The launch page and its siblings (first run, roster, settings, memory, pairing) share their palette,
 mark, and header with the `:65000` control panel. The definition lives in one place —
 `src/hearth/ui/brand.css` plus `ui/brand.py` — and is spliced into every page at import, the
 same mechanism as the companion switcher and for the same reason: six hand-copied palettes

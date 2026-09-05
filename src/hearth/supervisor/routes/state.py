@@ -29,6 +29,7 @@ from hearth.session import maintenance_lock
 
 from .. import actuators as actuators_mod
 from .. import compact_watch
+from .. import firstrun
 
 
 async def _http_alive(session, url: str, headers: Optional[dict] = None):
@@ -55,11 +56,15 @@ async def _state(request: web.Request) -> web.Response:
                            headers={"Authorization": f"Bearer {deps.lm_token}"}),
         "audio": _http_alive(deps.session, str(deps.cfg.get("audio_base_url") or "")),
         "panel": _http_alive(deps.session, app["panel_url"] + "/engine"),
+        # Two file facts (firstrun/detect.py): a built-in, so a declared watch
+        # can never shadow it.
+        "first_run": asyncio.to_thread(firstrun.detect),
     }
     for name, url in app.get("watches", {}).items():
         probes.setdefault(name, _http_alive(deps.session, url))
     results = dict(zip(probes, await asyncio.gather(*probes.values())))
     panel = results.pop("panel")
+    first_run = results.pop("first_run")
     # Process truth, not cached truth: a desk-started bot appears (adopted) and
     # a desk-stopped adopted bot disappears within one poll of the launch page.
     await app["bot_child"].reconcile()
@@ -77,6 +82,10 @@ async def _state(request: web.Request) -> web.Response:
         # a compaction in flight; this covers the ones that are parked, and
         # the ones that FAILED — which nothing else on this page can show.
         "compact_queue": compact_watch.queue_status(),
+        # The first-run entry condition: {needs_model, fresh}, or null when
+        # the tree is too broken to say. The launch page offers the walk on
+        # either and parks Start on the first.
+        "first_run": first_run,
     })
 
 

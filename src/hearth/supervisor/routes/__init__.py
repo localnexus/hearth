@@ -27,6 +27,11 @@ falling back to the supervised restart otherwise. The optional body key
 "apply" steers it: "auto" (default) | "live" (live or 409, never restarts) |
 "restart" (force the supervised-restart path).
 
+GET /admin/first-run is the guided first sitting (firstrun/): the page the
+launch page offers while the selected model id is still the shipped
+placeholder or nothing has been said on this install — /admin/state carries
+those two facts as first_run.
+
 GET /admin/sessions lists the resume shelf (SessionMeta only — ids, names,
 counts, stamps; conversation content is never read out). /admin/memory is the
 record-level curation surface (curation.py): digest views + a
@@ -78,6 +83,7 @@ from ..child import STOP_GRACE_S, TERM_GRACE_S, BotChild
 from .. import actuators as actuators_mod
 from .. import compact_watch
 from .. import curation as curation_mod
+from .. import firstrun as firstrun_mod
 from .. import roster as roster_mod
 from .. import settings as settings_mod
 
@@ -153,6 +159,9 @@ def build_mount(sup_cfg: dict):
         # /admin/settings — the generated settings forms (schema-driven step 2:
         # registry-declared knobs, preview-then-confirm scalar writes, rule (c)).
         settings_mod.add_routes(app)
+        # /admin/first-run — the guided first sitting behind the door hearth.init
+        # opens (the first-run path's second half; shell exempt like /admin/launch).
+        firstrun_mod.add_routes(app)
         # LAST on purpose: registered facade routes always win over the proxy.
         app.router.add_route("*", "/{tail:.*}", _panel_proxy)
         app.on_startup.append(_adopt_on_start)

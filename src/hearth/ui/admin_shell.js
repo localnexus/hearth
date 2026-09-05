@@ -6,7 +6,7 @@
 // guard doing its job at the harshest possible moment. The paired test
 // (test_shared_admin_shell.py) catches it before a browser has to.
 //
-// Four pages take this: launch, roster, settings, memory. pair_page.html
+// Five pages take this: launch, first-run, roster, settings, memory. pair_page.html
 // deliberately does NOT — it is the page a device without the bearer opens, so
 // a shell whose whole job is carrying the bearer has nothing to offer it.
 //
