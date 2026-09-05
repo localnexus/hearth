@@ -5,18 +5,19 @@
 > `python -m hearth.config.check --emit-manual <this directory>`; a test fails on drift.
 
 Companion page: [settings-reference-gates.md](settings-reference-gates.md). **Live path** = how a setting hot-applies at the next turn
-boundary: a `config/overrides.toml` dotted key (the panel writes that layer), or the supervisor's
+boundary: a `config/overrides.toml` dotted key (the panel writes that layer), or the launch page's
 *switch intent* for the selection fields (the COMPANION button / `/admin/switch`).
 **Restart** (in each
-section header) = what must relaunch for a persisted edit to land: *bot* = the desk pipeline
-(`start.sh`) · *facade* = the serve facade (kickstart) · *none* = applies live. Strict validation
+section header) = what must relaunch for a persisted edit to land: *the companion* = the voice
+pipeline (`start.sh`, or the launch page) · *Hearth* = the running program (`hearth.serve`) ·
+*none* = applies live. Strict validation
 of your install: `python -m hearth.config.check`.
 
 ## `config/active.toml` — The selection pointer
 
-*place scope · operator-owned · selection · restart: bot+facade*
+*place scope · operator-owned · selection · restart: the companion and Hearth*
 
-Your one deliberate lever for who is live. Read once at startup; the supervisor's switch button writes it and applies it live at the next turn boundary (or via a warm restart) — hand-edit + restart keeps working. The facade re-reads at kickstart (a [serve.identity] pin keeps its own voice regardless).
+Your one deliberate lever for who is live. Read once at startup; the launch page's switch button writes it and applies it live at the next turn boundary (or via a warm restart) — hand-edit + restart keeps working. Hearth re-reads it when restarted (a [serve.identity] pin keeps its own voice regardless).
 
 | key | type | default | range | live path | what it sets |
 |---|---|---|---|---|---|
@@ -27,9 +28,9 @@ Your one deliberate lever for who is live. Read once at startup; the supervisor'
 
 ## `config/models/<model>/model.toml` — Model load facts
 
-*model scope · operator-owned · load facts · restart: bot*
+*model scope · operator-owned · load facts · restart: the companion*
 
-Per-model request facts. context_length is deliberately absent — the live server's loaded value wins. The facade re-reads at kickstart.
+Per-model request facts. context_length is deliberately absent — the live server's loaded value wins. Hearth re-reads it when restarted.
 
 | key | type | default | range | live path | what it sets |
 |---|---|---|---|---|---|
@@ -42,7 +43,7 @@ Per-model request facts. context_length is deliberately absent — the live serv
 
 ## `characters/<character>/voices/<voice>/voice.toml` — Voice bundle descriptor
 
-*identity scope · operator-owned · descriptor · restart: bot*
+*identity scope · operator-owned · descriptor · restart: the companion*
 
 A voice is a self-contained bundle: descriptor + reference clip in one directory. The clip conditions once at startup.
 
@@ -68,7 +69,7 @@ PANEL-MANAGED. Polled every turn boundary; values overlay the baselines (delete 
 | `tts` | table | — |  | — | per-voice synthesis overrides |
 | `vad` | table | — |  | — | listening calibration overrides |
 | `voice` | table | — |  | — | live voice-clip audition |
-| `llm.temperature` | float | — | 0.0–2.0 | — | live LLM temperature |
+| `llm.temperature` | float | — | 0.0–2.0 | — | live model temperature |
 | `llm.reasoning_effort` | enum(none | low | medium | high) | — |  | — | live reasoning control |
 | `llm.persona` | str | — | ≤ 16000 chars | — | live {{persona}} slot text (template hard-rules stay pinned) |
 | `tts.temperature` | float | — | 0.0–2.0 | — | synth temperature (intonation looseness) |
@@ -83,9 +84,9 @@ PANEL-MANAGED. Polled every turn boundary; values overlay the baselines (delete 
 
 ## `config/tts/<engine>/tts.toml` — TTS engine baseline
 
-*place scope · shipped-owned · calibration · restart: bot*
+*place scope · shipped-owned · calibration · restart: the companion*
 
-Every [live] value equals the engine's own default (machine-checked no-op guarantee). [tag_profiles.*] deltas are ear-calibrated — change by listening. A data-root copy wins whole-file. The facade re-reads per speech request.
+Every [live] value equals the engine's own default (machine-checked no-op guarantee). [tag_profiles.*] deltas are ear-calibrated — change by listening. A copy in your data folder wins whole-file. Hearth re-reads it per speech request.
 
 | key | type | default | range | live path | what it sets |
 |---|---|---|---|---|---|
@@ -99,9 +100,9 @@ Every [live] value equals the engine's own default (machine-checked no-op guaran
 
 ## `config/vad.toml` — Listening calibration
 
-*place scope · shipped-owned · calibration · restart: bot*
+*place scope · shipped-owned · calibration · restart: the companion*
 
-Mic, room, and speech-habit calibration — plumbing, never character texture; profiles never carry it. A data-root copy wins whole-file.
+Mic, room, and speech-habit calibration — plumbing, never character texture; profiles never carry it. A copy in your data folder wins whole-file.
 
 | key | type | default | range | live path | what it sets |
 |---|---|---|---|---|---|
@@ -122,7 +123,7 @@ PANEL-MANAGED snapshots of the override deltas for one companion or voice; they 
 | `voice` | str | — |  | — | character scope only: that character's remembered voice bundle — what the switch pickers offer when you move to them (else first-in-list) |
 | `llm` | table | — |  | — | character preset: deltas from the model baseline |
 | `tts` | table | — |  | — | voice preset: deltas from the engine baseline |
-| `llm.temperature` | float | — | 0.0–2.0 | — | live LLM temperature |
+| `llm.temperature` | float | — | 0.0–2.0 | — | live model temperature |
 | `llm.reasoning_effort` | enum(none | low | medium | high) | — |  | — | live reasoning control |
 | `llm.persona` | str | — | ≤ 16000 chars | — | live {{persona}} slot text (template hard-rules stay pinned) |
 | `tts.temperature` | float | — | 0.0–2.0 | — | synth temperature (intonation looseness) |

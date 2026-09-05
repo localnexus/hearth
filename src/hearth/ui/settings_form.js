@@ -19,12 +19,16 @@ async function openFile(label) {
   renderForm();
 }
 
+// The machine vocabulary ("bot" | "facade" | "bot+facade"), in plain words.
+const RESTART_WORDS = { bot: "the companion", facade: "Hearth", "bot+facade": "the companion and Hearth" };
+function restartWords(when) { return RESTART_WORDS[when] || when; }
+
 function effectBadge(xh, kindInfo) {
   const b = document.createElement("span"); b.className = "badge";
   if (xh.hot_via) { b.classList.add("live"); b.textContent = "live · " + xh.hot_via; }
   else {
     const when = xh.effect || kindInfo.restart;
-    b.textContent = when === "none" ? "live layer" : "at " + when + " restart";
+    b.textContent = when === "none" ? "live layer" : "at " + restartWords(when) + " restart";
     if (xh.effect_note) b.title = xh.effect_note;
   }
   return b;
@@ -35,7 +39,7 @@ function effectText(eff) {
     return "live path: " + eff.hot_via + " — the running lane honors this at the next turn boundary";
   const when = eff.effect || eff.restart;
   if (when === "none") return "live layer — polled at the next turn boundary";
-  let t = "this edit lands at the next " + when + " restart — nothing changes now";
+  let t = "this edit lands at the next restart of " + restartWords(when) + " — nothing changes now";
   if (eff.effect_note) t += "\n(" + eff.effect_note + ")";
   return t;
 }

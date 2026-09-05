@@ -67,7 +67,7 @@ def _field_rows(model_cls: type[BaseModel], prefix: str = "") -> list[str]:
         if extra.get("hot_via"):
             live = f"`{extra['hot_via']}`"
         elif extra.get("effect"):  # effect-time stamp: no live path, edit lands at…
-            live = f"— (lands at *{extra['effect']}* restart)"
+            live = f"— (lands at the next restart of {_restart_words(extra['effect'])})"
         else:
             live = "—"
         sub = _model_of(ann)
@@ -78,6 +78,21 @@ def _field_rows(model_cls: type[BaseModel], prefix: str = "") -> list[str]:
     for sub_name, sub_model in subtables:
         rows.extend(_field_rows(sub_model, prefix=f"{sub_name}."))
     return rows
+
+
+# The machine vocabulary (FileEntry.restart / x-hearth.effect, pinned by tests
+# and read by the settings form) rendered in plain words for the reader.
+_RESTART_WORDS = {"none": "none", "bot": "the companion", "facade": "Hearth",
+                  "bot+facade": "the companion and Hearth"}
+_ROLE_WORDS = {"gate": "on/off switch"}
+
+
+def _restart_words(value: str) -> str:
+    return _RESTART_WORDS.get(value, value)
+
+
+def _role_words(value: str) -> str:
+    return _ROLE_WORDS.get(value, value)
 
 
 _HEADER_ROW = ("| key | type | default | range | live path | what it sets |\n"
@@ -93,7 +108,7 @@ MANUAL_PAGES: dict[str, tuple[str, tuple[str, ...]]] = {
         ("active", "model", "voice", "overrides", "tts-baseline", "vad", "profile"),
     ),
     "settings-reference-gates.md": (
-        "Settings reference — the gate files",
+        "Settings reference — the on/off files",
         ("serve", "memory", "openclaw"),
     ),
 }
@@ -110,11 +125,12 @@ def _render_page(name: str) -> str:
         "> `python -m hearth.config.check --emit-manual <this directory>`; a test fails on drift.",
         "",
         f"Companion page: [{other}]({other}). **Live path** = how a setting hot-applies at the next turn",
-        "boundary: a `config/overrides.toml` dotted key (the panel writes that layer), or the supervisor's",
+        "boundary: a `config/overrides.toml` dotted key (the panel writes that layer), or the launch page's",
         "*switch intent* for the selection fields (the COMPANION button / `/admin/switch`).",
         "**Restart** (in each",
-        "section header) = what must relaunch for a persisted edit to land: *bot* = the desk pipeline",
-        "(`start.sh`) · *facade* = the serve facade (kickstart) · *none* = applies live. Strict validation",
+        "section header) = what must relaunch for a persisted edit to land: *the companion* = the voice",
+        "pipeline (`start.sh`, or the launch page) · *Hearth* = the running program (`hearth.serve`) ·",
+        "*none* = applies live. Strict validation",
         "of your install: `python -m hearth.config.check`.",
         "",
     ]
@@ -123,7 +139,8 @@ def _render_page(name: str) -> str:
         out += [
             f"## `{entry.path}` — {entry.title}",
             "",
-            f"*{entry.layer} scope · {entry.owner}-owned · {entry.role} · restart: {entry.restart}*",
+            f"*{entry.layer} scope · {entry.owner}-owned · {_role_words(entry.role)} · "
+            f"restart: {_restart_words(entry.restart)}*",
             "",
         ]
         if entry.note:

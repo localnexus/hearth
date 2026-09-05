@@ -33,14 +33,14 @@ REGISTRY: dict[str, FileEntry] = {e.kind: e for e in (
     FileEntry("active", ActiveFile, "The selection pointer", "config/active.toml",
               "selection", "operator", "place", "bot+facade",
               note="Your one deliberate lever for who is live. Read once at startup; the "
-                   "supervisor's switch button writes it and applies it live at the next turn "
-                   "boundary (or via a warm restart) — hand-edit + restart keeps working. The "
-                   "facade re-reads at kickstart (a [serve.identity] pin keeps its own voice "
+                   "launch page's switch button writes it and applies it live at the next turn "
+                   "boundary (or via a warm restart) — hand-edit + restart keeps working. "
+                   "Hearth re-reads it when restarted (a [serve.identity] pin keeps its own voice "
                    "regardless)."),
     FileEntry("model", ModelFile, "Model load facts", "config/models/<model>/model.toml",
               "load facts", "operator", "model", "bot",
               note="Per-model request facts. context_length is deliberately absent — the live "
-                   "server's loaded value wins. The facade re-reads at kickstart."),
+                   "server's loaded value wins. Hearth re-reads it when restarted."),
     FileEntry("voice", VoiceFile, "Voice bundle descriptor", "characters/<character>/voices/<voice>/voice.toml",
               "descriptor", "operator", "identity", "bot",
               note="A voice is a self-contained bundle: descriptor + reference clip in one "
@@ -53,23 +53,23 @@ REGISTRY: dict[str, FileEntry] = {e.kind: e for e in (
               "calibration", "shipped", "place", "bot",
               note="Every [live] value equals the engine's own default (machine-checked no-op "
                    "guarantee). [tag_profiles.*] deltas are ear-calibrated — change by listening. "
-                   "A data-root copy wins whole-file. The facade re-reads per speech request."),
+                   "A copy in your data folder wins whole-file. Hearth re-reads it per speech request."),
     FileEntry("vad", VadFile, "Listening calibration", "config/vad.toml",
               "calibration", "shipped", "place", "bot",
               note="Mic, room, and speech-habit calibration — plumbing, never character texture; "
-                   "profiles never carry it. A data-root copy wins whole-file."),
-    FileEntry("serve", ServeTable, "The serve-facade gate", "config/serve.toml",
+                   "profiles never carry it. A copy in your data folder wins whole-file."),
+    FileEntry("serve", ServeTable, "The Hearth on/off switch", "config/serve.toml",
               "gate", "operator", "place", "facade", top_key="serve",
-              note="Holds a bearer-token PATH: manage it, never print it. Off ⇒ byte-identical "
+              note="Holds the PATH to the access key: manage it, never print it. Off ⇒ byte-identical "
                    "appliance, no socket."),
-    FileEntry("memory", MemoryTable, "The memory-seam gate", "config/memory.toml",
+    FileEntry("memory", MemoryTable, "The memory on/off switch", "config/memory.toml",
               "gate", "operator", "place", "bot+facade", top_key="memory",
               note="Cross-session continuity per companion. Records are the truth; backends are "
                    "derived indexes (`forget --session <id>` deletes one conversation from both; "
                    "see docs/memory.md)."),
-    FileEntry("openclaw", OpenclawTable, "The OpenClaw-bridge gate", "config/openclaw.toml",
+    FileEntry("openclaw", OpenclawTable, "The OpenClaw on/off switch", "config/openclaw.toml",
               "gate", "operator", "place", "bot", top_key="openclaw",
-              note="One gate drives tool registration AND the {{openclaw_tools}} prompt slot, so "
+              note="One switch drives tool registration AND the {{openclaw_tools}} prompt slot, so "
                    "capability and prompt can never disagree."),
     FileEntry("profile", ProfileFile, "Companion knob presets", "characters/<c>[/voices/<v>]/profile.toml (+ overrides.toml mirrors)",
               "preset", "panel", "identity", "none",
@@ -84,16 +84,16 @@ REGISTRY: dict[str, FileEntry] = {e.kind: e for e in (
 # Environment variables the engine READS (documented here; validated nowhere).
 ENV_VARS: tuple[tuple[str, str, str, str], ...] = (
     ("HEARTH_ROOT", "the checkout (found from the package)", "config_loader", "engine-tree anchor"),
-    ("HEARTH_DATA", "HEARTH_ROOT", "config_loader", "data root — everything the operator owns"),
+    ("HEARTH_DATA", "HEARTH_ROOT", "config_loader", "data folder — everything the operator owns"),
     ("WEB_HOST", "127.0.0.1", "control panel", "panel bind address (0.0.0.0 = LAN)"),
     ("WEB_PORT", "65000", "control panel", "panel port"),
-    ("LM_BASE_URL", "http://127.0.0.1:8080/v1", "pipeline (bot)", "LLM server endpoint"),
-    ("LM_API_TOKEN", "none", "pipeline (bot)", "LLM bearer key, only if the server wants one"),
+    ("LM_BASE_URL", "http://127.0.0.1:8080/v1", "pipeline (companion)", "model server endpoint"),
+    ("LM_API_TOKEN", "none", "pipeline (companion)", "model server access key, only if the server wants one"),
     ("LM_PROVIDER", "llama-server", "pipeline + panel", "which engine probe the panel uses (llama-server | lmstudio)"),
-    ("T4_METRICS", "0", "pipeline (bot)", "1 = per-turn latency marks in the log"),
-    ("HEARTH_DEV_RELOAD", "0", "control panel + facade",
+    ("T4_METRICS", "0", "pipeline (companion)", "1 = per-turn latency marks in the log"),
+    ("HEARTH_DEV_RELOAD", "0", "control panel + Hearth",
      "1 = re-read page files per request (dev; default reads once at import)"),
-    ("SERVE_TOKEN", "(unset)", "serve facade", "facade bearer override — wins over token_source"),
+    ("SERVE_TOKEN", "(unset)", "Hearth (serve)", "access key override — wins over token_source"),
 )
 
 

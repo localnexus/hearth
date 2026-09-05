@@ -59,7 +59,7 @@ class VoiceFile(_Cfg):
 # ── config/overrides.toml (panel-managed live layer) ─────────────────────────
 
 class _OvLLM(_Cfg):
-    temperature: Optional[float] = Field(None, ge=0.0, le=2.0, description="live LLM temperature")
+    temperature: Optional[float] = Field(None, ge=0.0, le=2.0, description="live model temperature")
     reasoning_effort: Optional[Literal["none", "low", "medium", "high"]] = Field(
         None, description="live reasoning control")
     persona: Optional[str] = Field(None, max_length=16_000,

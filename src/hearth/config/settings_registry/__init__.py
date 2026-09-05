@@ -120,10 +120,14 @@ from .validate import (
 from .manual import (
     MANUAL_PAGES,
     _HEADER_ROW,
+    _RESTART_WORDS,
+    _ROLE_WORDS,
     _constraints,
     _default_str,
     _field_rows,
     _render_page,
+    _restart_words,
+    _role_words,
     _type_name,
     generate_manual_pages,
 )
