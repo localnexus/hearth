@@ -70,6 +70,9 @@ async def _state(request: web.Request) -> web.Response:
     await app["bot_child"].reconcile()
     return web.json_response({
         "supervisor": True,
+        # What would relaunch the facade after /admin/daemon/restart; None on a
+        # terminal run — the launch page draws its Restart button from this.
+        "keeper": app.get("keeper"),
         "bot": app["bot_child"].status(),
         "panel": {"url": app["panel_url"], "reachable": panel},
         "externals": results,

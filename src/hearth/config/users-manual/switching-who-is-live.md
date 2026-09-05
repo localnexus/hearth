@@ -98,7 +98,9 @@ For the **desk voice loop**, that's the ordinary stop/start:
 
 For the **serve facade**, restart however you run it — foreground `python -m hearth.serve`, or whatever
 service manager keeps it alive on your machine (a launchd agent, a systemd user unit). With the
-supervisor daemon on, `POST /admin/daemon/restart` does it through the one authed door.
+supervisor daemon on, the launch page's **Restart Hearth** button (or `POST /admin/daemon/restart`)
+does it through the one authed door — the button appears only when a keeper such as launchd would
+bring Hearth back, and a running companion keeps talking through it.
 
 ### 4 · Confirm the right one came back
 

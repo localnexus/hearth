@@ -66,6 +66,10 @@ companion change, and it's covered in [The one-button switch](the-one-button-swi
 **Stop** button, with an optional field to name the conversation on the way out (it saves either way), and a link
 straight into the control panel.
 
+Below, when Hearth is kept alive by launchd, a **Restart Hearth** card: the way to pick up an update to
+the pages. A companion who is talking keeps talking; the page reconnects by itself. Started from a
+terminal, the card stays away — nothing would bring Hearth back, so restart it there.
+
 **The state line at the top is process truth, not a memory of what this page did.** It's re-checked every few
 seconds, so a companion you started at the desk appears here on its own, and one you stopped at the desk
 drops off within a poll. It is an honest is-anyone-running indicator no matter who did the starting.

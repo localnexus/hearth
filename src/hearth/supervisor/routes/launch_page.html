@@ -54,7 +54,7 @@
 
 <div id="firstrun" class="card hidden"></div>
 
-<!-- The SHARED card (ui/switch_card.js): Start bot-down, Switch bot-up. -->
+<!-- SHARED card (ui/switch_card.js): Start bot-down, Switch bot-up. -->
 <div id="switchcard" class="card hidden">
   <h2>Companion</h2>
   <div id="switchmount"></div>
@@ -92,6 +92,8 @@
   <div id="actuators"></div>
 </div>
 
+<div id="hearthcard" class="card hidden"></div>
+
 <div id="msg"></div>
 
 <p><small><a href="/admin/roster">Manage the roster</a> — onboard a new companion ·
@@ -103,6 +105,7 @@
 <script>/*COMPACT_QUEUE_JS*/</script>
 <script>/*FIRST_RUN_JS*/</script>
 <script>/*KEY_HELP_JS*/</script>
+<script>/*HEARTH_RESTART_JS*/</script>
 
 <script>
 "use strict";
@@ -200,9 +203,8 @@ async function refresh() {
     return;
   }
   show("tokencard", false);
-  // A link is a navigation, and a navigation cannot carry the bearer header —
-  // so mint the cookie carrier once per load, or the control panel link below
-  // 401s. Silent on failure: the next poll retries, and nothing else needs it.
+  // A navigation cannot carry the bearer header — mint the cookie carrier once
+  // per load or the panel link 401s. Silent on failure: the next poll retries.
   if (!cookieMinted) {
     cookieMinted = true;
     api("/admin/cookie", { method: "POST" }).catch(() => { cookieMinted = false; });
@@ -231,6 +233,7 @@ async function refresh() {
   // Parked and FAILED requests — the states no lock can report (a run that
   // dies in its first second never survives a poll).
   compactQueue.render(st.data);
+  hearthRestart.render(st.data);
   const parked = firstRun.render(st.data);  // Start parked on the placeholder id
 
   // Never flip cards or re-fill a select under an in-flight action — the card
@@ -339,6 +342,7 @@ wireToken(refresh);
 card.onCharacter(loadSessions);   // the session list follows the chosen companion
 $("compactbtn").addEventListener("click", doCompact);
 $("stopbtn").addEventListener("click", doStop);
+const hearthRestart = window.HearthRestart.mount($("hearthcard"), api, report);
 
 poll(refresh, 4000);
 </script>

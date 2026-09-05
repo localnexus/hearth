@@ -84,6 +84,7 @@ from .. import actuators as actuators_mod
 from .. import compact_watch
 from .. import curation as curation_mod
 from .. import firstrun as firstrun_mod
+from .. import keeper
 from .. import roster as roster_mod
 from .. import settings as settings_mod
 
@@ -120,6 +121,7 @@ def build_mount(sup_cfg: dict):
             term_grace_s=float(sup_cfg.get("term_grace_s", TERM_GRACE_S)),
         )
         app["bot_child"] = child
+        app["keeper"] = keeper.detect()  # who relaunches us; None on a terminal run
         app["panel_url"] = str(sup_cfg.get("panel_url") or PANEL_URL).rstrip("/")
         # Stroke 4: watched externals + declared actuators (never children).
         app["watches"] = {str(n): str(dict(w or {}).get("url") or "")

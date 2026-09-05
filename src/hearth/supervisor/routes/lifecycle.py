@@ -21,6 +21,7 @@ whole, mounts the routes, and re-exports every name defined here.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 
 from aiohttp import web
@@ -102,7 +103,20 @@ async def _compact_start(request: web.Request) -> web.Response:
 async def _daemon_restart(request: web.Request) -> web.Response:
     # Deliberate unsuccessful exit: launchd KeepAlive (on-failure) relaunches the
     # daemon; the bot child survives in its own process group and is re-adopted.
-    # Under a plain terminal run this simply exits — documented behavior.
-    logger.info("[supervisor] daemon restart requested — exiting for the keeper")
+    # Without a keeper (a terminal run) the same exit is simply the end of
+    # Hearth, so it is refused unless the caller says {"force": true}.
+    kept = request.app.get("keeper")
+    if not kept:
+        body = {}
+        with contextlib.suppress(Exception):
+            body = await request.json()
+        if not (isinstance(body, dict) and body.get("force") is True):
+            return web.json_response(
+                {"ok": False, "keeper": None,
+                 "error": "Hearth was started from a terminal, so nothing would bring it "
+                          "back. Restart it there: Ctrl-C, then run it again."},
+                status=409)
+    logger.info("[supervisor] daemon restart requested — exiting for the keeper ({})",
+                kept or "forced")
     asyncio.get_running_loop().call_later(0.3, os._exit, 3)
     return web.json_response({"ok": True, "restarting": True})

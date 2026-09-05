@@ -117,7 +117,7 @@ The rest of the surface, all behind the same bearer:
 | `GET /admin/state` | Bot state, panel reachability, watched externals (your LLM server, the speech server), the last switch |
 | `POST /admin/bot/start` | Launch the bot — `{"mode":"new"}` or `{"mode":"resume","name":"<session>"}` |
 | `POST /admin/bot/stop` | Graceful stop — `{"hold":true}` keeps the session |
-| `POST /admin/daemon/restart` | Restart the facade itself (the one restart it can't do in place) |
+| `POST /admin/daemon/restart` | Restart Hearth itself — only when something (launchd) would bring it back; a terminal run answers 409 unless the body says `{"force": true}` |
 | `GET`/`POST /admin/switch` | Read the picker / perform the switch |
 | `GET /admin/actuators` | List your declared actuators (state + last run) |
 | `POST /admin/actuators/<name>/run` | Run one — the reply waits for the honest result |
