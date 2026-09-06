@@ -27,137 +27,50 @@ model, is a server you run yourself.
 - An Apple Silicon Mac (M-series) on a recent macOS, with **admin rights** (Homebrew needs
   them) and **~60 GB free disk** — ~42 GB of model weights plus the Python environment.
 - **Network for the first run.** Hearth downloads nothing at runtime by default (it starts
-  in Hugging Face *offline* mode) — the speech models are fetched once, in step 3.
+  in Hugging Face *offline* mode) — the speech models are fetched once, by `install.sh` or by hand.
 - **A terminal app you'll keep using** — Terminal.app, iTerm, VS Code's terminal. macOS
-  grants the microphone to *that app*, not to Python, so pick one and launch from it (step 7).
+  grants the microphone to *that app*, not to Python, so pick one and launch from it (chapter 5).
 - A working mic and speaker. Built-in, wired, or USB is safest; Bluetooth has caveats
   (see [HARDWARE-REQUIREMENTS → Audio input](HARDWARE-REQUIREMENTS.md#audio-input)).
 
-## 1. System tools
+## 1. One command
 
 ```bash
-xcode-select --install                      # compilers (skip if already installed)
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"   # Homebrew, if absent
-brew install portaudio                      # ← REQUIRED before the Python install (see below)
-brew install uv                             # the Python/venv manager Hearth is built with
+curl -fsSL https://raw.githubusercontent.com/localnexus/hearth/main/install.sh | bash
 ```
 
-**PortAudio is a hard, non-obvious prerequisite.** Hearth's audio transport uses `pyaudio`,
-which is compiled from source during the Python install against PortAudio's headers. Without
-it the install dies with:
+`install.sh` does chapters 1–4 of the by-hand page for you, then hands over to the first-run
+setup (chapter 4 below). Every step checks first, does only what is missing, and prints one line:
 
-```
-fatal error: 'portaudio.h' file not found
-```
-
-The installer reports that as a `pyaudio` wheel-build failure, which reads like a Python
-problem. It isn't — install PortAudio and rerun step 2.
-
-**Do not use the system Python.** macOS ships 3.9, and the MLX chain needs ≥ 3.11 (Hearth
-pins 3.12). `uv` fetches a 3.12 interpreter for you; you never install Python by hand.
-
-## 2. Get Hearth and build its environment
-
-Hearth is **not on PyPI** (that name belongs to an unrelated project). Clone and install from
-source, *editable*, so the engine finds its `config/` and `characters/` trees beside the code:
-
-```bash
-git clone https://github.com/localnexus/hearth
-cd hearth
-uv venv -p 3.12 && uv pip install -e ".[mac]"     # ~90 packages; a few minutes
-```
-
-(`uv sync --extra mac` is the lockfile-driven equivalent. Plain `uv sync` without the
-extra installs the backend-neutral spine only — no TTS/STT — so always name the extra.)
-
-Then prove the pin-critical part took:
-
-```bash
-.venv/bin/python - <<'PY'
-import importlib.metadata as m
-print("transformers", m.version("transformers"))     # must print 5.5.0
-from mlx_lm.models.cache import KVCache               # the import that fails when unpinned
-from mlx_audio.tts.utils import load_model
-print("mlx-audio import OK")
-PY
-```
-
-**Why `transformers` is pinned to exactly 5.5.0:** newer 5.x releases break the TTS engine's
-import (`AttributeError: 'str' object has no attribute '__module__'`), and `mlx-audio`
-declares no upper bound, so an unpinned resolve drifts onto a broken version. The pin lives in
-`pyproject.toml`; if you ever see that error, something re-resolved the environment — rerun
-the install line above rather than upgrading anything by hand.
-
-## 3. Fetch the speech models (one-time, needs network)
-
-Hearth starts with `HF_HUB_OFFLINE=1` — no Hugging Face calls at runtime, ever, weights frozen
-at what's on disk. Good for privacy; it also means a **fresh machine's first launch would fail
-to load the speech models.** Pull them once, explicitly:
-
-```bash
-HF_HUB_OFFLINE=0 .venv/bin/python - <<'PY'
-from huggingface_hub import snapshot_download
-for repo in ("mlx-community/chatterbox-turbo-fp16",       # TTS,  ~3 GB
-             "mlx-community/S3TokenizerV2",               # TTS dependency, small
-             "mlx-community/whisper-large-v3-turbo"):     # STT,  ~1.6 GB
-    print(snapshot_download(repo))
-PY
-```
-
-They land in `~/.cache/huggingface/hub` and are reused by every later run. (Or launch once
-with `HF_HUB_OFFLINE=0 ./start.sh`, which downloads on demand.)
-
-> Use the pre-converted `mlx-community/chatterbox-turbo-fp16` repo — **not** the original
-> ResembleAI weights. The raw layout has no `config.json`, and the MLX loader fails on it with
-> `FileNotFoundError: Config not found`. The `8bit`/`6bit`/`4bit` variants of the same
-> mlx-community repo also work if you want to save ~1–2 GB at some voice-quality cost.
-
-## 4. Smoke-test the voice engine
-
-This proves the TTS engine loads, clones a voice from a reference clip, and streams — in
-isolation, before the whole pipeline is involved. It uses the rights-clean default voice that
-ships with the repo:
-
-```bash
-.venv/bin/python - <<'PY'
-import time, wave, numpy as np
-from mlx_audio.tts.utils import load_model
-model = load_model("mlx-community/chatterbox-turbo-fp16")
-ref = "characters/example/voices/default/sample.wav"
-text = "Hello from Hearth. If you can hear this, the voice engine works."
-for run in range(2):                                  # run 0 may include a one-time compile
-    t0 = time.perf_counter(); chunks = []; first = None
-    for r in model.generate(text=text, ref_audio=ref, stream=True, streaming_interval=2.0):
-        first = first or time.perf_counter() - t0
-        chunks.append(np.array(r.audio, dtype=np.float32).reshape(-1))
-    audio = np.concatenate(chunks); wall = time.perf_counter() - t0; dur = audio.size / 24000
-    print(f"run {run}: first audio {first:.2f}s, {dur:.1f}s of speech in {wall:.1f}s "
-          f"(RTF {wall/dur:.2f}), {len(chunks)} chunks")
-with wave.open("/tmp/hearth-tts-check.wav", "wb") as w:
-    w.setnchannels(1); w.setsampwidth(2); w.setframerate(24000)
-    w.writeframes((np.clip(audio, -1, 1) * 32767).astype("<i2").tobytes())
-PY
-afplay /tmp/hearth-tts-check.wav
-```
-
-**What good looks like** (run 1, on a high-end M-series chip): first audio well under a
-second, **RTF ≈ 0.35**, more than one chunk, and the file sounds like the reference clip.
-(That bar is for this standalone script; the in-process service settles lower, ~0.24 — see
-the hardware-requirements doc.)
-RTF is wall time divided by audio duration — it must stay **below 1.0** or playback will have
-gaps. Slower chips run higher; ~0.6 is still fine.
-
-**The first-ever synth on a machine can take ~15 s longer** — MLX compiles its Metal kernels
-on first use and caches them on disk. That's why the script runs twice; judge run 1.
-
-| If you see | It means |
+| mark | meaning |
 |---|---|
-| `AttributeError: 'str' object has no attribute '__module__'` | `transformers` isn't 5.5.0 — step 2. |
-| `FileNotFoundError: Config not found …` | Raw ResembleAI weights, not the mlx-community repo — step 3. |
-| an offline / "cannot find … in cache" error | The weights weren't fetched — step 3. |
-| The log line `You are using a model of type chatterbox_turbo to instantiate a model of type ''` | Cosmetic. Ignore it. |
+| `+` | done now |
+| `·` | already there — a re-run repairs, it repeats nothing |
+| `!` | a note (for example: no model server answering yet) |
+| `-` | skipped (a flag, or you said no) |
+| `x` | stopped — the line says why and what to run |
 
-## 5. Bring an model server
+What it does, in order: checks the Mac (Apple Silicon, not root, disk) · installs PortAudio,
+`uv` and `llama.cpp` with Homebrew · clones Hearth to `~/hearth` (or `--dir`) · builds the Python
+environment and proves the speech pins hold · fetches the speech models (~4.6 GB, **asks first**)
+· tells you if no model server answers · runs `hearth.init`.
+
+It stops, honestly, at two things only you can do — the Xcode command-line tools (a macOS dialog)
+and Homebrew itself (asks for your password). It prints their command and exits; run it, then run
+`install.sh` again. Nothing it starts keeps running: the model server is your own process.
+
+Prefer to read it first? Clone and run the same script: `git clone
+https://github.com/localnexus/hearth && cd hearth && ./install.sh`. Flags: `--yes` (every
+default, asks nothing, does not start Hearth) · `--dir DIR` · `--no-weights` · `--model REPO`
+(fills in the `llama-server` line) · `--lm-url URL` · `--memory on|off` · `--no-init` · `--quiet`.
+
+## 2. By hand
+
+Every step the script takes, as commands you run yourself — system tools, the clone and the
+Python environment, the speech models, a standalone voice-engine smoke test:
+[Installing by hand](installing-by-hand.md). Come back here for chapter 3.
+
+## 3. Bring a model server
 
 Hearth ships **no language model and no inference server** — it talks to any OpenAI-compatible
 endpoint. The recommended default is **`llama-server`** from llama.cpp, listening on
@@ -189,13 +102,13 @@ built around a ~35B-parameter, 3B-active MoE at Q8_0, ~37 GB — see HARDWARE-RE
 value as `LM_API_TOKEN` when launching Hearth.
 
 > **If you use LM Studio instead.** Start its server (`:1234`), load the model, generate an API
-> token, and in step 6 pass `--lm-url http://127.0.0.1:1234/v1`; Hearth reads that server's
+> token, and in chapter 4 pass `--lm-url http://127.0.0.1:1234/v1`; Hearth reads that server's
 > token from the file `lm_token_source` names in `config/serve.toml`, and the terminal path takes
 > `LM_BASE_URL` / `LM_API_TOKEN` / `LM_PROVIDER=lmstudio`. LM Studio needs the model id to match
 > **verbatim**, and its stack is version-sensitive — the runbook's
 > [dependencies chapter](runbook/00-dependencies.md) keeps those notes.
 
-## 6. First run — one command
+## 4. First run — one command
 
 One command turns the checkout into a configured install:
 
@@ -206,7 +119,7 @@ One command turns the checkout into a configured install:
 It copies the three starter config files into place, creates your access key, switches on
 Hearth's web pages, asks whether the companion should remember you between conversations
 (default no — memory writes durable records about a person, so it is never turned on silently),
-and records your model if the server from step 5 answers.
+and records your model if the server from chapter 3 answers.
 
 It prints the key **once**, then offers to **start Hearth right there** — say yes and it becomes
 the running program in that terminal (Ctrl-C stops it), showing the address to open. Re-running
@@ -224,12 +137,12 @@ the checkout is where Hearth keeps your files.
 Later: write your own companion ([Authoring a character](authoring-a-character.md)) and add a
 voice you have the rights to ([Bring your own voice](bring-your-own-voice.md)).
 
-## 7. Microphone permission (do this before the first launch)
+## 5. Microphone permission (do this before the first launch)
 
 macOS attributes microphone access to the **app that owns the terminal** — not to Python.
 A denied mic does **not** raise an error: Hearth simply hears silence, forever.
 
-1. Launch Hearth (step 8) once from your chosen terminal app; macOS prompts for Microphone
+1. Launch Hearth (chapter 6) once from your chosen terminal app; macOS prompts for Microphone
    access for that app — allow it.
 2. If there was no prompt, or you clicked the wrong thing: **System Settings → Privacy &
    Security → Microphone → enable your terminal app**, then relaunch the app.
@@ -246,20 +159,20 @@ print('peak per 100 ms:', [int(np.abs(np.frombuffer(s.read(1600, exception_on_ov
 Speak while it runs. Speech peaks in the **thousands**; a flat line near zero (< 100) while
 you talk means the process is getting silence — a permission problem, not a Hearth bug.
 
-## 8. First launch
+## 6. First launch
 
-If step 6 already started Hearth, skip to the address. Otherwise, from the terminal app that
+If chapter 4 already started Hearth, skip to the address. Otherwise, from the terminal app that
 holds the mic grant:
 
 ```bash
 .venv/bin/python -m hearth.serve
 ```
 
-Open **`http://127.0.0.1:65001/admin/launch`** and paste the key from step 6 when asked.
+Open **`http://127.0.0.1:65001/admin/launch`** and paste the key from chapter 4 when asked.
 On a fresh install that page offers **First run**: three steps that check your model server, record
 the model id it advertises, start the companion, and confirm it heard you. After that the launch
 page is the front door: **Start** brings the voice loop up (~10–20 s to warm, plus the one-time
-kernel compile if step 4 didn't already pay it), the **companion switcher** picks who is live, and <!-- manual-lint: allow: GPU/OS kernel, the technical sense -->
+kernel compile if the by-hand smoke test didn't already pay it), the **companion switcher** picks who is live, and <!-- manual-lint: allow: GPU/OS kernel, the technical sense -->
 the links lead to settings, memory, the roster, and the companion's own control panel (`:65000`).
 
 **Then speak first** — there is no greeting. A reply comes ~2–3 s after your pause (slower on the
@@ -271,7 +184,7 @@ first turn while the server loads the model). Talking over it cuts it off: that'
 From here the [runbook](runbook/README.md) is the operating manual, with a symptom → fix table in
 [fast recovery](runbook/05-fast-recovery.md).
 
-## 9. Updating
+## 7. Updating
 
 ```bash
 git pull
@@ -287,12 +200,12 @@ Model weights live in the Hugging Face cache and are untouched too.
 
 | Symptom | Cause → fix |
 |---|---|
-| `portaudio.h file not found` during install | PortAudio missing — step 1, then rerun step 2. |
-| `'str' object has no attribute '__module__'` | `transformers` drifted off 5.5.0 — rerun step 2's install line. |
-| Startup fails loading Chatterbox/Whisper, mentions offline or cache | Weights not fetched — step 3. |
+| `portaudio.h file not found` during install | PortAudio missing — run `install.sh` again (or by-hand chapters 1–2). |
+| `'str' object has no attribute '__module__'` | `transformers` drifted off 5.5.0 — run `install.sh` again (it re-applies the pins). |
+| Startup fails loading Chatterbox/Whisper, mentions offline or cache | Weights not fetched — run `install.sh` (or by-hand chapter 3). |
 | `./start.sh --check` says the server is unreachable | `llama-server` not running, or on another port — `LM_BASE_URL`. |
 | Server returns `401` | It wants a key — `LM_API_TOKEN`. |
-| Companion ready, you speak, nothing ever transcribes | Mic permission — step 7. |
+| Companion ready, you speak, nothing ever transcribes | Mic permission — chapter 5. |
 | `[Errno -9996] Invalid input device` | The default input is output-only (A2DP earbuds) — pick a real mic in System Settings → Sound. |
 | The companion goes quiet after `Generating chat` | The model is thinking out loud with no content — force thinking off ([llm.md](config-manual/llm.md)). |
 | Reply arrives but the audio stutters | RTF ≥ 1 on this chip — try the `8bit` TTS variant, and check nothing else is hammering the GPU. |

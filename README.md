@@ -61,21 +61,22 @@ Sizing detail (memory floor, disk, measured latency, which chips are fast enough
 > These are the shape of the steps, not a turnkey script — see the guides under `docs/` for
 > the detail, and adjust for your machine.
 
-1. **Install Hearth from source, with the extra for your hardware.** Hearth is not on
-   PyPI (the `hearth` name there belongs to an unrelated project) — clone the repo and
-   install it editable so the engine finds its `config/` and `characters/` trees:
+1. **Install, in one command.** Hearth is not on PyPI (the `hearth` name there belongs to an
+   unrelated project); this script installs it from source:
 
    ```bash
-   git clone https://github.com/localnexus/hearth
-   cd hearth
-   uv venv -p 3.12 && uv pip install -e ".[mac]"    # Apple Silicon (gold tier)
+   curl -fsSL https://raw.githubusercontent.com/localnexus/hearth/main/install.sh | bash
    ```
 
-   (`python3.12 -m venv .venv && .venv/bin/pip install -e ".[mac]"` works too, just slower.)
-   Full walkthrough — system prerequisites (PortAudio!), fetching the speech models, the first
-   launch — in [Installing Hearth](docs/installing.md).
+   It installs the system tools it needs with Homebrew (PortAudio, `uv`, `llama.cpp`), clones
+   Hearth to `~/hearth`, builds the Python environment, fetches the speech models (~4.6 GB, asks
+   first), then hands over to the first-run setup (step 3). Every step checks first and reports
+   one line; re-running repairs. Prefer to read it first? `git clone
+   https://github.com/localnexus/hearth && cd hearth && ./install.sh` is the same script. Every
+   step as commands you run yourself: [Installing by hand](docs/installing-by-hand.md); the full
+   walkthrough: [Installing Hearth](docs/installing.md).
 
-2. **Bring an model.** Download GGUF weights for a chat model you like and serve them with
+2. **Bring a model.** Download GGUF weights for a chat model you like and serve them with
    [`llama-server`](https://github.com/ggml-org/llama.cpp) (from llama.cpp), which exposes an
    OpenAI-compatible endpoint. Hearth targets that endpoint — **no model server is bundled.**
    (LM Studio works too as an alternative workbench, but `llama-server` is the recommended,
