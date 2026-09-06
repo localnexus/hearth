@@ -22,6 +22,7 @@ from hearth.config import config_loader as cl
 from . import (DEFAULT_LM_URL, PLACEHOLDER_ID, InitError, Report, copy_templates,
                current_model_id, enable_memory, facade_url, mint_token, open_gates,
                probe_models, set_lm_url, set_model_id)
+from . import banner
 
 _MARK = {"created": "+", "set": "+", "exists": "·", "unchanged": "·", "note": "!",
          "skipped": "-"}
@@ -85,10 +86,13 @@ def main(argv: list[str] | None = None) -> int:
                     help="when done, start Hearth in this terminal without asking")
     ap.add_argument("--no-serve", action="store_true",
                     help="when done, only print what to run next (never ask)")
+    ap.add_argument("--quiet", "-q", action="store_true",
+                    help="no banner (it is skipped anyway when output is not a terminal)")
     args = ap.parse_args(argv)
     interactive = sys.stdin.isatty() and not args.yes
 
     rep = Report()
+    banner.show(quiet=args.quiet)
     print(f"Hearth first run — setting up in {cl.DATA_DIR}")
     try:
         paths = copy_templates(rep)

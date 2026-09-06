@@ -212,7 +212,7 @@ It prints the key **once**, then offers to **start Hearth right there** — say 
 the running program in that terminal (Ctrl-C stops it), showing the address to open. Re-running
 is safe — anything in place is left alone and named, and the key is never printed again (it lives
 at `config/serve-token`, readable only by you). `--help` lists the unattended flags (`--yes`,
-`--memory on|off`, `--lm-url`, `--model-id`, `--serve`/`--no-serve`).
+`--memory on|off`, `--lm-url`, `--model-id`, `--serve`/`--no-serve`, `--quiet` for no banner).
 
 It changes nothing that ships; the templates keep their everything-off defaults for anyone
 copying files by hand. Which file does what: [The config layers](the-config-layers.md).
