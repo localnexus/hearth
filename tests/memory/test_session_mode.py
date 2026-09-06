@@ -129,3 +129,40 @@ class TestSessionMode(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCloseBudget(unittest.TestCase):
+    """S2: the index tail is bounded; the record is on disk before it starts."""
+
+    MSGS = [{"role": "user", "content": "hello there"}, {"role": "assistant", "content": "hi"}]
+
+    def _seam(self, backend, budget):
+        return MemorySeam("testchar", "persona", backend, {"close_budget_s": budget})
+
+    def test_budget_exhausted_keeps_record_and_defers_index(self):
+        import threading
+        gate = threading.Event()
+
+        class _Slow(_SpyBackend):
+            def store(self, companion, record):  # noqa: ANN001
+                gate.wait(5.0)
+                super().store(companion, record)
+        backend = _Slow()
+        with tempfile.TemporaryDirectory() as td, \
+                mock.patch.object(records_mod, "records_dir", return_value=Path(td)):
+            status = self._seam(backend, 0.2).on_session_end(self.MSGS, store=None)
+            self.assertIn("record kept", status)
+            self.assertIn("close budget exhausted", status)
+            self.assertEqual(len(list(Path(td).glob("*.json"))), 1)  # record on disk first
+            gate.set()
+
+    def test_zero_budget_runs_inline_like_before(self):
+        backend = _SpyBackend()
+        with tempfile.TemporaryDirectory() as td, \
+                mock.patch.object(records_mod, "records_dir", return_value=Path(td)):
+            status = self._seam(backend, 0).on_session_end(self.MSGS, store=None)
+        self.assertTrue(status.startswith("record kept ("))
+        self.assertNotIn("exhausted", status)
+        self.assertEqual(len(backend.stored), 1)
+        self.assertEqual(backend.consolidated, 1)
+

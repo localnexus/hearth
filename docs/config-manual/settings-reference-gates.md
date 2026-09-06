@@ -70,6 +70,7 @@ All keys below live under the `[memory]` table.
 | `enabled` | bool | `false` |  | — (lands at the next restart of the companion and Hearth) | master switch: off ⇒ engine byte-identical (no recall, no records) |
 | `backend` | str | `floor` |  | — (lands at the next restart of the companion and Hearth) | default backend per companion: "floor" | "hindsight" | "none" |
 | `recall_limit` | int | `6` | 0– | — (lands at the next restart of the companion and Hearth) | recalled items injected at session start (one dated line each) |
+| `close_budget_s` | float | `120.0` | 0.0– | — (lands at the next restart of the companion and Hearth) | wall-clock budget for the close tail (index + consolidate + intent); record is on disk first; 0 = unbounded |
 | `recall_query` | str | `the user's life, preferences, and recent conversations` |  | — (lands at the next restart of the companion and Hearth) | what recall asks the backend for (semantic backends only) |
 | `companions` | map(str → str) | — |  | — (lands at the next restart of the companion and Hearth) | per-companion backend override (the continuity dial) |
 | `intent` | table | — |  | — | intent-primed boot recall |
@@ -102,6 +103,7 @@ All keys below live under the `[memory]` table.
 | `hindsight.log_level` | str | `warning` |  | — (lands at the next restart of the companion and Hearth) | sidecar log level |
 | `hindsight.log_file` | str | — |  | — (lands at the next restart of the companion and Hearth) | sidecar child's own stdout+stderr (default: <data folder>/logs/…) |
 | `hindsight.start_timeout_s` | float | — | 0.0– | — (lands at the next restart of the companion and Hearth) | sidecar start timeout override, seconds |
+| `hindsight.request_timeout_s` | float | `1800.0` | 0.0– | — (lands at the next restart of the companion and Hearth) | per-request SDK timeout (one long retain must fit; SDK default 300 s is too short) |
 | `hindsight.env` | map(str → str) | — |  | — (lands at the next restart of the companion and Hearth) | extra environment for the server (setdefault; shell wins) |
 
 ## `config/openclaw.toml` — The OpenClaw on/off switch

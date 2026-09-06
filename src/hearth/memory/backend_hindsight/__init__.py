@@ -35,6 +35,8 @@ from .sweep import _REAP_TIMEOUT_S, _reap_orphaned_sidecars
 from .sidecar import (
     _DEFAULT_LOG_REL, _LOG_DIR_MODE, _LOG_FILE_MODE, _LOG_ROTATE_BYTES,
     _SIDECAR_START_TIMEOUT_S, Sidecar)
-from .adapter import _FACT_COUNT_LIMIT, _RECENT_BOOST_DEFAULT, HindsightBackend
+from .adapter import (
+    _FACT_COUNT_LIMIT, _RECENT_BOOST_DEFAULT, _REQUEST_TIMEOUT_DEFAULT_S, HindsightBackend,
+)
 
 __all__ = ["HindsightBackend", "Sidecar"]

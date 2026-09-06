@@ -38,6 +38,7 @@ store's own, separate decision.
 
 from __future__ import annotations
 
+import threading
 from datetime import datetime
 from typing import Optional
 
@@ -113,6 +114,11 @@ class MemorySeam:
         # on_session_end retains nothing and the intent slot is peeked, never
         # consumed. Default True keeps every existing construction unchanged.
         self.retain = bool(retain)
+        # Wall-clock budget for the close tail (backend index + consolidate +
+        # intent capture) — the canonical record is on disk before it starts,
+        # so an exhausted budget costs the index only; `rebuild` heals it.
+        # 0 = unbounded (the pre-2026-09-06 behaviour).
+        self.close_budget_s = float(cfg.get("close_budget_s", 120))
         self.recall_limit = int(cfg.get("recall_limit", 6))
         self.recall_query = str(
             cfg.get("recall_query", "the user's life, preferences, and recent conversations")
@@ -365,7 +371,10 @@ class MemorySeam:
     def on_session_end(self, messages, store=None) -> str:
         """Write the canonical record, then index + consolidate. Fully contained
         — returns a short status string for the shutdown log, never raises.
-        MUST run before session_store.finalize (which deletes ephemeral files).
+        Runs AFTER session_store.finalize on the bot's close path (close_path.py)
+        and reads only ``messages`` + ``store.session_id`` — never the transcript
+        file — so that order cannot starve it. The index tail is bounded by
+        ``close_budget_s``; on expiry the record is already on disk.
 
         A recall-only session (retain=False) suppresses ALL of it — record,
         index, consolidate, intent capture — and says so in the status, so the
@@ -387,19 +396,36 @@ class MemorySeam:
             logger.warning("[memory] canonical record write failed ({})", type(exc).__name__)
             return "canonical record write failed"
         status = f"record kept ({record.session_id})"
+        tail: dict = {"status": status}
+        if self.close_budget_s <= 0:
+            self._index_tail(record, tail)
+            return tail["status"]
+        worker = threading.Thread(target=self._index_tail, args=(record, tail),
+                                  name="memory-close-tail", daemon=True)
+        worker.start()
+        worker.join(self.close_budget_s)
+        if worker.is_alive():
+            logger.warning("[memory] close budget exhausted ({:.0f}s) — record kept, index "
+                           "deferred: `python -m hearth.memory rebuild --character {}` heals it",
+                           self.close_budget_s, self.companion)
+            return tail["status"] + " — close budget exhausted, index deferred (rebuild heals)"
+        return tail["status"]
+
+    def _index_tail(self, record: SessionRecord, tail: dict) -> None:
+        """The slow half of a close: backend index → consolidate → intent.
+        Contained per step; ``tail['status']`` carries the human suffix."""
         try:
             self.backend.store(self.companion, record)
         except Exception as exc:  # noqa: BLE001 — log and drop
             logger.warning("[memory] {} store failed ({}) — record kept, index skipped",
                            self.backend.name, type(exc).__name__)
-            status += " — backend index skipped"
+            tail["status"] += " — backend index skipped"
         try:
             self.backend.consolidate(self.companion)
         except Exception as exc:  # noqa: BLE001
             logger.warning("[memory] {} consolidate failed ({})",
                            self.backend.name, type(exc).__name__)
         self._capture_intent(record)
-        return status
 
     def _capture_intent(self, record: SessionRecord) -> None:
         """The one extra question in the extraction lane, fully contained.

@@ -102,6 +102,23 @@ from .proxy import PANEL_URL, _DROP_HEADERS, _OFFLINE_PAGE, _panel_proxy
 __all__ = ["build_mount", "PANEL_URL"]
 
 
+def stop_grace_for(sup_cfg: dict, mem_cfg) -> float:
+    """SIGINT grace for the bot child. An explicit [serve.supervisor]
+    stop_grace_s wins; otherwise it FOLLOWS the memory close budget
+    ([memory] close_budget_s, default 120) plus the base STOP_GRACE_S, so a
+    bounded memory close can never be SIGTERMed mid-store (2026-09-06)."""
+    explicit = (sup_cfg or {}).get("stop_grace_s")
+    if explicit is not None:
+        return float(explicit)
+    budget = 0.0
+    if mem_cfg:
+        try:
+            budget = max(0.0, float(mem_cfg.get("close_budget_s", 120)))
+        except (TypeError, ValueError):
+            budget = 0.0
+    return float(STOP_GRACE_S) + budget
+
+
 def build_mount(sup_cfg: dict):
     """→ mount(app) for serve_app.start(..., mount=...). Reads [serve.supervisor]."""
 
@@ -117,7 +134,7 @@ def build_mount(sup_cfg: dict):
         child = BotChild(
             env_overlay=overlay,
             log_path=config_loader.DATA_DIR / "logs" / "bot.log",
-            stop_grace_s=float(sup_cfg.get("stop_grace_s", STOP_GRACE_S)),
+            stop_grace_s=stop_grace_for(sup_cfg, config_loader.load_memory_config()),
             term_grace_s=float(sup_cfg.get("term_grace_s", TERM_GRACE_S)),
         )
         app["bot_child"] = child

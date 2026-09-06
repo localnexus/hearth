@@ -167,6 +167,8 @@ class MemoryTable(_Cfg):
                                                    "the facade keeps one backend per companion for its whole life"))
     recall_limit: int = Field(6, ge=0, description="recalled items injected at session start (one dated line each)",
                               json_schema_extra=_effect("bot+facade"))
+    close_budget_s: float = Field(120.0, ge=0.0, description="wall-clock budget for the close tail (index + consolidate + intent); record is on disk first; 0 = unbounded",
+                                  json_schema_extra=_effect("bot+facade", "the supervisor's SIGINT grace = this + 15 s unless [serve.supervisor] stop_grace_s is set"))
     recall_query: str = Field("the user's life, preferences, and recent conversations",
                               description="what recall asks the backend for (semantic backends only)",
                               json_schema_extra=_effect("bot+facade"))

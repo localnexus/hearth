@@ -90,7 +90,7 @@ from hearth.measurement.measurement_taps import (
     TurnState,
 )
 from hearth.session.token_meter import TokenMeter
-from hearth.session import compact_trigger, maintenance_lock, session_store
+from hearth.session import close_path, compact_trigger, maintenance_lock, session_store
 from hearth.config import config_loader
 from hearth.config import config_reload
 from hearth.bridges import openclaw_bridge
@@ -652,45 +652,27 @@ async def main(
         await web_runner.cleanup()
         if serve_runner is not None:
             await serve_runner.cleanup()
-        # Memory seam: store + consolidate on graceful end — MUST run BEFORE
-        # session_store.finalize below, which applies the keep-decision (and
-        # true-deletes a recall-only sitting's transcript).
-        # The seam writes the canonical memory record first, then lets the
-        # backend index it; every step is contained inside on_session_end (a
-        # memory failure degrades, never breaks shutdown).
-        # A live companion switch may have replaced the
-        # store/seam mid-run — the switcher owns the CURRENT pair. Drain its
-        # background old-session finalize first so the two never interleave.
+        # Graceful-stop order (session/close_path.py): finalize → compaction
+        # request → the memory tail. The cheap file-only steps run FIRST so a
+        # long memory close (bounded by [memory] close_budget_s) can never cost
+        # them the supervisor's SIGINT grace. Every step is contained: a memory
+        # failure degrades, never breaks shutdown. An UNCLEAN death (kill -9 /
+        # crash / outage) skips this block entirely → the session file survives
+        # untouched, which is what enables outage resume.
+        # A live companion switch may have replaced the store/seam mid-run —
+        # the switcher owns the CURRENT pair. Drain its background old-session
+        # finalize first so the two never interleave.
         await live_switcher.drain(30.0)
         seam_now = live_switcher.current_seam
         store_now = live_switcher.current_store
-        if seam_now is not None:
-            mem_status = seam_now.on_session_end(context.messages, store_now)
-            if mem_status:
-                print(f"[memory] {mem_status}", flush=True)
-            seam_now.close()
+        close_path.run_close(
+            store_now, seam_now, context.messages,
+            live_tokens=meter.last_prompt or None,
+            finalize=session_store.finalize,
+            request=compact_trigger.maybe_request,
+            emit=lambda line: print(line, flush=True),
+        )
         live_switcher.close_pending()
-        # Session lifecycle (Tier 1): saved-by-default. On this graceful SIGINT/finally
-        # path (what ./stop.sh triggers) the bot keeps its session file — the one
-        # carve-out is a recall-only sitting, whose transcript is truly deleted unless
-        # held. Snapshot+os.replace means no file handle is open here → delete frees it
-        # cleanly. An UNCLEAN death (kill -9 / crash / outage) skips this block
-        # entirely → the file survives untouched, which is what enables outage resume.
-        if store_now is not None:
-            try:
-                status = session_store.finalize(store_now, context.messages)
-                print(f"[session] {status}", flush=True)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("[session] finalize failed: {}", type(exc).__name__)
-            else:
-                # Auto-compaction safety net: a HELD session past the trigger
-                # drops a request for the facade's compact watch. The meter's
-                # last per-turn prompt count (the server's own held-in-ctx
-                # number) beats the file-size estimate when it is larger.
-                note = compact_trigger.maybe_request(
-                    store_now, live_tokens=meter.last_prompt or None)
-                if note:
-                    print(f"[session] {note}", flush=True)
 
 
 # ── Session resolution ─────────────────────────────────────────────────────────
