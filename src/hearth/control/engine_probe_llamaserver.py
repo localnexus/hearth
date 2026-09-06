@@ -25,10 +25,13 @@ llama-server `/props` shape (verified against llama.cpp
                                          (llama-server's `--alias` is exposed on
                                          /v1/models, NOT on /props, so the filename
                                          is the honest identifier /props gives us)
-    ⚠ n_ctx_train is NOT exposed by /props today → 'model_max' stays None (panel
-      shows '—'). Looked up defensively anyway (top-level + inside
-      default_generation_settings) so a future build that adds it lights the field
-      up with zero code change here.
+    ⚠ n_ctx_train is NOT exposed by /props (re-verified 2026-09-05 against a real
+      llama-server, version 0.3.0 build 10621). Still looked up defensively
+      (top-level + inside default_generation_settings) in case a future build adds
+      it — and RECOVERED via a fallback GET /v1/models, whose per-model `meta`
+      object DOES carry n_ctx_train on that same build (run-verified: 131072 for a
+      131K-trained model) → 'model_max' lights up on the panel. The fallback is
+      its own try: its failure never degrades what /props already answered.
 
 Provider dispatch: `fetch_engine_info_for(provider, ...)` selects the backend by a
 config-supplied provider string. Default ("lmstudio" / anything unrecognized) routes
@@ -104,18 +107,48 @@ async def fetch_engine_info(base_url: str, token: str, target_model: str | None 
             info["allotted"] = n_ctx
 
         # model_max ← training context IF this build exposes it (README: not on /props
-        # today). Defensive lookup so a future build lights it up for free; else None.
+        # today). Defensive lookup so a future build lights it up for free; else the
+        # /v1/models fallback below recovers it.
         n_train = body.get("n_ctx_train")
         if n_train is None:
             n_train = gen.get("n_ctx_train")
         if isinstance(n_train, int) and not isinstance(n_train, bool):
             info["model_max"] = n_train
 
+        if info["model_max"] is None:
+            info["model_max"] = await _model_max_from_v1_models(host, token)
+
         logger.info("[probe] llama-server engine info: model_id set · allotted={} · model_max={}",
                     info["allotted"], info["model_max"])
     except Exception as exc:  # noqa: BLE001 — must never crash startup
         logger.warning("[probe] llama-server /props failed ({}) — panel shows —", type(exc).__name__)
     return info
+
+
+async def _model_max_from_v1_models(host: str, token: str) -> int | None:
+    """Recover the training context from GET /v1/models `data[0].meta.n_ctx_train`.
+
+    llama-server exposes per-model metadata (n_ctx_train, n_params, size…) on
+    /v1/models but not on /props (run-verified 2026-09-05, build 10621). One model
+    per process (parity S5) ⇒ data[0] IS the served model. Own try/except: any
+    failure returns None and the caller keeps everything /props already gave.
+    """
+    try:
+        timeout = aiohttp.ClientTimeout(total=3)
+        headers = {"Authorization": f"Bearer {token}"} if token else {}
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(f"{host}/v1/models", headers=headers) as resp:
+                if resp.status != 200:
+                    return None
+                body = await resp.json()
+        data = body.get("data") if isinstance(body, dict) else None
+        meta = data[0].get("meta") if isinstance(data, list) and data and isinstance(data[0], dict) else None
+        n_train = meta.get("n_ctx_train") if isinstance(meta, dict) else None
+        if isinstance(n_train, int) and not isinstance(n_train, bool):
+            return n_train
+    except Exception as exc:  # noqa: BLE001 — a recovery lane, never a new failure
+        logger.debug("[probe] /v1/models model_max recovery failed ({})", type(exc).__name__)
+    return None
 
 
 # ── Provider dispatch (the config-chosen selector) ───────────────────────────────

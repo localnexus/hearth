@@ -12,6 +12,9 @@ Proves the load-bearing invariants of hearth/control/engine_probe_llamaserver.py
   4. 401         — auth failure → Nones
   5. /v1 strip   — a base_url ending in /v1 is trimmed to reach the native root /props
   6. n_ctx_train — exposed-when-present lights up model_max (else None, per current builds)
+  6b. model_max recovery — /props silent on n_ctx_train → GET /v1/models meta.n_ctx_train
+      fills model_max (run-verified against build 10621); its failure degrades to None
+      without touching what /props answered
   7. dispatch    — fetch_engine_info_for routes llama-server → /props, default/unknown → LM Studio
   8. M4          — probe_reasoning_effort_tolerance: 200 ⇒ tolerated, 4xx ⇒ rejected, both graceful
 
@@ -52,6 +55,8 @@ class MockEngine:
             "props_body": {},          # dict → JSON; str → raw text (malformed test)
             "models_status": 200,
             "models_body": {"data": []},
+            "v1_models_status": 200,
+            "v1_models_body": {"data": []},
             "chat_status": 200,
             "require_auth": False,
         }
@@ -82,6 +87,14 @@ class MockEngine:
             return web.Response(status=st)
         return web.json_response(self.state["models_body"])
 
+    async def _v1_models(self, req):
+        if not self._authed(req):
+            return web.Response(status=401)
+        st = self.state["v1_models_status"]
+        if st != 200:
+            return web.Response(status=st)
+        return web.json_response(self.state["v1_models_body"])
+
     async def _chat(self, req):
         if not self._authed(req):
             return web.Response(status=401)
@@ -96,6 +109,7 @@ class MockEngine:
         app = web.Application()
         app.router.add_get("/props", self._props)
         app.router.add_get("/api/v0/models", self._models)
+        app.router.add_get("/v1/models", self._v1_models)
         app.router.add_post("/v1/chat/completions", self._chat)
         self.runner = web.AppRunner(app)
         await self.runner.setup()
@@ -213,6 +227,36 @@ async def test_n_ctx_train_present():
         await eng.stop()
 
 
+async def test_model_max_recovered_from_v1_models():
+    print("\n[6b] /props silent → model_max recovered from /v1/models meta.n_ctx_train")
+    eng = MockEngine()
+    base = await eng.start()
+    try:
+        # The real build-10621 shape: /props has no n_ctx_train anywhere,
+        # /v1/models carries it in the model's meta object.
+        eng.state["props_body"] = _props_body(n_ctx=32768)
+        eng.state["v1_models_body"] = {"data": [
+            {"id": "hearth-compactor", "object": "model",
+             "meta": {"n_ctx_train": 131072, "n_params": 24011644928,
+                      "n_vocab": 128256, "size": 9827914176}},
+        ]}
+        info = await probe.fetch_engine_info(base, token="")
+        check(info["model_max"] == 131072, f"model_max recovered = 131072 (got {info['model_max']!r})")
+        check(info["allotted"] == 32768, "allotted still the /props n_ctx")
+        # Recovery failure is harmless: /v1/models errors → model_max None, rest intact.
+        eng.state["v1_models_status"] = 500
+        info2 = await probe.fetch_engine_info(base, token="")
+        check(info2["model_max"] is None and info2["allotted"] == 32768,
+              "recovery failure ⇒ model_max None, /props answers untouched")
+        # /props n_ctx_train (when a future build adds it) wins — no second request needed.
+        eng.state["v1_models_status"] = 200
+        eng.state["props_body"] = _props_body(n_ctx=32768, n_ctx_train=999)
+        info3 = await probe.fetch_engine_info(base, token="")
+        check(info3["model_max"] == 999, "/props n_ctx_train takes precedence over the fallback")
+    finally:
+        await eng.stop()
+
+
 async def test_dispatch():
     print("\n[7] fetch_engine_info_for routing (llama-server vs default LM Studio)")
     eng = MockEngine()
@@ -265,6 +309,7 @@ async def _main():
     await test_401()
     await test_v1_strip()
     await test_n_ctx_train_present()
+    await test_model_max_recovered_from_v1_models()
     await test_dispatch()
     await test_reasoning_effort_tolerance()
     print(f"\n{'='*52}\n  RESULT: {_PASS} passed, {_FAIL} failed\n{'='*52}")
