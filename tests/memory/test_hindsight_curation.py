@@ -98,6 +98,30 @@ class TestHindsightCuration(unittest.TestCase):
         self.assertEqual(kw["timestamp"],
                          datetime.fromisoformat("2026-09-01T10:30:00+02:00"))
 
+    def test_store_reads_the_retain_cap_at_close_not_at_boot(self):
+        """The cap in config/memory.toml is read at STORE time: a sitting that
+        outlives a cap change closes under the new value (2026-09-06)."""
+        from unittest import mock
+        from hearth.config import config_loader
+        client = _CurationClient()
+        import dataclasses
+        rec = dataclasses.replace(
+            _record("session-c", "2026-09-06T10:00:00+00:00"),
+            messages=[{"role": "user", "content": f"turn {i} " + "x" * 90}
+                      for i in range(100)])  # ~10k chars rendered
+        b = self._backend(client)  # boot-time cfg carries NO cap → 6000 default
+        with mock.patch.object(config_loader, "load_memory_config",
+                               return_value={"hindsight": {"retain_max_chars": 320000}}):
+            b.store("testchar", rec)
+        (kw,) = client.retains
+        self.assertIn("turn 0 ", kw["content"])  # the head survived: new cap applied
+        client.retains.clear()
+        with mock.patch.object(config_loader, "load_memory_config", return_value=None):
+            b.store("testchar", rec)  # config gone → init-time fallback (6000)
+        (kw,) = client.retains
+        self.assertNotIn("turn 0 ", kw["content"])
+        self.assertLessEqual(len(kw["content"]), 6000)
+
     def test_store_with_unparsable_ended_still_stores_undated(self):
         client = _CurationClient()
         self._backend(client).store("testchar", _record("session-b", "not-a-date"))

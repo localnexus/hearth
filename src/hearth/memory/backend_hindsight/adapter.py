@@ -207,10 +207,25 @@ class HindsightBackend:
                     if str(dict(e).get("state") or "valid") == "valid")
         return {"facts": valid, "capped": len(items) >= _FACT_COUNT_LIMIT}
 
+    def _retain_cap(self) -> int:
+        """The transcript tail cap, re-read from config/memory.toml at STORE
+        time. The backend is built at bot start, but a sitting can outlive a
+        config edit by hours (run-observed 2026-09-06: a 449-message session
+        closing under a cap raised mid-sitting would have retained 3.7% of
+        itself). A close is the moment the cap matters, so read it then; the
+        init-time value is the fallback when the file is gone or unreadable."""
+        fallback = int(self._cfg.get("retain_max_chars", _MAX_RETAIN_CHARS_DEFAULT))
+        try:
+            from hearth.config import config_loader
+            live = config_loader.load_memory_config()
+            if live:
+                return int(dict(live.get("hindsight") or {}).get("retain_max_chars", fallback))
+        except Exception:  # noqa: BLE001 — a config hiccup must not block the retain
+            pass
+        return fallback
+
     def store(self, companion: str, record: SessionRecord) -> None:
-        transcript = _render_transcript(
-            record, int(self._cfg.get("retain_max_chars", _MAX_RETAIN_CHARS_DEFAULT))
-        )
+        transcript = _render_transcript(record, self._retain_cap())
         if not transcript:
             return
         self._ensure()
