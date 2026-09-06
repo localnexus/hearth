@@ -34,7 +34,8 @@ from .payload import _MAX_RETAIN_CHARS_DEFAULT, _ended_at, _render_transcript
 from .sidecar import Sidecar
 
 _RECENT_BOOST_DEFAULT = 3  # newest facts appended past semantic rank (0 = off)
-_FACT_COUNT_LIMIT = 1000   # fact_count's one-page bound (a gauge, not a census)
+_FACT_COUNT_LIMIT = 1000
+_REQUEST_TIMEOUT_DEFAULT_S = 1800.0  # one long retain must outlive the SDK default of 300 s   # fact_count's one-page bound (a gauge, not a census)
 
 
 class HindsightBackend:
@@ -121,7 +122,18 @@ class HindsightBackend:
         tests, which have no hindsight-client installed (and must not need it)."""
         from hindsight_client import Hindsight  # light SDK (hearth[memory-hindsight])
 
-        return Hindsight(base_url=self._sidecar.url)
+        return Hindsight(base_url=self._sidecar.url, timeout=self._request_timeout())
+
+    def _request_timeout(self) -> float:
+        """Per-request SDK timeout. The SDK default (300 s) is shorter than one
+        long retain: a 449-message record under a 320k-char cap is ~55
+        extraction chunks and timed out client-side at 300 s on 2026-09-06
+        while the server was still working — the record replayed 6/7. The
+        server keeps its own limits; this only stops the client giving up first."""
+        try:
+            return float(self._cfg.get("request_timeout_s", _REQUEST_TIMEOUT_DEFAULT_S))
+        except (TypeError, ValueError):
+            return _REQUEST_TIMEOUT_DEFAULT_S
 
     def close(self) -> None:
         if self._client is not None:

@@ -122,6 +122,25 @@ class TestHindsightCuration(unittest.TestCase):
         self.assertNotIn("turn 0 ", kw["content"])
         self.assertLessEqual(len(kw["content"]), 6000)
 
+    def test_request_timeout_comes_from_config_with_a_long_default(self):
+        """The SDK client is built with a per-request timeout that outlives one
+        long retain (default 1800 s; the SDK's own 300 s cut a 55-chunk replay)."""
+        import sys as _sys, types
+        from hearth.memory.backend_hindsight import HindsightBackend
+        seen = {}
+        fake = types.ModuleType("hindsight_client")
+        fake.Hindsight = lambda **kw: seen.update(kw) or object()
+        with mock.patch.dict(_sys.modules, {"hindsight_client": fake}):
+            b = HindsightBackend({"mode": "sidecar", "python": _sys.executable, "llm_model": "m"})
+            b._sidecar.url = "http://127.0.0.1:1"
+            b._new_client()
+            self.assertEqual(seen["timeout"], 1800.0)
+            b2 = HindsightBackend({"mode": "sidecar", "python": _sys.executable, "llm_model": "m",
+                                   "request_timeout_s": 42})
+            b2._sidecar.url = "http://127.0.0.1:1"
+            b2._new_client()
+            self.assertEqual(seen["timeout"], 42.0)
+
     def test_store_with_unparsable_ended_still_stores_undated(self):
         client = _CurationClient()
         self._backend(client).store("testchar", _record("session-b", "not-a-date"))

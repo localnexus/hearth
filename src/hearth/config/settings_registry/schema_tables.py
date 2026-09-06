@@ -153,6 +153,8 @@ class _MemHindsight(_Cfg):
                                     json_schema_extra=_effect("bot+facade", _SIDECAR_NOTE))
     start_timeout_s: Optional[float] = Field(None, gt=0.0, description="sidecar start timeout override, seconds",
                                              json_schema_extra=_effect("bot+facade", _SIDECAR_NOTE))
+    request_timeout_s: float = Field(1800.0, gt=0.0, description="per-request SDK timeout (one long retain must fit; SDK default 300 s is too short)",
+                                     json_schema_extra=_effect("bot+facade", _SIDECAR_NOTE))
     env: dict[str, str] = Field(default_factory=dict, description="extra environment for the server (setdefault; shell wins)",
                                 json_schema_extra=_effect("bot+facade", _SIDECAR_NOTE, secret=True))
 
