@@ -188,15 +188,19 @@ async def _forget(request: web.Request) -> web.Response:
     if not _SESSION_RE.fullmatch(session_id):
         return web.json_response({"error": "invalid session id"}, status=400)
 
-    path = records_mod.records_dir(character) / f"{session_id}.json"
-    if not path.is_file():
+    # A session = its bare record + every compaction epoch (D5): all go together.
+    paths = records_mod.epoch_paths(records_mod.records_dir(character), session_id)
+    if not paths:
         return web.json_response(
             {"error": f"no memory record {session_id!r} for {character!r}",
              "hint": "GET /admin/memory/records lists what exists"}, status=404)
+    path = paths[0]
 
     def _preview() -> dict:
         try:
-            return _record_summary(records_mod.load_record(path))
+            summary = _record_summary(records_mod.load_record(path))
+            summary["epochs"] = len(paths)
+            return summary
         except (ValueError, OSError, json.JSONDecodeError):
             return {"session_id": session_id,
                     "digest": "(malformed record — no digest available)"}
@@ -221,13 +225,16 @@ async def _forget(request: web.Request) -> web.Response:
     excised = None
     if backend is not None:
         try:
-            excised = await asyncio.to_thread(backend.forget, character, session_id)
+            results = [await asyncio.to_thread(backend.forget, character, p.stem)
+                       for p in paths]
+            excised = all(results)
         except Exception as exc:  # noqa: BLE001 — report; the record stays put
             return web.json_response(
                 {"ok": False,
                  "error": f"backend forget failed ({type(exc).__name__}) — "
                           "record kept, nothing deleted"}, status=502)
-    await asyncio.to_thread(path.unlink)
+    for p in paths:
+        await asyncio.to_thread(p.unlink)
     result = {"ok": True, "forgotten": True, "preview": preview,
               "backend": getattr(backend, "name", None)}
     if backend is None:

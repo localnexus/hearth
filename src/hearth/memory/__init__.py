@@ -119,6 +119,7 @@ class MemorySeam:
         # so an exhausted budget costs the index only; `rebuild` heals it.
         # 0 = unbounded (the pre-2026-09-06 behaviour).
         self.close_budget_s = float(cfg.get("close_budget_s", 120))
+        self._close_fast = False  # set when the close budget is exhausted (S4)
         self.recall_limit = int(cfg.get("recall_limit", 6))
         self.recall_query = str(
             cfg.get("recall_query", "the user's life, preferences, and recent conversations")
@@ -405,6 +406,7 @@ class MemorySeam:
         worker.start()
         worker.join(self.close_budget_s)
         if worker.is_alive():
+            self._close_fast = True
             logger.warning("[memory] close budget exhausted ({:.0f}s) — record kept, index "
                            "deferred: `python -m hearth.memory rebuild --character {}` heals it",
                            self.close_budget_s, self.companion)
@@ -453,9 +455,12 @@ class MemorySeam:
             return None
         ended = _now_iso()
         session_id = getattr(store, "session_id", None) or f"unsaved-{ended[:19].replace(':', '')}"
+        # D5: a close after a compaction is its own epoch — never the document
+        # the full session already produced (records.epoch_suffix).
+        session_id = str(session_id) + records_mod.epoch_suffix(persistable)
         return SessionRecord(
             companion=self.companion,
-            session_id=str(session_id),
+            session_id=session_id,
             started=str(getattr(store, "started", "") or ""),
             ended=ended,
             name=str(getattr(store, "name", "") or ""),
@@ -464,9 +469,14 @@ class MemorySeam:
         )
 
     def close(self) -> None:
-        """Contained resource release (stops an embedded server if one runs)."""
+        """Contained resource release (stops an embedded server if one runs).
+        After an exhausted close budget a backend that offers it is closed
+        FAST — the remaining supervisor grace is seconds, not a graceful wait."""
         try:
-            self.backend.close()
+            if self._close_fast and getattr(self.backend, "supports_fast_close", False):
+                self.backend.close(fast=True)
+            else:
+                self.backend.close()
         except Exception as exc:  # noqa: BLE001
             logger.warning("[memory] backend close failed ({})", type(exc).__name__)
 

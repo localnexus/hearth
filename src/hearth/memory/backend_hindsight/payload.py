@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from ..backend import SessionRecord
+from ..backend import SessionRecord, _is_meta
 
 _MAX_RETAIN_CHARS_DEFAULT = 6000
 
@@ -44,8 +44,9 @@ def _render_transcript(record: SessionRecord, max_chars: int) -> str:
             continue
         speaker = "User" if role == "user" else "Assistant"
         content = " ".join(str(m.get("content", "")).split())
-        if content:
-            lines.append(f"{speaker}: {content}")
+        if not content or _is_meta(content):
+            continue  # the compaction marker is tooling, not conversation (D5/S2)
+        lines.append(f"{speaker}: {content}")
     text = "\n".join(lines)
     if len(text) > max_chars:
         text = text[-max_chars:]

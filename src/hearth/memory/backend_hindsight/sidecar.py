@@ -276,9 +276,9 @@ class Sidecar:
         self._proc = None
         self.url = None
 
-    def stop(self) -> None:
-        """End it: SIGTERM, wait, kill as a last resort; stop an embedded
-        server; release the log. Never raises — this runs at shutdown."""
+    def stop(self, wait_s: float = 30.0) -> None:
+        """End it: SIGTERM, wait ``wait_s``, kill as a last resort; stop an
+        embedded server; release the log. Never raises — this runs at shutdown."""
         if self._proc is not None:
             rc = self._proc.poll()
             if rc is not None:
@@ -288,7 +288,7 @@ class Sidecar:
             else:
                 try:
                     self._proc.terminate()
-                    self._proc.wait(timeout=30)
+                    self._proc.wait(timeout=wait_s)
                 except Exception as exc:  # noqa: BLE001 — shutdown must not raise
                     logger.warning(
                         "[memory] hindsight sidecar stop failed ({})", type(exc).__name__

@@ -76,6 +76,15 @@ There is an undo for a banked conversation. `forget --session <id>` (the id as
   backend call keeps the record, so the verb is safely re-runnable. The
   deletion is a true-delete: an archive step would retain what you asked gone.
 
+**A compacted session is several records.** When the compaction tool shortens
+a long session, the next close cannot re-store the whole session — the early
+turns now live only in the backup and in the record the previous close wrote.
+So a close after a compaction writes its own record, `<session>.c<backup date>`
+(the date the compaction marker names), and the backend keeps one document per
+record: the full session's facts stand, and only the post-compaction epoch is
+replaced at each later close. `records` lists the epochs as their own rows;
+`forget --session <id>` takes the bare record and every epoch together.
+
 **Banks written before session-keyed storing** hold facts the server cannot
 attribute to a session. `forget` still deletes the record, says so plainly,
 and points at the fix: one `rebuild --clean` (wipe the index, replay the

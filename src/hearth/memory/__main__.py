@@ -109,19 +109,22 @@ def _cmd_rebuild(character: str, clean: bool = False, yes: bool = False) -> int:
 
 
 def _cmd_forget(character: str, session_id: str, yes: bool) -> int:
-    path = records_mod.records_dir(character) / f"{session_id}.json"
-    if not path.is_file():
+    # A session is its bare record plus every compaction epoch (D5): forget
+    # takes them all, so nothing of the session survives under another id.
+    paths = records_mod.epoch_paths(records_mod.records_dir(character), session_id)
+    if not paths:
         print(f"no memory record {session_id!r} for {character!r} — "
               "`records` lists what exists", file=sys.stderr)
         return 1
-    try:
-        record = records_mod.load_record(path)
-        when = (record.ended or record.started)[:16].replace("T", " ")
-        name = f" “{record.name}”" if record.name else ""
-        digest = digest_record(record)
-        print(f"  {when}  {record.session_id}{name}\n      {digest}")
-    except (ValueError, OSError, json.JSONDecodeError):
-        print(f"  {session_id}  (malformed record — no digest available)")
+    for path in paths:
+        try:
+            record = records_mod.load_record(path)
+            when = (record.ended or record.started)[:16].replace("T", " ")
+            name = f" “{record.name}”" if record.name else ""
+            digest = digest_record(record)
+            print(f"  {when}  {record.session_id}{name}\n      {digest}")
+        except (ValueError, OSError, json.JSONDecodeError):
+            print(f"  {path.stem}  (malformed record — no digest available)")
     if not yes:
         print("\nforget deletes this record AND the session's facts from the "
               "memory index, permanently — re-run with --yes to confirm",
@@ -136,14 +139,16 @@ def _cmd_forget(character: str, session_id: str, yes: bool) -> int:
     excised = None
     if seam is not None:
         try:
-            excised = seam.backend.forget(character, session_id)
+            results = [seam.backend.forget(character, p.stem) for p in paths]
+            excised = all(results)
         except Exception as exc:  # noqa: BLE001 — report and keep the record
             print(f"backend forget failed ({type(exc).__name__}) — record kept, "
                   "nothing deleted", file=sys.stderr)
             return 1
         finally:
             seam.close()
-    path.unlink()  # true-delete (signed D3): an archive step would retain what was asked gone
+    for path in paths:
+        path.unlink()  # true-delete (signed D3): an archive step would retain what was asked gone
     if seam is None:
         print(f"record {session_id} deleted (memory not enabled — no index to update)")
     elif excised:

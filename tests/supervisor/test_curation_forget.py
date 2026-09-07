@@ -170,6 +170,29 @@ class CurationForget(AioHTTPTestCase):
         self.assertFalse((self.records_dir / "sess-a.json").exists())
         self.assertTrue((self.records_dir / "sess-b.json").is_file())
 
+    async def test_forget_spans_compaction_epochs(self):
+        from hearth.memory import records as records_mod
+        from hearth.memory.backend import SessionRecord
+        records_mod.write_record(SessionRecord(
+            companion=self.CHAR, session_id="sess-a.c2026.09.06",
+            started="2026-09-06T15:00:00", ended="2026-09-06T18:16:00", name="",
+            messages=[{"role": "user", "content": "after the compaction"},
+                      {"role": "assistant", "content": "still here"}],
+        ), self.records_dir)
+        backend = _FakeCurationBackend()
+        self.app["deps"].memory = _FakeGlue(backend)
+        body = {"character": self.CHAR, "session": "sess-a"}
+        data = await (await self.client.post("/admin/memory/forget", headers=self.BEARER,
+                                             json=body)).json()
+        self.assertEqual(data["preview"]["epochs"], 2)
+        data = await (await self.client.post("/admin/memory/forget", headers=self.BEARER,
+                                             json={**body, "yes": True})).json()
+        self.assertTrue(data["forgotten"])
+        self.assertEqual(backend.forgot, [(self.CHAR, "sess-a"), (self.CHAR, "sess-a.c2026.09.06")])
+        self.assertFalse((self.records_dir / "sess-a.json").exists())
+        self.assertFalse((self.records_dir / "sess-a.c2026.09.06.json").exists())
+        self.assertTrue((self.records_dir / "sess-b.json").is_file())
+
     async def test_forget_backend_failure_keeps_record(self):
         backend = _FakeCurationBackend()
         backend.raise_on_forget = True

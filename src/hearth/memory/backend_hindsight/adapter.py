@@ -42,6 +42,7 @@ class HindsightBackend:
     """retain/recall against a Hindsight server, one bank per companion."""
 
     name = "hindsight"
+    supports_fast_close = True  # the seam may call close(fast=True) after a blown close budget
 
     def __init__(self, cfg: dict) -> None:
         self._cfg = cfg
@@ -135,7 +136,19 @@ class HindsightBackend:
         except (TypeError, ValueError):
             return _REQUEST_TIMEOUT_DEFAULT_S
 
-    def close(self) -> None:
+    def close(self, *, fast: bool = False) -> None:
+        if fast:
+            # The close budget is spent and the lane thread is still inside a
+            # retain. A graceful close would queue BEHIND it (client.close on
+            # the same lane, pool.shutdown(wait=True)) — 2026-09-06 18:18 that
+            # wait outlived the supervisor's residual grace and ended in
+            # SIGTERM. Abandon the lane, end the sidecar promptly.
+            if self._pool is not None:
+                self._pool.shutdown(wait=False, cancel_futures=True)
+                self._pool = None
+            self._client = None
+            self._sidecar.stop(wait_s=3.0)
+            return
         if self._client is not None:
             try:
                 # On the same persistent thread: no running loop there, so the

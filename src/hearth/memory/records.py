@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import asdict
 from pathlib import Path
 from typing import Iterator
@@ -27,6 +28,37 @@ from .backend import SessionRecord
 SCHEMA = 1
 DIR_MODE = 0o700
 FILE_MODE = 0o600
+
+# ── compaction epochs (D5) ───────────────────────────────────────────────────
+# A compaction leaves one in-memory trace: the tool's marker as the first user
+# message, naming the backup it took. Everything before it now lives only in
+# that backup and in the record the PREVIOUS close wrote. So a close after a
+# compaction must not replace the session's document (keyed store) — it gets
+# its own: ``<session>.c<backup date>``. No marker = epoch 0 = the bare id.
+_COMPACT_MARKER = "[session compact"
+_BAK_DATE = re.compile(r"pre-compaction-bak/(\d{4}\.\d{2}\.\d{2})/")
+
+
+def epoch_suffix(messages) -> str:
+    """The compaction-epoch suffix for a transcript's record/document id: ``""``
+    with no marker, ``.c<YYYY.MM.DD>`` from the newest marker's backup path,
+    ``.c0`` for a marker that names no dated backup."""
+    suffix = ""
+    for m in messages or []:
+        if not isinstance(m, dict) or m.get("role") != "user":
+            continue
+        content = str(m.get("content", "")).lstrip()
+        if content.startswith(_COMPACT_MARKER):
+            found = _BAK_DATE.search(content)
+            suffix = f".c{found.group(1)}" if found else ".c0"
+    return suffix
+
+
+def epoch_paths(directory: Path, session_id: str) -> list[Path]:
+    """Every record file of one session on disk: the bare id plus its epochs."""
+    bare = directory / f"{session_id}.json"
+    found = [bare] if bare.is_file() else []
+    return found + sorted(directory.glob(f"{session_id}.c*.json"))
 
 
 def records_dir(companion: str) -> Path:
