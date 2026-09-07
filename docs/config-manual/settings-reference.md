@@ -1,4 +1,4 @@
-# Settings reference — selection, models, voices, live knobs
+# Settings reference — selection, models, voices, live knobs, weights roots
 
 > **GENERATED — do not hand-edit.** Source of truth: the settings registry
 > (`hearth/config/settings_registry/`). Regenerate both pages:
@@ -40,6 +40,30 @@ Per-model request facts. context_length is deliberately absent — the live serv
 | `needs_template_edit` | bool | `false` |  | — | model needs a persistent chat-template edit (e.g. thinking off) |
 | `no_kv_reuse` | bool | `false` |  | — | true if prefix KV-cache reuse is unsafe for this model |
 | `reliable_context` | int | — | 1– | — | measured usable-context ceiling the panel's token gauge counts against |
+| `weights` | table | — |  | — | the enrolled weights file — a REFERENCE, written by `python -m hearth.weights enroll` and never by hand |
+| `server` | map(str → Any) | — |  | — | door flags for this model: keys are llama-server LONG FLAGS without the leading dashes (c, parallel, kv-unified, mmproj, chat-template-file, spec-type, alias, ...), validated against the door's own --help by `python -m hearth.weights check` and consumed by the unit renderer. Door-level facts (port, api-key-file, load-mode, threads) do NOT belong here |
+| `weights.path` | str | **required** |  | — | resolved REAL path of the weights file (symlinks followed once, at enroll) |
+| `weights.mmproj` | str | — |  | — | resolved real path of the projector, if the model has one |
+| `weights.root` | str | `` |  | — | which root it was found under (provenance) |
+| `weights.layout` | str | `` |  | — | the reader that found it: plain | ollama | hf |
+| `weights.display_key` | str | `` |  | — | how the scan names it |
+| `weights.size_bytes` | int | `0` | 0– | — | size on the day it was enrolled (all shards summed) |
+| `weights.identity` | str | `` |  | — | sha256(size ‖ first 1 MiB)[:16] — the duplicate/drift key |
+| `weights.enrolled` | str | `` |  | — | ISO date the reference was written |
+| `weights.header` | table | — |  | — | header facts as read that day |
+| `weights.header.architecture` | str | — |  | — | GGUF general.architecture |
+| `weights.header.name` | str | — |  | — | GGUF general.name |
+| `weights.header.block_count` | int | — | 0– | — | transformer blocks |
+| `weights.header.context_length` | int | — | 0– | — | context the file was trained for |
+| `weights.header.head_count` | int | — | 0– | — | attention heads |
+| `weights.header.head_count_kv` | int | — | 0– | — | key/value heads (KV-cache cost) |
+| `weights.header.key_length` | int | — | 0– | — | key head dimension |
+| `weights.header.value_length` | int | — | 0– | — | value head dimension |
+| `weights.header.full_attention_interval` | int | — | 1– | — | hybrid builds: only every Nth block holds a KV cache |
+| `weights.header.expert_count` | int | — | 0– | — | mixture-of-experts count |
+| `weights.header.nextn_predict_layers` | int | — | 0– | — | speculative (MTP) layers |
+| `weights.header.file_type` | int | — | 0– | — | GGUF general.file_type (quantisation) |
+| `weights.header.tensor_bytes` | int | — | 0– | — | sum of tensor bytes = the weights themselves |
 
 ## `characters/<character>/voices/<voice>/voice.toml` — Voice bundle descriptor
 
@@ -111,6 +135,21 @@ Mic, room, and speech-habit calibration — plumbing, never character texture; p
 | `live.start_secs` | float | `0.2` | 0.05–1.0 | `vad.start_secs` | sustained sound before 'you started talking' |
 | `live.stop_secs` | float | `0.5` | 0.2–3.0 | `vad.stop_secs` | silence after speech before 'you finished' |
 | `live.min_volume` | float | `0.6` | 0.0–1.0 | `vad.min_volume` | loudness floor to count as speech |
+
+## `config/weights.toml` — Weights roots
+
+*place scope · operator-owned · load facts · restart: none*
+
+WHERE Hearth is willing to look for model weights — directories, nothing more. The product pointers are exactly that: paths to the folders LM Studio, Ollama and the Hugging Face cache keep files in. No other program's background service, command line, or private cache is ever used, so a scan answers the same with all of them quit or uninstalled. Enrollment itself lives in each model directory's [weights] table; Hearth never downloads, moves, or deletes a weights file. See `python -m hearth.weights`.
+
+All keys below live under the `[weights]` table.
+
+| key | type | default | range | live path | what it sets |
+|---|---|---|---|---|---|
+| `roots` | list | — |  | — | directories Hearth may look in for weights (~ expanded) |
+| `product_dirs` | bool | `true` |  | — | also point at LM Studio / Ollama / Hugging Face cache directories when they exist — POINTERS ONLY: no other program is ever run, asked, or read for its cache |
+| `landing` | str | — |  | — | Hearth's own folder for weights that arrive from here on, subdivided by role (`llm/` `tts/` `stt/`); defaults to <first root>/hearth |
+| `llama_server` | str | — |  | — | the door binary, used to read this machine's memory budget and to validate [server] keys; defaults to the one on PATH |
 
 ## `characters/<c>[/voices/<v>]/profile.toml (+ overrides.toml mirrors)` — Companion knob presets
 

@@ -1,0 +1,192 @@
+"""test_weights_guardrails.py — the five rails that keep enrollment from
+becoming a dependency on somebody else's product.
+
+They were written as acceptance criteria before the code was (the design record
+`arch-model-management-on-the-door.md` §9), and they are checked here by reading
+the source rather than by trusting a review:
+
+  R1  the readers touch files and GGUF headers only. No module in the package
+      may launch another program except the operator's own door binary and
+      `sysctl`; in particular nothing may run `lms`, `ollama` or `lmstudio`. And
+      the one product cache directory named anywhere in the package is named in
+      the skip list, which is the only place it belongs.
+  R2  enrollment stores the resolved real path — see test_weights_scan.py,
+      RealPaths (a symlinked root yields real paths); pinned there because it
+      needs a filesystem, not an AST.
+  R3  missing weights are a reported state, not an exception — see
+      test_weights_enroll.py, MissingIsAState.
+  R4  no layout reader is imported by the live conversation loop. The pipeline,
+      the running program, and every page route must be reachable without
+      `hearth.weights` existing at all.
+  R5  a scan is identical with every product absent. The scan tests run with
+      none installed by construction; what is checked here is that no product
+      SDK could ever be imported.
+
+Run:  .venv/bin/python -m unittest tests.test_weights_guardrails
+"""
+
+from __future__ import annotations
+
+import ast
+import unittest
+from pathlib import Path
+
+_SRC = Path(__file__).resolve().parents[1] / "src"
+PACKAGE = _SRC / "hearth" / "weights"
+
+#: Executables the package may name literally. The door binary is not here
+#: because it is never a literal — it comes from config or from PATH.
+ALLOWED_LITERAL_EXECUTABLES = {"sysctl"}
+
+#: Command names that would re-create the dependency this design exists to avoid.
+FORBIDDEN_EXECUTABLES = ("lms", "ollama", "lmstudio", "ollama-server", "lms-cli")
+
+#: Nothing in the package may import a product's own client library.
+FORBIDDEN_IMPORTS = ("lmstudio", "ollama", "huggingface_hub", "lmstudio_sdk",
+                     "llama_cpp", "openai")
+
+#: The live path: none of these may reach the scanner.
+LIVE_MODULES = (
+    _SRC / "hearth" / "pipeline" / "bot.py",
+    _SRC / "hearth" / "pipeline" / "switcher.py",
+    _SRC / "hearth" / "serve" / "app.py",
+    _SRC / "hearth" / "serve" / "__init__.py",
+    *sorted((_SRC / "hearth" / "supervisor" / "routes").glob("*.py")),
+)
+
+_LAUNCHERS = {("subprocess", "run"), ("subprocess", "call"),
+              ("subprocess", "check_call"), ("subprocess", "check_output"),
+              ("subprocess", "Popen"), ("os", "system"), ("os", "popen"),
+              ("os", "execv"), ("os", "spawnv")}
+
+
+def _package_modules() -> list[Path]:
+    return sorted(PACKAGE.glob("*.py"))
+
+
+def _tree(path: Path) -> ast.Module:
+    return ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+
+
+def _launch_calls(tree: ast.Module) -> list[ast.Call]:
+    """Every call site that starts another program."""
+    out = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+            if (func.value.id, func.attr) in _LAUNCHERS:
+                out.append(node)
+        elif isinstance(func, ast.Name) and func.id in {"system", "popen"}:
+            out.append(node)
+    return out
+
+
+def _argv_head(call: ast.Call):
+    """The first element of the argv literal, if it IS a literal."""
+    if not call.args:
+        return None
+    first = call.args[0]
+    if isinstance(first, ast.Constant) and isinstance(first.value, str):
+        return first.value
+    if isinstance(first, (ast.List, ast.Tuple)) and first.elts:
+        head = first.elts[0]
+        if isinstance(head, ast.Constant) and isinstance(head.value, str):
+            return head.value
+    return None
+
+
+def _imported_names(tree: ast.Module) -> set[str]:
+    out: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            out |= {alias.name for alias in node.names}
+        elif isinstance(node, ast.ImportFrom):
+            if node.level:      # a relative import — inside this package
+                out.add("." + (node.module or ""))
+                continue
+            base = node.module or ""
+            out.add(base)
+            out |= {f"{base}.{alias.name}" if base else alias.name
+                    for alias in node.names}
+    return out
+
+
+class R1_ReadersTouchFilesAndHeadersOnly(unittest.TestCase):
+
+    def test_the_package_has_modules_to_check(self):
+        self.assertGreaterEqual(len(_package_modules()), 6,
+                                "the guard rail is only as good as its corpus")
+
+    def test_no_product_command_is_ever_launched(self):
+        for path in _package_modules():
+            for call in _launch_calls(_tree(path)):
+                head = _argv_head(call)
+                with self.subTest(module=path.name, line=call.lineno, argv=head):
+                    if head is None:
+                        continue  # a variable: the operator's own door binary
+                    self.assertNotIn(Path(head).name, FORBIDDEN_EXECUTABLES)
+                    self.assertIn(
+                        Path(head).name, ALLOWED_LITERAL_EXECUTABLES,
+                        f"{path.name}:{call.lineno} names an executable that is "
+                        "neither the configured door binary nor an allowed one")
+
+    def test_no_product_client_library_is_imported(self):
+        for path in _package_modules():
+            names = _imported_names(_tree(path))
+            for forbidden in FORBIDDEN_IMPORTS:
+                with self.subTest(module=path.name, forbidden=forbidden):
+                    self.assertFalse(
+                        any(n == forbidden or n.startswith(forbidden + ".")
+                            for n in names),
+                        f"{path.name} imports {forbidden}")
+
+    def test_the_one_product_cache_directory_is_named_only_in_the_skip_list(self):
+        from hearth.weights import scan as scan_mod
+
+        self.assertIn(".internal", scan_mod.HIDDEN_SKIP)
+        occurrences = {p.name: p.read_text(encoding="utf-8").count(".internal")
+                       for p in _package_modules()}
+        self.assertEqual(occurrences.pop("scan.py"), 1,
+                         "scan.py must name it exactly once — in HIDDEN_SKIP")
+        for name, count in occurrences.items():
+            with self.subTest(module=name):
+                self.assertEqual(count, 0)
+
+
+class R4_TheLiveLoopNeverImportsTheScanner(unittest.TestCase):
+
+    def test_the_live_modules_exist(self):
+        for path in LIVE_MODULES:
+            self.assertTrue(path.is_file(), path)
+        self.assertGreaterEqual(len(LIVE_MODULES), 8)
+
+    def test_none_of_them_reaches_for_hearth_weights(self):
+        for path in LIVE_MODULES:
+            names = _imported_names(_tree(path))
+            with self.subTest(module=str(path)):
+                self.assertNotIn("hearth.weights", names)
+                self.assertFalse(any(n.startswith("hearth.weights.") for n in names))
+                # `from hearth import weights`
+                self.assertNotIn("hearth.weights", {f"hearth.{n}" for n in names})
+
+
+class R5_AScanNeedsNoProductPresent(unittest.TestCase):
+
+    def test_the_only_third_party_import_is_the_gguf_reader(self):
+        third_party = set()
+        stdlib_and_ours = ("hearth", "__future__")
+        for path in _package_modules():
+            for name in _imported_names(_tree(path)):
+                top = name.split(".")[0]
+                if top and not top.startswith(stdlib_and_ours):
+                    third_party.add(top)
+        import sys
+        third_party = {n for n in third_party
+                       if n not in sys.stdlib_module_names and n}
+        self.assertEqual(third_party, {"gguf"}, third_party)
+
+
+if __name__ == "__main__":
+    unittest.main()

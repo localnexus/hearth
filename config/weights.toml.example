@@ -1,0 +1,47 @@
+# config/weights.toml — WHERE Hearth is willing to look for model weights.
+#
+# Copy to config/weights.toml in your data folder and edit. The file is optional:
+# with no file at all Hearth uses the defaults below (no roots of your own, the
+# product pointers on). A malformed file is a startup error naming this file.
+#
+# The two sentences that decide what this file is: Hearth ENROLLS weights, it does
+# not store them — it keeps directories to look in and a resolved path per model,
+# and it never downloads, moves, copies, or deletes a weights file. Nothing here
+# makes Hearth depend on another program: the pointers below are paths to folders,
+# and Hearth reads the files in them and their GGUF headers, never a product's
+# daemon, command line, or private cache. Quit or uninstall any of them and a scan
+# gives the same answer.
+#
+#   python -m hearth.weights roots     # what this file resolves to
+#   python -m hearth.weights scan      # what is in those directories
+
+[weights]
+
+# Directories of your own, scanned recursively. `~` is expanded and symlinks are
+# followed once, so what gets enrolled is always the real path. Order matters only
+# in one way: the first root is where the landing folder defaults to.
+# roots = ["/Users/<you>/models"]
+roots = []
+
+# Point at the folders the popular weights-serving products keep files in, when
+# those folders exist:
+#     ~/.lmstudio/models          <publisher>/<repo>/*.gguf
+#     ~/.ollama/models            manifests/** -> blobs/sha256-*
+#     ~/.cache/huggingface/hub    models--<org>--<repo>/snapshots/<rev>/*.gguf
+# These are DIRECTORY POINTERS and nothing else. A pointer whose real path already
+# sits inside one of your own roots is skipped rather than scanned twice (on a
+# machine where those folders are symlinks into your models folder, they all are).
+# Set false if you would rather name every directory yourself.
+product_dirs = true
+
+# Hearth's own landing folder — where you put weights that arrive from here on, so
+# another program's library stops growing on Hearth's account. It is subdivided by
+# role: llm/, tts/, stt/. Only llm/ is scanned today; the speech stages fetch their
+# own models and will be enrolled when that lands. Defaults to <first root>/hearth.
+# landing = "/Users/<you>/models/hearth"
+
+# The door binary. Used for two read-only things: reading this machine's memory
+# budget (`--list-devices`) and checking that every key in a model's [server] table
+# is a flag this door actually accepts (`--help`). Defaults to the llama-server on
+# your PATH, then /opt/homebrew/bin/llama-server.
+# llama_server = "/opt/homebrew/bin/llama-server"

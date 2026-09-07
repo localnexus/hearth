@@ -1,5 +1,5 @@
 """settings_registry/schema_files.py — the per-FILE schemas: active, model, voice,
-overrides, tts-baseline, vad, and the profile mirror.
+overrides, tts-baseline, vad, weights, and the profile mirror.
 
 Sliced out of the single settings_registry.py it used to share; see the
 package __init__ for the layout and the order the parts import in.
@@ -41,6 +41,70 @@ class ModelFile(_Cfg):
     no_kv_reuse: bool = Field(False, description="true if prefix KV-cache reuse is unsafe for this model")
     reliable_context: Optional[int] = Field(None, ge=1,
                                             description="measured usable-context ceiling the panel's token gauge counts against")
+    weights: Optional["WeightsTable"] = Field(
+        None, description="the enrolled weights file — a REFERENCE, written by "
+                          "`python -m hearth.weights enroll` and never by hand")
+    server: Optional[dict[str, Any]] = Field(
+        None, description="door flags for this model: keys are llama-server LONG FLAGS "
+                          "without the leading dashes (c, parallel, kv-unified, mmproj, "
+                          "chat-template-file, spec-type, alias, ...), validated against "
+                          "the door's own --help by `python -m hearth.weights check` and "
+                          "consumed by the unit renderer. Door-level facts (port, "
+                          "api-key-file, load-mode, threads) do NOT belong here")
+
+
+# ── config/models/<model>/[weights] — the enrollment reference ───────────────
+
+class WeightsHeaderTable(_Cfg):
+    """What the GGUF header said on the day it was enrolled (provenance; the
+    file itself stays the truth)."""
+    architecture: Optional[str] = Field(None, description="GGUF general.architecture")
+    name: Optional[str] = Field(None, description="GGUF general.name")
+    block_count: Optional[int] = Field(None, ge=0, description="transformer blocks")
+    context_length: Optional[int] = Field(None, ge=0, description="context the file was trained for")
+    head_count: Optional[int] = Field(None, ge=0, description="attention heads")
+    head_count_kv: Optional[int] = Field(None, ge=0, description="key/value heads (KV-cache cost)")
+    key_length: Optional[int] = Field(None, ge=0, description="key head dimension")
+    value_length: Optional[int] = Field(None, ge=0, description="value head dimension")
+    full_attention_interval: Optional[int] = Field(
+        None, ge=1, description="hybrid builds: only every Nth block holds a KV cache")
+    expert_count: Optional[int] = Field(None, ge=0, description="mixture-of-experts count")
+    nextn_predict_layers: Optional[int] = Field(None, ge=0, description="speculative (MTP) layers")
+    file_type: Optional[int] = Field(None, ge=0, description="GGUF general.file_type (quantisation)")
+    tensor_bytes: Optional[int] = Field(None, ge=0, description="sum of tensor bytes = the weights themselves")
+
+
+class WeightsTable(_Cfg):
+    path: str = Field(description="resolved REAL path of the weights file (symlinks followed once, at enroll)")
+    mmproj: Optional[str] = Field(None, description="resolved real path of the projector, if the model has one")
+    root: str = Field("", description="which root it was found under (provenance)")
+    layout: str = Field("", description="the reader that found it: plain | ollama | hf")
+    display_key: str = Field("", description="how the scan names it")
+    size_bytes: int = Field(0, ge=0, description="size on the day it was enrolled (all shards summed)")
+    identity: str = Field("", description="sha256(size ‖ first 1 MiB)[:16] — the duplicate/drift key")
+    enrolled: str = Field("", description="ISO date the reference was written")
+    header: Optional[WeightsHeaderTable] = Field(None, description="header facts as read that day")
+
+
+ModelFile.model_rebuild()  # ModelFile.weights forward-references WeightsTable
+
+
+# ── config/weights.toml — the roots ──────────────────────────────────────────
+
+class WeightsFile(_Cfg):
+    roots: list[str] = Field(default_factory=list,
+                             description="directories Hearth may look in for weights (~ expanded)")
+    product_dirs: bool = Field(True,
+                               description="also point at LM Studio / Ollama / Hugging Face cache "
+                                           "directories when they exist — POINTERS ONLY: no other "
+                                           "program is ever run, asked, or read for its cache")
+    landing: Optional[str] = Field(None,
+                                   description="Hearth's own folder for weights that arrive from here on, "
+                                               "subdivided by role (`llm/` `tts/` `stt/`); defaults to <first root>/hearth")
+    llama_server: Optional[str] = Field(None,
+                                        description="the door binary, used to read this machine's memory "
+                                                    "budget and to validate [server] keys; defaults to the "
+                                                    "one on PATH")
 
 
 # ── characters/<c>/voices/<v>/voice.toml ─────────────────────────────────────

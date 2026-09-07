@@ -10,7 +10,8 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel
 
-from .schema_files import ActiveFile, ModelFile, OverridesFile, ProfileFile, TtsBaselineFile, VadFile, VoiceFile
+from .schema_files import (ActiveFile, ModelFile, OverridesFile, ProfileFile, TtsBaselineFile,
+                           VadFile, VoiceFile, WeightsFile)
 from .schema_tables import MemoryTable, OpenclawTable, ServeTable
 
 # ── the registry ─────────────────────────────────────────────────────────────
@@ -71,6 +72,16 @@ REGISTRY: dict[str, FileEntry] = {e.kind: e for e in (
               "gate", "operator", "place", "bot", top_key="openclaw",
               note="One switch drives tool registration AND the {{openclaw_tools}} prompt slot, so "
                    "capability and prompt can never disagree."),
+    FileEntry("weights", WeightsFile, "Weights roots", "config/weights.toml",
+              "load facts", "operator", "place", "none", top_key="weights",
+              note="WHERE Hearth is willing to look for model weights — directories, "
+                   "nothing more. The product pointers are exactly that: paths to the "
+                   "folders LM Studio, Ollama and the Hugging Face cache keep files in. "
+                   "No other program's background service, command line, or private cache is ever used, so a scan "
+                   "answers the same with all of them quit or uninstalled. Enrollment "
+                   "itself lives in each model directory's [weights] table; Hearth never "
+                   "downloads, moves, or deletes a weights file. "
+                   "See `python -m hearth.weights`."),
     FileEntry("profile", ProfileFile, "Companion knob presets", "characters/<c>[/voices/<v>]/profile.toml (+ overrides.toml mirrors)",
               "preset", "panel", "identity", "none",
               note="PANEL-MANAGED snapshots of the override deltas for one companion or voice; "

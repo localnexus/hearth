@@ -21,6 +21,8 @@ characters/**/memory/
 # the data root, which is this tree under bare public defaults
 locks/
 ops/compact-queue/
+# weights header cache (hearth.weights) — a scan convenience, never a source of truth
+.cache/
 
 # Runtime droppings that can land inside the code tree — content-bearing, never committed
 # (src/hearth/tts/logs/ covers strip logs written by pre-2026-09-02 builds)

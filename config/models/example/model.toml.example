@@ -29,3 +29,66 @@ no_kv_reuse = false
 # against. If absent, the panel falls back to the model's advertised window. Note the
 # actual context length is NOT set here — the live value from your server wins.
 reliable_context = 8192
+
+# ── the weights this model uses ───────────────────────────────────────────────
+#
+# Hearth ENROLLS weights: it keeps a REFERENCE to a file that stays exactly where
+# you put it. It never downloads, moves, copies, or deletes one, and un-enrolling
+# removes the reference only. The block below is written for you — do not type it
+# by hand:
+#
+#     python -m hearth.weights scan
+#     python -m hearth.weights enroll example --key <a display key from the scan>
+#     python -m hearth.weights check example
+#
+# `path` and `mmproj` are RESOLVED REAL paths (symlinks followed once, on the day
+# you enrolled), so moving or deleting the app whose folder they were found in
+# does not silently redirect Hearth somewhere else. `identity` is a cheap
+# fingerprint — size plus the first megabyte — that `check` uses to notice a
+# different file has appeared at that path. [weights.header] is what the GGUF file
+# said about itself that day; the file itself stays the truth.
+#
+# [weights]
+# path = "/Users/<you>/models/publisher/repo/model-Q8_0.gguf"
+# mmproj = "/Users/<you>/models/publisher/repo/model-mmproj-BF16.gguf"
+# root = "models"
+# layout = "plain"
+# display_key = "publisher/repo/model-Q8_0"
+# size_bytes = 37802153120
+# identity = "0123456789abcdef"
+# enrolled = "2026-09-07"
+#
+# [weights.header]
+# architecture = "qwen35moe"
+# block_count = 41
+# context_length = 262144
+# head_count_kv = 2
+# key_length = 256
+# value_length = 256
+# full_attention_interval = 4
+# nextn_predict_layers = 1
+# tensor_bytes = 37791158784
+
+# ── the flags the model server is started with ────────────────────────────────
+#
+# Optional. Keys are your model server's flag names with the leading dashes taken
+# off (its long flags, plus the short ones it also answers to, such as `c`) — llama.cpp's own preset vocabulary, so there is nothing new to learn and
+# nothing to translate. `python -m hearth.weights check` verifies every key exists
+# in your door's own `--help`; a later stroke renders the service unit from this
+# table (today the unit is still hand-written and is the truth).
+#
+# What belongs here: facts about THIS MODEL.
+# What does NOT: facts about the door itself — the port it listens on, the file
+# holding its access key, whether it stays loaded, how many threads it gets. Those
+# are one-per-machine, not one-per-model, and live with the service unit.
+#
+# [server]
+# c = 262144                       # context length to request
+# parallel = 4                     # concurrent slots
+# kv-unified = true                # a flag with no value: just say true
+# mmproj = "/Users/<you>/models/publisher/repo/model-mmproj-BF16.gguf"
+# chat-template-file = "chat-template.thinking-off.jinja"
+# spec-type = "draft-mtp"          # speculative decoding, if the file carries it
+# spec-draft-n-max = 2
+# spec-draft-p-min = 0.75
+# alias = "<repeat the id above>"   # make this match `id` above

@@ -104,8 +104,9 @@ _HEADER_ROW = ("| key | type | default | range | live path | what it sets |\n"
 # test keeps each byte-synced with this module.
 MANUAL_PAGES: dict[str, tuple[str, tuple[str, ...]]] = {
     "settings-reference.md": (
-        "Settings reference — selection, models, voices, live knobs",
-        ("active", "model", "voice", "overrides", "tts-baseline", "vad", "profile"),
+        "Settings reference — selection, models, voices, live knobs, weights roots",
+        ("active", "model", "voice", "overrides", "tts-baseline", "vad", "weights",
+         "profile"),
     ),
     "settings-reference-gates.md": (
         "Settings reference — the on/off files",

@@ -71,6 +71,7 @@ def discover() -> list[tuple[str, Path]]:
     add("serve", _dedup([cl.SERVE_TOML]))
     add("memory", _dedup([cl.MEMORY_TOML]))
     add("openclaw", _dedup([cl.OPENCLAW_TOML]))
+    add("weights", _dedup([cl.CONFIG_DIR / "weights.toml"]))
     # Panel-written per-companion presets + their live mirrors (same shape).
     add("profile", _both_roots("characters/*/profile.toml")
         + _both_roots("characters/*/voices/*/profile.toml")
@@ -98,7 +99,10 @@ def check_file(kind: str, path: Path) -> tuple[str, list[str], list[str]]:
         table = data.get(entry.top_key)
         if not isinstance(table, dict):
             return "inert", [], [f"no [{entry.top_key}] table — file is inert"]
-        if not table.get("enabled"):
+        # A gate file is inert while its switch is off. A file that merely
+        # groups its keys under one table (config/weights.toml) declares no
+        # `enabled` field and is never inert for want of one.
+        if "enabled" in entry.model.model_fields and not table.get("enabled"):
             verdict_floor = "inert"  # gate off; shape still checked below
         data = table
         if stray:

@@ -93,6 +93,10 @@ Two files per model dir, both **yours** to edit:
   rules, and the `{{persona}}` slot the character fills. Keep the "short, spoken, no markdown" rules or
   replies read badly aloud.
 
+A model dir may also carry a `[weights]` table — a **reference** to the model file on your disk, written by
+`python -m hearth.weights enroll` and never by hand; Hearth points at your weights and never moves, copies, or
+deletes them ([Weights, and where they live](weights-and-where-they-live.md)).
+
 Every change here needs a **restart** to apply. Per-knob meaning lives in `docs/config-manual/llm.md`.
 
 ## `config/serve.toml` — the Hearth on/off switch (manage, never print)
