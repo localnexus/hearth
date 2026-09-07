@@ -35,8 +35,8 @@ pre/post-update test before advancing any of them — the live voice loop rides 
 | Component | Pinned at | Kind | Why / lift condition |
 |---|---|---|---|
 | **mlx-llm runtime pack** (LM Studio) | **1.10.0** | **HARD** | 1.11.0 carries a context-auto-fit override — ignores explicit `-c`/API context on MLX qwen3_5-family models and inflates it to the RAM-fitted max (silent KV bloat, eviction/OOM risk). Lift only when the upstream bug is fixed. |
-| llama.cpp runtime pack (LM Studio's) | 2.24.0 | soft — cleared → 2.28.1 | No Metal-relevant regressions found in 2.26→2.28.1; run the test checklist before advancing. |
-| LM Studio app | 0.4.19+2 | soft — optional → 0.4.21 | 0.4.21 is ergonomics (load errors, mmap/mlock/direct-IO knobs — the knobs need llama.cpp ≥ 2.28.1). Scratch-test first: the live voice loop rides this server. |
+| llama.cpp runtime pack (LM Studio's) | 2.29.1 | soft — verified 2026-09-07 | Metal MTP draft lossless at T=0 on this pack; app installs can silently re-select a newer pack — run `lms runtime ls` and re-select after any app update, before loading. |
+| LM Studio app | 0.4.22+1 | soft — verified 2026-09-07 | The app update is independent of the runtime-pack pins, but the installer re-selects packs (see the row above). Avoid 0.4.23 until its MLX context regression (#2355) is cleared. JIT-loaded models still expire instantly on this build — load explicitly (`lms load <id>`) for a resident model. |
 | `transformers` (`.venv`) | 5.5.0 | HARD | Pre-existing pin (dependency table above) — this one applies on **every** path, LM Studio or not. |
 
 > ⚠ **LM Studio only:** `lms runtime update` advances ALL packs, including past the MLX hard pin —
