@@ -40,6 +40,14 @@ them — and, in the same breath, ``CANNOT_REACH``: the places a trace may
 survive that are not Hearth's to promise. ``destroy_file`` is the unlink
 itself, and it returns False rather than raising when the file is already
 gone, because a half-finished sweep must be finishable.
+
+Rename comes in two shapes, and the difference between them is who else knows
+the id. ``set_session_title`` is the normal one: a display name in the file's
+own metadata, free to change as often as anyone likes, because nothing outside
+the file reads it. ``rename_session_file`` moves the file itself, and the id IS
+the key the memory record, the compaction queue and the hold marker use — so it
+is offered only when ``session_references`` comes back empty, and refused with
+the reasons when it does not.
 """
 
 from __future__ import annotations
@@ -96,6 +104,22 @@ class SessionPayloadError(ValueError):
     ``reason`` is written for the person who picked the file, and it describes
     the FILE — never a line of what the file says, and never a path.
     """
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+#: A display title is a label a person types, so its rules are a person's
+#: rules: it has to say something, it has to fit on a shelf row, and it may
+#: not carry control characters (which would let a title dress itself up as
+#: two lines, or as something it is not, wherever it is printed).
+TITLE_MAX_CHARS = 120
+
+
+class SessionTitleError(ValueError):
+    """A display title the rename gate refuses. ``reason`` describes the title
+    the person typed — never the file, never a path."""
 
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
@@ -419,6 +443,171 @@ def _now_iso() -> str:
     from hearth.session import session_store  # lazy: one spelling of "now"
 
     return session_store._now_iso()
+
+
+# ── rename: the title anyone may change, and the id almost nobody may ────────
+
+def normalize_title(title) -> Optional[str]:
+    """The title as it will be stored, or None for "remove the title".
+
+    An empty string (or whitespace, or nothing at all) is the removal: a person
+    clearing the box means "this session has no title", not "this session is
+    called nothing". Anything else is stripped and then has to answer the two
+    questions above — length, and no control characters. Raises
+    ``SessionTitleError``.
+    """
+    if title is None:
+        return None
+    if not isinstance(title, str):
+        raise SessionTitleError("a title has to be text")
+    clean = title.strip()
+    if not clean:
+        return None
+    if len(clean) > TITLE_MAX_CHARS:
+        raise SessionTitleError(
+            f"a title is at most {TITLE_MAX_CHARS} characters")
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in clean):
+        raise SessionTitleError("a title cannot carry control characters")
+    return clean
+
+
+def set_session_title(character: str, session: str, title,
+                      *, archived: bool = False) -> Optional[str]:
+    """Set (or remove) one session's display title. Returns what was stored.
+
+    **This is the ONE verb in this module that parses a session file.** Every
+    other one moves, counts or unlinks bytes it never opens; this one has to
+    read the object to write a field back into it. So the rule it keeps is
+    narrower than "never read": what it parses it never returns, never logs and
+    never inspects. ``messages`` is carried from the loaded dict to the written
+    dict untouched and unread — it is not counted, not filtered, not looked at.
+    The route above it answers the id and the title, and nothing else.
+
+    The write goes through ``session_store._atomic_write_json``, the same
+    writer the store itself uses (tmp at 0600 → fsync → ``os.replace``), so a
+    crash mid-rename cannot leave a half-written conversation. Key order is
+    preserved exactly as the file had it, and a title being added for the first
+    time lands immediately before ``messages`` — so a titled file and a file
+    this Hearth wrote read the same way side by side, and clearing a title
+    leaves the file byte-identical to one that never had one.
+    """
+    import json
+
+    from hearth.session import session_store  # lazy: keeps this module import-light
+
+    clean = normalize_title(title)
+    path = resolve_session_path(character, session, archived=archived)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError) as exc:
+        raise SessionPathError(
+            f"the session file could not be read ({type(exc).__name__})") from None
+    if not isinstance(data, dict):
+        raise SessionPathError("that file is not a session")
+
+    out = {}
+    for key, value in data.items():
+        if key == "title":
+            continue  # re-placed below, so its position never depends on history
+        if key == "messages" and clean is not None:
+            out["title"] = clean
+        out[key] = value
+    if clean is not None and "title" not in out:
+        out["title"] = clean  # a file with no messages key: the title still lands
+    session_store._atomic_write_json(path, out)
+    return clean
+
+
+def session_references(character: str, session: str) -> list:
+    """Everything OUTSIDE the file that knows this session by its id.
+
+    Human-readable reasons, never paths — the same posture as every refusal
+    here. Empty means the id is the file's private business and the file may be
+    renamed; anything in the list means a rename would orphan whatever is
+    named, so the title is the rename that is offered instead.
+
+    What counts as a reference is a hard reference: something that would be
+    LEFT BEHIND, pointing at an id no file answers to any more.
+
+    * the memory record and its compaction epochs
+      (``records/<id>.json``, ``<id>.c*.json``) — and with them the backend
+      document, which is keyed by the same id, so the record standing is the
+      backend document standing;
+    * a compaction breadcrumb in the queue (``<character>.<id>.request`` and
+      its ``.running`` / ``.failed`` siblings) — a queued run names the pair
+      and would look for a file that is gone;
+    * the hold marker, when it names this id — the next close would write to
+      the name it holds.
+
+    What does NOT count, deliberately: a line in ``bot.log`` (timings and ids,
+    already historical — a log is a record of what happened under a name, not a
+    pointer to a file), the panel's intent slot (re-read every turn), and a fork
+    or a copy of the conversation somewhere else (its own file with its own
+    id). Those are stale-only: nothing breaks when the id moves, they simply
+    keep saying what was true when they were written.
+    """
+    from hearth.session import compact_trigger, session_store  # lazy: import-light
+
+    reasons = []
+
+    paths = record_paths(character, session)
+    if paths:
+        epochs = sum(1 for p in paths if Path(p).stem != session)
+        if epochs == 1:
+            reasons.append("a memory record (and 1 compaction epoch)")
+        elif epochs:
+            reasons.append(f"a memory record (and {epochs} compaction epochs)")
+        else:
+            reasons.append("a memory record")
+
+    try:
+        qdir = compact_trigger.queue_dir()
+        queued = any(p.suffix in (".request", ".running", ".failed")
+                     for p in qdir.glob(f"{character}.{session}.*"))
+    except OSError:
+        queued = False
+    if queued:
+        reasons.append("a parked compaction request")
+
+    try:
+        marker = session_store.marker_path(sessions_root(character))
+        held = marker.read_text(encoding="utf-8").strip()
+    except (OSError, ValueError):
+        held = ""
+    if held and held == session:
+        reasons.append("the hold request names it")
+
+    return reasons
+
+
+def rename_session_file(character: str, session: str, new_id: str,
+                        *, archived: bool = False) -> Path:
+    """Move a session file to a new id, and refuse when anything else knows the
+    old one.
+
+    Both halves of the move pass the fence — the source has to be there, the
+    destination must not be taken — and the shelf side never changes: an
+    archived session is renamed inside the archive, a live one on the shelf.
+    The move itself is ``os.replace``: same filesystem, atomic, the bytes never
+    read.
+
+    ``SessionStore.rename`` (the hold path's own bare rename, used at close
+    time when a ``--hold`` names the session) is deliberately left alone: it
+    runs inside the bot, on a session nothing else can be referencing yet.
+    """
+    if not valid_session_id(new_id):
+        raise SessionPathError("invalid session id")
+    refs = session_references(character, session)
+    if refs:
+        raise SessionPathError(
+            "this session is referenced by " + ", ".join(refs))
+    src = resolve_session_path(character, session, archived=archived)
+    if new_id == session:
+        return src
+    dest = reserve_session_path(character, new_id, archived=archived)
+    os.replace(src, dest)
+    return dest
 
 
 # ── who is asking: same machine, or across the tailnet? ──────────────────────

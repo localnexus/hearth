@@ -262,6 +262,11 @@ class SessionMeta:
     persona: str = "default"
     character: Optional[str] = None
     memory_mode: str = "full"  # the sitting's stamped posture ("full" when unstamped)
+    title: Optional[str] = None  # the display name a person typed (session/verbs
+                                 # set_session_title); None (unwritten) on every
+                                 # file nobody has renamed, so those stay
+                                 # byte-identical. `name` is the older, narrower
+                                 # field the hold path writes as the FILE stem
     origin: Optional[str] = None  # "deposit" for a file brought in from outside;
                                   # None (unwritten) for a session born here, so
                                   # existing files stay byte-identical
@@ -291,6 +296,7 @@ def _meta_of(p: Path, *, archived: bool = False):
         persona=str(data.get("persona") or "default"),
         character=data.get("character"),
         memory_mode=str(data.get("memory_mode") or "full"),
+        title=(data.get("title") or None) if isinstance(data.get("title"), str) else None,
         origin=data.get("origin") or None,
         archived=archived,
     )

@@ -47,14 +47,21 @@ resume shelf and out of the fresh-start sweep without deleting anything —
 GET /admin/sessions?archived=1 (or =all) is how the archived ones are read
 back. POST /admin/sessions/destroy is the hard one, and the only verb here
 that takes something away: preview-then-confirm (the confirm has to be the
-session's name, or its id when it has none), and then the file AND the
+session's title, its name, or its id — whichever the shelf shows), and then the
+file AND the
 session's memory — record, compaction epochs, indexed facts, through the same
 forget the curation pane runs — in ONE act, memory first so a failed index
 update leaves everything intact. It answers what it cannot reach as plainly as
 what it did, and it is offered to a same-machine caller always, to anyone else
-only where [serve.sessions] destroy_for_all says so. All three sit behind the
-live-session guard: while a companion is up its whole shelf is read-only,
-because the supervisor cannot know which single file the running bot holds.
+only where [serve.sessions] destroy_for_all says so. POST
+/admin/sessions/rename is the last of them, and it is two verbs in one route:
+a {title} renames the DISPLAY name (a metadata field, free — nothing outside
+the file reads it), a {new_id} renames the FILE, and the file rename is offered
+only when nothing else knows the session by its id (the memory record and its
+epochs, a compaction breadcrumb, the hold marker) — otherwise 409 saying what
+does. All four sit behind the live-session guard: while a companion is up its
+whole shelf is read-only, because the supervisor cannot know which single file
+the running bot holds.
 
 /admin/memory is the record-level curation surface (curation.py): digest views + a
 preview-then-confirm forget — the memory CLI's web half, living here because
@@ -96,7 +103,8 @@ having is one you can read in one place:
                   actuators (list + run)
     sessions.py   the resume shelf, plus reveal, download, deposit, the
                   archive/unarchive pair with the live-session guard they
-                  share, and destroy — file + memory in one act
+                  share, destroy — file + memory in one act — and rename,
+                  the title always and the id only when nothing points at it
     lifecycle.py  bot start/stop, manual compaction, daemon restart
     switching.py  switch-companion: the live handoff, the supervised restart,
                   and the routing between them
@@ -135,7 +143,7 @@ from .sessions import (
     DEPOSIT_SUFFIXES, REVEAL_TIMEOUT_S, _already, _archive_request, _confirm_with,
     _destroy_offered, _guarded, _known_character, _move, _read_deposit_upload,
     _session_archive, _session_deposit, _session_destroy, _session_file,
-    _session_reveal, _session_unarchive, _sessions)
+    _session_rename, _session_reveal, _session_unarchive, _sessions)
 from .lifecycle import _bot_start, _bot_stop, _compact_start, _daemon_restart
 from .switching import (
     _FACADE_NOTE, _do_restart, _switch_get, _switch_live_get, _switch_post,
@@ -204,6 +212,7 @@ def build_mount(sup_cfg: dict):
         app.router.add_post("/admin/sessions/archive", _session_archive)
         app.router.add_post("/admin/sessions/unarchive", _session_unarchive)
         app.router.add_post("/admin/sessions/destroy", _session_destroy)
+        app.router.add_post("/admin/sessions/rename", _session_rename)
         app.router.add_post("/admin/bot/start", _bot_start)
         app.router.add_post("/admin/bot/stop", _bot_stop)
         app.router.add_post("/admin/compact", _compact_start)

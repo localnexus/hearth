@@ -204,6 +204,26 @@ class SessionDestroyRoutes(AioHTTPTestCase):
         self.assertEqual(resp.status, 200, await resp.text())
         self.assertFalse((self.sessions_dir / "session-n.json").exists())
 
+    async def test_a_title_outranks_the_name_as_the_confirm_word(self):
+        """The title is what the shelf shows after a rename, so it is what a
+        person can be asked to type back — asking for a name the panel no
+        longer displays would be asking them to confirm something unseen."""
+        path = self.write_session("session-t", name="the old name")
+        await self.client.post("/admin/sessions/rename", headers=self.BEARER,
+                               json={"character": CHARACTER, "session": "session-t",
+                                     "title": "the long walk"})
+        data = await (await self.destroy(character=CHARACTER,
+                                         session="session-t")).json()
+        self.assertEqual(data["confirm_with"], "the long walk")
+        resp = await self.destroy(character=CHARACTER, session="session-t",
+                                  confirm="the old name")
+        self.assertEqual(resp.status, 409, await resp.text())
+        self.assertTrue(path.is_file())
+        resp = await self.destroy(character=CHARACTER, session="session-t",
+                                  confirm="the long walk")
+        self.assertEqual(resp.status, 200, await resp.text())
+        self.assertFalse(path.exists())
+
     async def test_a_wrong_confirmation_touches_nothing(self):
         self.record("session-x")
         for wrong in ("", "OK", "yes", "session-y", "SESSION-X"):

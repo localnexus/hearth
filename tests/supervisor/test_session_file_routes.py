@@ -390,6 +390,26 @@ class SessionFileRoutes(AioHTTPTestCase):
                         "/admin/sessions/unarchive", headers=self.BEARER,
                         json={"character": CHARACTER, "session": "session-x"})
                     unarchive_body = await unarchive.text()
+                    titled = await self.client.post(
+                        "/admin/sessions/rename", headers=self.BEARER,
+                        json={"character": CHARACTER, "session": "session-x",
+                              "title": "the long walk"})
+                    titled_body = await titled.text()
+                    rename_refused = await self.client.post(
+                        "/admin/sessions/rename", headers=self.BEARER,
+                        json={"character": CHARACTER, "session": "session-x",
+                              "title": "x" * 200})
+                    rename_refused_body = await rename_refused.text()
+                    untitled = await self.client.post(
+                        "/admin/sessions/rename", headers=self.BEARER,
+                        json={"character": CHARACTER, "session": "session-x",
+                              "title": ""})
+                    untitled_body = await untitled.text()
+                    renamed = await self.client.post(
+                        "/admin/sessions/rename", headers=self.BEARER,
+                        json={"character": CHARACTER, "session": "session-x",
+                              "new_id": "session-x"})
+                    renamed_body = await renamed.text()
                     destroy_plan = await self.client.post(
                         "/admin/sessions/destroy", headers=self.BEARER,
                         json={"character": CHARACTER, "session": "session-x"})
@@ -406,6 +426,10 @@ class SessionFileRoutes(AioHTTPTestCase):
         self.assertEqual(deposit.status, 200, deposit_body)
         self.assertEqual(archive.status, 200, archive_body)
         self.assertEqual(unarchive.status, 200, unarchive_body)
+        self.assertEqual(titled.status, 200, titled_body)
+        self.assertEqual(rename_refused.status, 400, rename_refused_body)
+        self.assertEqual(untitled.status, 200, untitled_body)
+        self.assertEqual(renamed.status, 200, renamed_body)
         self.assertEqual(destroy_plan.status, 200, destroy_plan_body)
         self.assertEqual(destroyed.status, 200, destroyed_body)
         self.assertFalse(self.session_path.exists(), "destroy is the hard verb")
@@ -415,6 +439,10 @@ class SessionFileRoutes(AioHTTPTestCase):
                             ("archive", archive_body),
                             ("archived shelf", archived_shelf_body),
                             ("unarchive", unarchive_body),
+                            ("rename title", titled_body),
+                            ("rename refusal", rename_refused_body),
+                            ("rename cleared", untitled_body),
+                            ("rename id", renamed_body),
                             ("destroy plan", destroy_plan_body),
                             ("destroyed", destroyed_body)):
             with self.subTest(response=label):

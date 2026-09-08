@@ -26,11 +26,21 @@ because each of them is a way a bad file could otherwise land: a foreign
 companion's conversation, a voice this companion cannot speak, a persona that
 is not there, and a system message pretending to be part of the transcript.
 
+Rename is the last block, and it is two verbs. The title gate is about what a
+person may type; the title WRITE is about what opening a session file must not
+disturb — every other field, their order, and the conversation, which is
+carried from the loaded object to the written one and never looked at. The
+reference matrix is the rule the FILE rename turns on: a memory record and its
+epochs, a compaction breadcrumb, the hold marker naming the id. Reading the
+marker must not consume it, which is the one place the store's own verb could
+not be reused.
+
 Run:  .venv/bin/python -m unittest discover -s tests
 """
 
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -504,6 +514,266 @@ class DestroyPlan(_Rooted):
         self.assertIs(verbs.destroy_file(path), True)
         self.assertFalse(path.exists())
         self.assertIs(verbs.destroy_file(path), False, "re-runnable, not an error")
+
+
+class TitleGate(_Rooted):
+    """The title itself, before any file is touched: what a person may type."""
+
+    def test_a_plain_title_is_kept_stripped(self):
+        self.assertEqual(verbs.normalize_title("  the long walk  "), "the long walk")
+
+    def test_emptiness_means_remove_it(self):
+        for empty in (None, "", "   ", "\t"):
+            with self.subTest(title=empty):
+                self.assertIsNone(verbs.normalize_title(empty))
+
+    def test_the_refusals(self):
+        for label, bad in (("too long", "x" * 121),
+                           ("a newline", "two\nlines"),
+                           ("a control character", "bell\x07"),
+                           ("a delete character", "del\x7f"),
+                           ("not text at all", 7)):
+            with self.subTest(case=label):
+                with self.assertRaises(verbs.SessionTitleError):
+                    verbs.normalize_title(bad)
+
+    def test_the_boundary_is_inclusive(self):
+        self.assertEqual(len(verbs.normalize_title("x" * 120)), 120)
+
+
+class TitleWrite(_Rooted):
+    """The one verb here that opens a session file. What it must not disturb:
+    every other field, their order, and the conversation itself."""
+
+    SENTINEL = "ZZ-SENTINEL-TITLE-ZZ"
+
+    def setUp(self):
+        super().setUp()
+        self.path = self.sessions / "session-t.json"
+        self.path.write_text(
+            '{\n  "schema": 2,\n  "model": "m1",\n  "voice": "v1",\n'
+            '  "persona": "default",\n  "started": "2026-09-07T09:00:00",\n'
+            '  "updated": "2026-09-07T10:00:00",\n  "held": true,\n'
+            '  "messages": [\n    {\n      "role": "user",\n'
+            '      "content": "%s"\n    }\n  ]\n}' % self.SENTINEL,
+            encoding="utf-8")
+        self.before = json.loads(self.path.read_text(encoding="utf-8"))
+
+    def after(self):
+        return json.loads(self.path.read_text(encoding="utf-8"))
+
+    def test_a_title_lands_and_nothing_else_moves(self):
+        self.assertEqual(
+            verbs.set_session_title(self.CHARACTER, "session-t", " the long walk "),
+            "the long walk")
+        after = self.after()
+        self.assertEqual(after["title"], "the long walk")
+        self.assertEqual(after["messages"], self.before["messages"],
+                         "the conversation is carried, never touched")
+        for key, value in self.before.items():
+            self.assertEqual(after[key], value, key)
+
+    def test_the_key_order_is_the_stores_own(self):
+        verbs.set_session_title(self.CHARACTER, "session-t", "the long walk")
+        self.assertEqual(
+            list(self.after().keys()),
+            ["schema", "model", "voice", "persona", "started", "updated",
+             "held", "title", "messages"],
+            "a title lands beside the metadata, never after the conversation")
+
+    def test_clearing_it_leaves_the_file_as_if_it_never_had_one(self):
+        on_disk = self.path.read_bytes()
+        verbs.set_session_title(self.CHARACTER, "session-t", "the long walk")
+        self.assertNotEqual(self.path.read_bytes(), on_disk)
+        self.assertIsNone(verbs.set_session_title(self.CHARACTER, "session-t", ""))
+        self.assertEqual(self.path.read_bytes(), on_disk,
+                         "byte-identical to the untitled file")
+
+    def test_a_second_title_replaces_the_first_in_place(self):
+        verbs.set_session_title(self.CHARACTER, "session-t", "one")
+        verbs.set_session_title(self.CHARACTER, "session-t", "two")
+        self.assertEqual(self.after()["title"], "two")
+        self.assertEqual(list(self.after().keys()).count("title"), 1)
+        self.assertEqual(list(self.after().keys())[-2], "title")
+
+    def test_a_bad_title_never_reaches_the_disk(self):
+        on_disk = self.path.read_bytes()
+        with self.assertRaises(verbs.SessionTitleError):
+            verbs.set_session_title(self.CHARACTER, "session-t", "x" * 200)
+        self.assertEqual(self.path.read_bytes(), on_disk)
+
+    def test_the_fence_still_holds(self):
+        for bad in ("../../elsewhere", ".hold-request", "session-nope"):
+            with self.subTest(sid=bad):
+                with self.assertRaises(verbs.SessionPathError):
+                    verbs.set_session_title(self.CHARACTER, bad, "t")
+
+    def test_an_archived_session_is_titled_where_it_lies(self):
+        verbs.archive_session(self.CHARACTER, "session-t")
+        with self.assertRaises(verbs.SessionPathError):
+            verbs.set_session_title(self.CHARACTER, "session-t", "t")
+        verbs.set_session_title(self.CHARACTER, "session-t", "t", archived=True)
+        moved = self.sessions / verbs.ARCHIVE_DIR / "session-t.json"
+        self.assertEqual(json.loads(moved.read_text(encoding="utf-8"))["title"], "t")
+
+    def test_the_meta_view_reads_it_back(self):
+        from hearth.session import session_store
+        verbs.set_session_title(self.CHARACTER, "session-t", "the long walk")
+        self.assertEqual(session_store._meta_of(self.path).title, "the long walk")
+        verbs.set_session_title(self.CHARACTER, "session-t", "")
+        self.assertIsNone(session_store._meta_of(self.path).title)
+
+
+class _Referenced(_Rooted):
+    """A temp root wired for the reference question: a records dir, a compaction
+    queue, and the hold marker's own home."""
+
+    def setUp(self):
+        super().setUp()
+        self.records = self.root / "characters" / self.CHARACTER / "memory" / "records"
+        self.records.mkdir(parents=True)
+        self.queue = self.root / "ops" / "compact-queue"
+        self.queue.mkdir(parents=True)
+        from hearth.memory import records as records_mod
+        from hearth.session import compact_trigger
+        for mod, attr, value in ((records_mod, "records_dir", lambda c: self.records),
+                                 (compact_trigger, "queue_dir", lambda: self.queue)):
+            patcher = mock.patch.object(mod, attr, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def record(self, stem):
+        (self.records / f"{stem}.json").write_text("{}", encoding="utf-8")
+
+    def breadcrumb(self, suffix, session="session-a"):
+        (self.queue / f"{self.CHARACTER}.{session}{suffix}").write_text(
+            "{}", encoding="utf-8")
+
+    def hold(self, name):
+        (self.sessions / ".hold-request").write_text(name, encoding="utf-8")
+
+
+class References(_Referenced):
+    """Who else knows this session by its id — the whole rule the file rename
+    turns on."""
+
+    def test_a_session_nothing_points_at(self):
+        self.assertEqual(verbs.session_references(self.CHARACTER, "session-a"), [])
+
+    def test_a_memory_record_alone(self):
+        self.record("session-a")
+        self.assertEqual(verbs.session_references(self.CHARACTER, "session-a"),
+                         ["a memory record"])
+
+    def test_a_record_and_its_epochs(self):
+        self.record("session-a")
+        self.record("session-a.c2026.09.06")
+        self.assertEqual(verbs.session_references(self.CHARACTER, "session-a"),
+                         ["a memory record (and 1 compaction epoch)"])
+        self.record("session-a.c2026.09.07")
+        self.assertEqual(verbs.session_references(self.CHARACTER, "session-a"),
+                         ["a memory record (and 2 compaction epochs)"])
+
+    def test_another_sessions_record_is_not_this_ones_reference(self):
+        self.record("session-b")
+        self.assertEqual(verbs.session_references(self.CHARACTER, "session-a"), [])
+
+    def test_a_parked_compaction_request(self):
+        for suffix in (".request", ".running", ".failed"):
+            with self.subTest(breadcrumb=suffix):
+                self.breadcrumb(suffix)
+                self.assertEqual(
+                    verbs.session_references(self.CHARACTER, "session-a"),
+                    ["a parked compaction request"])
+                (self.queue / f"{self.CHARACTER}.session-a{suffix}").unlink()
+
+    def test_another_pairs_breadcrumb_is_not_this_ones(self):
+        self.breadcrumb(".request", session="session-b")
+        self.assertEqual(verbs.session_references(self.CHARACTER, "session-a"), [])
+
+    def test_the_hold_marker_naming_it(self):
+        self.hold("session-a")
+        self.assertEqual(verbs.session_references(self.CHARACTER, "session-a"),
+                         ["the hold request names it"])
+
+    def test_a_hold_marker_naming_something_else(self):
+        self.hold("session-b")
+        self.assertEqual(verbs.session_references(self.CHARACTER, "session-a"), [])
+        self.hold("")  # a bare --hold names nothing at all
+        self.assertEqual(verbs.session_references(self.CHARACTER, "session-a"), [])
+
+    def test_reading_the_marker_does_not_consume_it(self):
+        """The store's own read_hold_request CONSUMES the marker — this
+        question must not, or asking whether a session can be renamed would
+        cancel a person's hold."""
+        self.hold("session-a")
+        verbs.session_references(self.CHARACTER, "session-a")
+        self.assertTrue((self.sessions / ".hold-request").is_file())
+
+    def test_all_three_at_once(self):
+        self.record("session-a")
+        self.breadcrumb(".request")
+        self.hold("session-a")
+        self.assertEqual(verbs.session_references(self.CHARACTER, "session-a"),
+                         ["a memory record", "a parked compaction request",
+                          "the hold request names it"])
+
+    def test_no_reason_carries_a_path(self):
+        self.record("session-a")
+        self.breadcrumb(".request")
+        self.hold("session-a")
+        for reason in verbs.session_references(self.CHARACTER, "session-a"):
+            self.assertNotIn(self._tmp.name, reason)
+            self.assertNotIn("/", reason)
+
+
+class FileRename(_Referenced):
+    """The id rename: the move, and the refusal that is the point of it."""
+
+    def test_a_round_trip(self):
+        on_disk = (self.sessions / "session-a.json").read_bytes()
+        dest = verbs.rename_session_file(self.CHARACTER, "session-a", "session-z")
+        self.assertEqual(dest.name, "session-z.json")
+        self.assertFalse((self.sessions / "session-a.json").exists())
+        self.assertEqual(dest.read_bytes(), on_disk, "a move, never a rewrite")
+        verbs.rename_session_file(self.CHARACTER, "session-z", "session-a")
+        self.assertTrue((self.sessions / "session-a.json").is_file())
+
+    def test_a_referenced_session_is_refused_with_the_reasons(self):
+        self.record("session-a")
+        with self.assertRaises(verbs.SessionPathError) as cm:
+            verbs.rename_session_file(self.CHARACTER, "session-a", "session-z")
+        self.assertIn("a memory record", cm.exception.reason)
+        self.assertNotIn(self._tmp.name, cm.exception.reason)
+        self.assertTrue((self.sessions / "session-a.json").is_file())
+        self.assertFalse((self.sessions / "session-z.json").exists())
+
+    def test_a_taken_name_is_refused_and_neither_file_moves(self):
+        (self.sessions / "session-z.json").write_text('{"messages": []}',
+                                                      encoding="utf-8")
+        with self.assertRaises(verbs.SessionPathError) as cm:
+            verbs.rename_session_file(self.CHARACTER, "session-a", "session-z")
+        self.assertEqual(cm.exception.reason, "session id already exists")
+        self.assertTrue((self.sessions / "session-a.json").is_file())
+
+    def test_the_fence_holds_on_both_sides(self):
+        for src, dest in (("session-a", "../elsewhere"), ("session-a", ".hidden"),
+                          ("../elsewhere", "session-z"), ("session-nope", "session-z")):
+            with self.subTest(src=src, dest=dest):
+                with self.assertRaises(verbs.SessionPathError):
+                    verbs.rename_session_file(self.CHARACTER, src, dest)
+
+    def test_an_archived_session_is_renamed_inside_the_archive(self):
+        verbs.archive_session(self.CHARACTER, "session-a")
+        dest = verbs.rename_session_file(self.CHARACTER, "session-a", "session-z",
+                                         archived=True)
+        self.assertEqual(dest.parent.name, verbs.ARCHIVE_DIR)
+        self.assertTrue(dest.is_file())
+        self.assertFalse((self.sessions / "session-z.json").exists())
+
+    def test_renaming_to_the_same_id_is_not_a_collision(self):
+        dest = verbs.rename_session_file(self.CHARACTER, "session-a", "session-a")
+        self.assertTrue(dest.is_file())
 
 
 if __name__ == "__main__":

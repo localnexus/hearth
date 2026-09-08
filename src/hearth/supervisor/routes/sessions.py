@@ -1,7 +1,7 @@
-"""routes/sessions.py — the resume shelf, a file out, a file in, a file archived,
-a file destroyed.
+"""routes/sessions.py — the resume shelf, a file out, a file in, a file
+archived, a file destroyed, a file renamed.
 
-Seven routes, one contract: the route layer never reads a line of what was
+Eight routes, one contract: the route layer never reads a line of what was
 said. The shelf answers ids, names, counts and stamps (the list_sessions
 contract); reveal hands a path to the Finder and never to the response;
 download streams the bytes straight off disk without parsing them. File paths
@@ -48,13 +48,24 @@ It is the only verb offered for a recall-only sitting, and the only one behind
 an exposure check: same-machine callers always, everyone else only where
 [serve.sessions] destroy_for_all says so.
 
+**Rename** (`POST /admin/sessions/rename`) is two verbs wearing one route,
+and the body says which. `{title}` is the ordinary one: a display name written
+into the file's own metadata, free to change as often as anyone likes, because
+nothing outside the file reads it. `{new_id}` moves the file — and the id is
+the key the memory record, the compaction queue and the hold marker use, so it
+is offered only when `verbs.session_references` comes back empty and answered
+409 with the reasons when it does not. Exactly one of the two fields; both or
+neither is a 400. The title form is the one verb here that PARSES a session
+file (the field has to be written back into it) — what it parses it never
+returns and never logs; the answer is the id and the title.
+
 They are also the first routes behind the **live-session guard** (`_guarded`).
 The supervisor knows the bot is up and knows which companion `active.toml`
 points at, but it cannot know which session id a `--new` sitting minted inside
 the child — so the guard is the whole shelf: while the active companion is
 running, every one of its session files is read-only, and another companion's
-are free. An unreadable `active.toml` fails closed. Destroy uses the same
-helper, and rename will.
+are free. An unreadable `active.toml` fails closed. Destroy and rename use the
+same helper.
 
 The fence they share lives in `hearth.session.verbs` — id shape, no traversal,
 no symlink escape, the resolved path still under the companion's sessions dir —
@@ -133,6 +144,7 @@ async def _sessions(request: web.Request) -> web.Response:
         "character": character or sdir.parent.name,
         "sessions": [{
             "session_id": m.session_id,
+            "title": m.title,
             "name": m.name,
             "held": m.held,
             "started": m.started,
@@ -508,16 +520,24 @@ def _destroy_offered(request: web.Request) -> bool:
 
 
 def _confirm_with(path, session: str) -> str:
-    """The exact word the person has to type back: the session's NAME when it
-    has one, its id otherwise. The name is SessionMeta's — a field, the same
-    one the shelf answers — and never a line of the conversation."""
+    """The exact word the person has to type back: the session's TITLE when it
+    has one, its name when it has that, its id otherwise.
+
+    Title outranks name because the title is what the shelf shows and what the
+    person renamed it to — asking them to type a word the panel no longer
+    displays would be asking them to confirm something they cannot see. Both
+    are SessionMeta fields, the same ones the shelf answers, and neither is
+    ever a line of the conversation."""
     from hearth.session import session_store  # lazy: mirrors the package gate idiom
 
     if path is None:
         return session
     meta = session_store._meta_of(path)
-    name = getattr(meta, "name", None) if meta is not None else None
-    return name.strip() if isinstance(name, str) and name.strip() else session
+    for field in ("title", "name"):
+        value = getattr(meta, field, None) if meta is not None else None
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return session
 
 
 async def _session_destroy(request: web.Request) -> web.Response:
@@ -637,3 +657,115 @@ async def _session_destroy(request: web.Request) -> web.Response:
         "ok": True, "destroyed": True, "file": removed, "memory": memory,
         "cannot_reach": list(verbs_mod.CANNOT_REACH),
     })
+
+
+# ── rename: the title anyone may change, and the id almost nobody may ────────
+
+async def _session_rename(request: web.Request) -> web.Response:
+    """POST /admin/sessions/rename {character, session, archived?, title} OR
+    {character, session, archived?, new_id}: rename the display title, or the
+    file itself.
+
+    Exactly one of the two fields — both, or neither, is a 400, because the two
+    are different acts and the route will not guess which one was meant.
+
+    **title** is the ordinary rename and is free: it writes one metadata field
+    and moves nothing, so nothing can be left pointing at a name that is gone.
+    An empty title removes it. 200 `{ok, session_id, title}` — `title` is null
+    when it was removed.
+
+    **new_id** renames the FILE, and the id is what the memory record, the
+    compaction queue and the hold marker know the session by. So it is offered
+    only when `verbs.session_references` is empty; otherwise 409 with the
+    reasons, in the words a person can act on ("rename its title instead").
+    200 `{ok, session_id, previous_id}`.
+
+    The order is shape, companion, the live-session guard, then the file. The
+    answer carries ids and a title. Nothing is logged: not the path, not the
+    title (which is the person's words), not a line of the conversation.
+    """
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001 — a bad body is a 400, not a traceback
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    character = str(body.get("character") or "")
+    session = str(body.get("session") or "").removesuffix(".json")
+    if not character or not session:
+        return web.json_response(
+            {"ok": False, "error": "character and session required"}, status=400)
+    if not verbs_mod.valid_session_id(session):
+        return web.json_response({"ok": False, "error": "invalid session id"},
+                                 status=400)
+    wants_title = "title" in body
+    wants_id = "new_id" in body
+    if wants_title == wants_id:
+        return web.json_response(
+            {"ok": False,
+             "error": "rename takes exactly one of title or new_id"}, status=400)
+    if not _known_character(character):
+        return web.json_response({"ok": False, "error": f"unknown character {character!r}"},
+                                 status=404)
+    resp = _guarded(request, character)
+    if resp is not None:
+        return resp
+
+    archived = bool(body.get("archived")) or \
+        request.query.get("archived") in ("1", "true", "yes")
+    try:
+        verbs_mod.resolve_session_path(character, session, archived=archived)
+    except verbs_mod.SessionPathError as exc:
+        if exc.reason == "no such session" and _already(character, session,
+                                                        archived=not archived):
+            where = "archived" if not archived else "on the shelf"
+            return web.json_response(
+                {"ok": False, "error": f"no such session — that id is {where}"},
+                status=404)
+        status = 400 if exc.reason == "invalid session id" else 404
+        return web.json_response({"ok": False, "error": exc.reason}, status=status)
+
+    if wants_title:
+        try:
+            stored = verbs_mod.set_session_title(character, session,
+                                                 body.get("title"),
+                                                 archived=archived)
+        except verbs_mod.SessionTitleError as exc:
+            return web.json_response({"ok": False, "error": exc.reason}, status=400)
+        except verbs_mod.SessionPathError as exc:
+            return web.json_response({"ok": False, "error": exc.reason}, status=404)
+        except OSError as exc:
+            return web.json_response(
+                {"ok": False,
+                 "error": f"the session could not be renamed ({type(exc).__name__})"},
+                status=500)
+        return web.json_response({"ok": True, "session_id": session,
+                                  "title": stored})
+
+    new_id = str(body.get("new_id") or "").removesuffix(".json")
+    if not verbs_mod.valid_session_id(new_id):
+        return web.json_response({"ok": False, "error": "invalid session id"},
+                                 status=400)
+    references = verbs_mod.session_references(character, session)
+    if references:
+        return web.json_response({
+            "ok": False,
+            "error": "this session is referenced — rename its title instead",
+            "references": references,
+        }, status=409)
+    try:
+        verbs_mod.rename_session_file(character, session, new_id, archived=archived)
+    except verbs_mod.SessionPathError as exc:
+        if exc.reason == "session id already exists":
+            return web.json_response(
+                {"ok": False, "error": "a session with this id already exists"},
+                status=409)
+        status = 400 if exc.reason == "invalid session id" else 404
+        return web.json_response({"ok": False, "error": exc.reason}, status=status)
+    except OSError as exc:
+        return web.json_response(
+            {"ok": False,
+             "error": f"the session could not be renamed ({type(exc).__name__})"},
+            status=500)
+    return web.json_response({"ok": True, "session_id": new_id,
+                              "previous_id": session})

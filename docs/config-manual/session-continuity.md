@@ -74,8 +74,26 @@ The memory goes first. If the bank cannot be updated, nothing is deleted — the
 
 The first two are Hearth's own and carry nothing you said; the third is not Hearth's to promise, and a verb that quietly implied otherwise would be worse than no verb at all.
 
-**Confirming.** Destroy asks twice. The first call answers a plan — what would go, what cannot be reached — and touches nothing. It also names the exact word to send back: the session's **name** if it has one, its **id** if it does not. Anything else is refused and nothing is touched. "OK" is not a confirmation; the point of typing the name is that you have looked at which conversation this is.
+**Confirming.** Destroy asks twice. The first call answers a plan — what would go, what cannot be reached — and touches nothing. It also names the exact word to send back: the session's **title** if it has one, its **name** if it has that, its **id** if it has neither — whichever the shelf is showing you. Anything else is refused and nothing is touched. "OK" is not a confirmation; the point of typing the name is that you have looked at which conversation this is.
 
 **Where it is offered.** By default only from a browser on the machine Hearth itself runs on — the irreversible verb stays off the phone unless you say otherwise. Setting `destroy_for_all = true` under `[serve.sessions]` in `config/serve.toml` offers it to everyone who holds the access key, wherever they are; it ships off, and it lands at the next restart of Hearth. (There is no separate audience or role system yet: past the door every caller is equally trusted, so "the operator" means "at this machine" until there is one.)
 
 As with archiving, **the running companion's files are read-only**: stop the companion before destroying one of its sessions.
+
+## Renaming a session
+
+Renaming a conversation almost always means giving it a **title** — a display name you pick, shown on the shelf wherever the session appears. A title is free: you can change it as often as you like, on any session, at any time, and nothing else in Hearth is affected by it. That is because nothing else reads it. The title lives in the session's own file, beside its stamps, and it is the only thing renaming touches — the conversation itself is carried across untouched, and clearing a title leaves the file exactly as it was before it had one.
+
+Titles are what a person types: anything from one character to 120, no line breaks, and leading and trailing spaces trimmed off. Emptying the box removes the title rather than setting a blank one.
+
+**Changing the id is a different act**, and it is only sometimes offered. The id is the session's filename, and it is also the key other parts of Hearth file things under — so renaming the file can leave those pointing at a name nothing answers to any more. Hearth checks before it offers, and the things that count are:
+
+- **a memory record** for the session (and each of its compaction epochs) — and with it the entry in the memory bank, which is filed under the same id;
+- **a queued compaction** naming the session — one waiting to run, running, or one that failed and is still on the queue;
+- **the hold marker**, when it is holding this session by name.
+
+If none of those knows the session, the id can be changed and the file simply moves. If any of them does, the rename is refused and Hearth tells you *what* knows it — not as a warning to click past, but as the answer: give the session a title instead, which is the rename that was wanted nearly every time anyway. (A conversation whose memory has been forgotten, or one that never banked any, is free to be renamed outright.)
+
+Things that do *not* count: a line in the log, the panel's own view of the moment, a copy of the conversation you exported somewhere else. Those record what was true when they were written; none of them goes looking for the file later.
+
+As with archiving and destroying, **the running companion's files are read-only** — including their titles. Stop the companion first.
