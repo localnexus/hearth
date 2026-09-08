@@ -16,3 +16,12 @@ start) unless explicitly held.
 | `--discard-held <name>` | `stop.sh` | True-delete ONE held session (immediate). Bare/`--all` wipe of **all** held is irreversible → requires typing **`HEARTH`** to confirm (refused non-interactively). |
 
 **Bare `./start.sh`:** interactive TTY → a metadata-only **chooser** (`0`=new · N=resume · Enter=cancel) listing every saved session; non-interactive → falls through to fresh (nothing is discarded), except a hard **exit-2 guard** when a recall-only leftover is present (automation never silently discards the privacy tier's one recovery chance). Resume mismatch → **warns, never blocks**; malformed file → fresh fallback. See the [runbook](../runbook/03.5-session-continuity.md) and [debugging/session-continuity-faults.md](../debugging/session-continuity-faults.md).
+
+## Getting a session file out
+
+The control panel offers two ways to reach a saved session's file, and which one you want depends on where you are sitting.
+
+- **Reveal** shows the file in the Finder. It only means something when the browser is on the same machine as Hearth, so from a phone or another computer it is refused with a note saying to download instead.
+- **Download** hands you the file itself, from anywhere the panel reaches. The file is your conversation — the persona prompt is never in it — so it leaves unchanged and with nothing stripped out.
+
+Both work from a session id and never from a path you type: a session that is not this companion's own is refused, and the refusal says so without naming any location on disk.

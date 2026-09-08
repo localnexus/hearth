@@ -93,9 +93,11 @@ class AdminRoutes(AioHTTPTestCase):
         await super().asyncTearDown()
 
     async def test_bearer_required(self):
-        for path in ("/admin/state", "/say"):
+        for path in ("/admin/state", "/admin/sessions", "/admin/sessions/file", "/say"):
             resp = await self.client.get(path)
             self.assertEqual(resp.status, 401, path)
+        resp = await self.client.post("/admin/sessions/reveal", json={})
+        self.assertEqual(resp.status, 401, "/admin/sessions/reveal")
 
     async def test_state_shape(self):
         resp = await self.client.get("/admin/state", headers=self.BEARER)

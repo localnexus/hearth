@@ -33,8 +33,13 @@ placeholder or nothing has been said on this install — /admin/state carries
 those two facts as first_run.
 
 GET /admin/sessions lists the resume shelf (SessionMeta only — ids, names,
-counts, stamps; conversation content is never read out). /admin/memory is the
-record-level curation surface (curation.py): digest views + a
+counts, stamps; conversation content is never read out). Two routes beside it
+get a session FILE out, the same contract holding: POST /admin/sessions/reveal
+shows it in the Finder (fixed argv, and a 409 when the browser is not on this
+machine — the download is the off-machine answer), and GET
+/admin/sessions/file streams the bytes as a download without parsing them.
+
+/admin/memory is the record-level curation surface (curation.py): digest views + a
 preview-then-confirm forget — the memory CLI's web half, living here because
 the write-layer rule (c) puts every memory mutation behind this door.
 POST /admin/bot/start
@@ -72,7 +77,7 @@ having is one you can read in one place:
                   attach an Authorization header
     state.py      /admin/state's reachability probes, and the declared
                   actuators (list + run)
-    sessions.py   the resume shelf
+    sessions.py   the resume shelf, plus reveal and download
     lifecycle.py  bot start/stop, manual compaction, daemon restart
     switching.py  switch-companion: the live handoff, the supervised restart,
                   and the routing between them
@@ -107,7 +112,8 @@ from .entry import (
     _LAUNCH_PAGE, _PAIR_MAX_TRIES, _PAIR_PAGE, _PAIR_TTL_S, _cookie, _launch,
     _pair_claim, _pair_mint, _pair_ui)
 from .state import _actuator_run, _actuators_get, _http_alive, _state
-from .sessions import _sessions
+from .sessions import (
+    REVEAL_TIMEOUT_S, _known_character, _session_file, _session_reveal, _sessions)
 from .lifecycle import _bot_start, _bot_stop, _compact_start, _daemon_restart
 from .switching import (
     _FACADE_NOTE, _do_restart, _switch_get, _switch_live_get, _switch_post,
@@ -170,6 +176,8 @@ def build_mount(sup_cfg: dict):
         app.router.add_get("/admin/launch", _launch)
         app.router.add_get("/admin/state", _state)
         app.router.add_get("/admin/sessions", _sessions)
+        app.router.add_post("/admin/sessions/reveal", _session_reveal)
+        app.router.add_get("/admin/sessions/file", _session_file)
         app.router.add_post("/admin/bot/start", _bot_start)
         app.router.add_post("/admin/bot/stop", _bot_stop)
         app.router.add_post("/admin/compact", _compact_start)
