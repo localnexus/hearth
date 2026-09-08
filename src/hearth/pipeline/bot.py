@@ -130,6 +130,11 @@ import hearth.control.features.memory_status  # noqa: F401
 #                      turn_echo.py): a read of the LLMContext this process
 #                      already holds, so it needs no tap and no attach call.
 import hearth.control.features.turn_echo  # noqa: F401
+#   /presence        — the talk's presence state, read-only (features/presence.py):
+#                      bot_speaking · user_speaking · muted, for anything beside
+#                      Hearth that reacts to the conversation. Its PresenceTap is
+#                      wired after the VAD in build_pipeline, which attaches it.
+import hearth.control.features.presence  # noqa: F401
 # Already pulled in by config_profiles; imported explicitly because bot core calls its
 # startup override-scrub below (remove that call too if these feature imports ever go).
 import hearth.control.features.config_knobs  # noqa: F401
@@ -224,6 +229,7 @@ async def build_pipeline(
         transport.input()
         → mute_gate    (MuteGate: drops InputAudioRawFrame when muted — before VAD)
         → vad          (VADProcessor: Silero VAD → VADUser{Started,Stopped}SpeakingFrame)
+        → presence_tap (PresenceTap: tracks the VAD user frames for GET /presence)
         → stt          (MLX-Whisper VAD-segmented chunks → TranscriptionFrame)
         → user_agg     (aggregates transcriptions; turn-taking + barge-in)
         → llm          (OpenAILLMService pointing at your OpenAI-compatible server)
@@ -381,6 +387,11 @@ async def build_pipeline(
     # so /say can decide whether to prepend an InterruptionFrame).
     speaking_tap = SpeakingTap()
 
+    # PresenceTap after VAD (reads VADUserStarted/StoppedSpeaking at their source
+    # for the read-only /presence route; features/presence.py owns the route).
+    presence_tap = hearth.control.features.presence.PresenceTap()
+    hearth.control.features.presence.attach(presence_tap)
+
     # Session recording. Two passive taps + a Recorder driven by the panel's Record
     # button. Disarmed →
     # byte-identical pass-throughs (the measure-tap contract). Captures land in the
@@ -471,6 +482,7 @@ async def build_pipeline(
         mute_gate,
         mic_record_tap,      # M7 RECORD (passive, armed via panel): mic stem — after the gate → Mute honored
         vad,
+        presence_tap,        # PRESENCE (passive): user_speaking for GET /presence
         stt,
         measure_a,           # MEASURE (log-only, gated): pre-finalization signal
         user_agg,
