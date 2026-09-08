@@ -2,137 +2,135 @@
   <img src="docs/brand/hearth-mark-400.png" width="200" alt="Hearth — a flame in a fireplace, inside an amber ring">
 </p>
 <h1 align="center">Hearth</h1>
-<p align="center"><strong>A fully-local, private, persistent voice companion.</strong></p>
+<p align="center"><strong>A voice companion that lives on your own computer.</strong></p>
 
-You talk; it listens, thinks, and talks back — the whole conversation running on your own machine, with no account, no cloud
-call, and nothing leaving the box once the models are cached.
+You talk. It listens, thinks, and talks back in a voice you chose. The whole conversation
+happens on your own Mac: no account, no subscription, and nothing leaves the machine.
 
 Hearth is a [Local Nexus](https://github.com/localnexus) project — *local infrastructure,
 sovereign inference.*
 
-Hearth is a voice-conversation pipeline built on [Pipecat](https://github.com/pipecat-ai/pipecat):
+## What a talk is like
 
-```
-mic → VAD → STT → LLM → TTS → speaker
-```
+You press Start on a web page, say hello, and in under a second a voice answers. You
+keep talking the way you would on a phone call; there is no button to press between turns and
+no typing. When you stop, the conversation is saved as a file in a folder on your computer, and
+you can open it again later or throw it away.
 
-Your microphone audio is gated by voice-activity detection, transcribed to text, sent to a
-local language model, and the reply is spoken back through a local text-to-speech voice —
-in a continuous, low-latency loop. Every stage runs locally against endpoints you own.
+## What you get
+
+- **It talks back in a voice you chose.** A clean, rights-free voice comes with it. You can
+  also give it a short recording of a voice you have the right to use, and it will speak in
+  that voice.
+- **It can remember you between talks.** Turn memory on and it keeps notes about you across
+  conversations, in plain files you can read and delete.
+- **It all stays on your computer.** No cloud service is in the loop. Once the models are
+  downloaded, it works with the internet off.
 
 > **Status: early public release.** The core loop is real and used daily, but this is a
-> young public project. Expect rough edges, thin docs in places, and setup that assumes some
-> comfort on the command line. Issues and questions are welcome.
+> young project. Expect rough edges, thin docs in places, and setup that assumes some comfort
+> with a terminal window. Issues and questions are welcome.
 
-## What makes it different
+## Is this for me?
 
-- **Local by construction.** The pipeline targets endpoints on your own machine. There is no
-  telemetry, no phone-home, no hosted API in the default path.
-- **Bring your own everything.** Hearth ships the *pipeline* and the *cloning capability*, not
-  the heavy or rights-encumbered pieces. You supply the model weights, the inference server, and
-  any voices you want beyond the default. This keeps the project small, permissively licensed,
-  and puts the choices that carry legal or ethical weight (which model, whose voice) in your
-  hands.
-- **Persistent.** A companion you configure once and keep — its persona, its voice, its
-  settings, and its conversations live in plain files in one directory of its own (in this
-  checkout, or anywhere you point `HEARTH_DATA`), not in someone else's account.
+Three questions. If the answer to all three is yes, keep reading.
 
-## Requirements — two tiers
+1. **Do you have a Mac with an Apple chip (M1 or later) and at least 64 GB of memory?** Hearth
+   runs a large language model locally, and that takes memory. Smaller setups can work with
+   lighter models; see the next section.
+2. **Are you willing to install a few programs and run some commands?** The install is one
+   command, and the guide walks you through the rest, but there is no app-store button yet.
+3. **Do you want it to stay on your machine?** That is the whole point of Hearth. If you would
+   rather use a hosted chat service, this is not the project for you.
 
-Hearth is designed to run on hardware **you** control. Two tiers are supported:
+## Can my computer run it?
 
-- **Gold tier — sovereign local (recommended).** Everything runs on your own Apple Silicon
-  Mac: the model server, the speech models, the pipeline. Nothing is rented, nothing is remote.
-  This is the tier the project is tuned for today. The Mac-only speech chain installs via the
-  `hearth[mac]` extra.
-- **Silver tier — rented raw GPU with root.** A GPU box you rent but administer as root (you
-  install the stack, you hold the keys). Less sovereign than gold, but still *your* stack on a
-  machine you fully control. The NVIDIA/CUDA path (`hearth[cuda]`) is a placeholder today —
-  its contents are still being decided.
+| Your Mac's memory | What to expect |
+|---|---|
+| 16 to 24 GB | Not enough for the default setup. The computer runs out of room and the voice stutters. |
+| 32 to 48 GB | Works with a smaller model. Expect it to feel tight. |
+| 64 to 96 GB | The practical minimum for the default model. |
+| 128 GB or more | Comfortable. Room for the full conversation length and a second model. |
 
-Provider and cloud chat APIs are **not** a supported tier. Hearth is a local companion; a
-managed API in the loop would defeat the point.
+Hearth needs about **60 GB of free disk** (most of it is the model you download) and a working
+microphone and speaker. It was built and measured on Apple chips; Intel Macs cannot run it. A
+rented Linux machine with an NVIDIA card is a planned second path, not a finished one.
 
-Sizing detail (memory floor, disk, measured latency, which chips are fast enough) lives in
+Details, measured numbers, and what makes a lighter setup work:
 [Hardware requirements](docs/HARDWARE-REQUIREMENTS.md).
 
-## Quickstart (shape)
+## Get it running
 
-> These are the shape of the steps, not a turnkey script — see the guides under `docs/` for
-> the detail, and adjust for your machine.
+1. **Install.** One command downloads Hearth, sets up its environment, and fetches the speech
+   models (about 5 GB, it asks first). It stops and tells you if it needs something only you can
+   do, like typing your password. → [Installing Hearth](docs/installing.md)
+2. **Bring a model.** Hearth does not ship the language model. You download one and run it with
+   a small local model server. The guide names the one we use. → [Installing Hearth, step 2](docs/installing.md)
+3. **Talk.** A first-run setup creates your access key and turns the web pages on, then offers
+   to start Hearth. Open the address it shows in your browser, press Start, and speak first;
+   there is no greeting.
 
-1. **Install, in one command.** Hearth is not on PyPI (the `hearth` name there belongs to an
-   unrelated project); this script installs it from source:
+<details>
+<summary>The commands, for the reader who wants them now</summary>
 
-   ```bash
-   curl -fsSL https://raw.githubusercontent.com/localnexus/hearth/main/install.sh | bash
-   ```
+```bash
+# 1. install (or: git clone https://github.com/localnexus/hearth && cd hearth && ./install.sh)
+curl -fsSL https://raw.githubusercontent.com/localnexus/hearth/main/install.sh | bash
 
-   It installs the system tools it needs with Homebrew (PortAudio, `uv`, `llama.cpp`), clones
-   Hearth to `~/hearth`, builds the Python environment, fetches the speech models (~4.6 GB, asks
-   first), then hands over to the first-run setup (step 3). Every step checks first and reports
-   one line; re-running repairs. Prefer to read it first? `git clone
-   https://github.com/localnexus/hearth && cd hearth && ./install.sh` is the same script. Every
-   step as commands you run yourself: [Installing by hand](docs/installing-by-hand.md); the full
-   walkthrough: [Installing Hearth](docs/installing.md).
+# 3. first-run setup, then start
+.venv/bin/python -m hearth.init
+.venv/bin/python -m hearth.serve      # then open http://127.0.0.1:65001/admin/launch
+```
 
-2. **Bring a model.** Download GGUF weights for a chat model you like and serve them with
-   [`llama-server`](https://github.com/ggml-org/llama.cpp) (from llama.cpp), which exposes an
-   OpenAI-compatible endpoint. Hearth targets that endpoint — **no model server is bundled.**
-   (LM Studio works too as an alternative workbench, but `llama-server` is the recommended,
-   regression-stable default.)
+Hearth is not on PyPI (the `hearth` name there belongs to an unrelated project). Start Hearth
+from a terminal window, because macOS grants the microphone to the terminal app, not to
+Python. Every step as commands you run yourself: [Installing by hand](docs/installing-by-hand.md).
+</details>
 
-3. **First run.** One command configures the install — copies the starter config files, creates
-   your access key, switches the web pages on, and records your model if the server is up:
+## Make it yours
 
-   ```bash
-   .venv/bin/python -m hearth.init
-   ```
+- **A voice.** Record 10 to 15 seconds of clean speech, drop it in a folder, and point Hearth
+  at it. Only clone a voice you have the right to use, and never share a cloned voice of a real
+  person without their consent. → [Bring your own voice](docs/bring-your-own-voice.md)
+- **A character.** Write who the companion is in a plain text file: name, manner, what it cares
+  about. → [Authoring a character](docs/authoring-a-character.md)
+- **Memory.** Off until you turn it on. → [Memory](docs/memory.md)
 
-   It prints the key once, then offers to start Hearth right there. Re-running is safe.
+## Where your words live
 
-4. **Add a voice.** A rights-clean default voice ships with `characters/example/`. To use your
-   own, drop one clean 10–15 s reference clip into a voice bundle and point a `voice.toml` at
-   it — see [Bring your own voice](docs/bring-your-own-voice.md).
-
-5. **Talk.** If step 3 started Hearth, open the address it showed. Otherwise start it in a
-   terminal window (macOS grants the microphone to the terminal app, not to Python):
-
-   ```bash
-   .venv/bin/python -m hearth.serve      # then open http://127.0.0.1:65001/admin/launch
-   ```
-
-   Speak first — there is no auto-greeting. The terminal path is still there: `./start.sh
-   --check` then `./start.sh` launches the voice loop directly (`Ctrl-C` or `./stop.sh` to
-   stop); it expects `llama-server` at `http://127.0.0.1:8080/v1` and takes `LM_BASE_URL` /
-   `LM_API_TOKEN` / `LM_PROVIDER=lmstudio` for anything else.
+Everything Hearth knows about you is in one folder on your computer: your settings, your
+characters, your voices, your saved conversations, and its memory notes if you turned memory
+on. They are ordinary files. You can read them, copy them, or delete the folder, and then they
+are gone. Nothing is sent anywhere.
 
 ## Bring-your-own philosophy
 
 Three things Hearth deliberately does **not** bundle:
 
-- **Weights.** You choose and download the model. Hearth is model-agnostic — it speaks to any
-  OpenAI-compatible endpoint.
-- **The server.** No inference server ships. `llama-server` is the recommended default; you
-  install and run it.
-- **Voices.** Beyond the public-domain default, voices are yours to supply. Only ever clone a
-  voice you have the rights to use, and never distribute a cloned voice of a real person
-  without their consent. See [Bring your own voice](docs/bring-your-own-voice.md).
+- **The model.** You choose and download it. Hearth talks to any local server that speaks the
+  common chat API.
+- **The model server.** None ships. `llama-server` from llama.cpp is the recommended default;
+  you install and run it. LM Studio works as an alternative.
+- **Voices.** Beyond the default, voices are yours to supply, under the consent rule above.
 
-## Guides
+This keeps the project small and permissively licensed, and puts the choices that carry legal
+or ethical weight, which model and whose voice, in your hands.
+
+## Go deeper
 
 - [Installing Hearth](docs/installing.md) — every prerequisite, the speech-model fetch, the
   voice-engine smoke test, first launch, updating.
-- [Hardware requirements](docs/HARDWARE-REQUIREMENTS.md) — the two tiers in detail: memory
-  floor, disk, measured latency, and what lowers the floor.
+- [Installing by hand](docs/installing-by-hand.md) — each step as a command you run yourself.
+- [Hardware requirements](docs/HARDWARE-REQUIREMENTS.md) — memory floor, disk, measured
+  latency, and what lowers the floor.
 - [Authoring a character](docs/authoring-a-character.md) — write a persona, lay out a
   character directory.
 - [Bring your own voice](docs/bring-your-own-voice.md) — add a reference clip and a voice
-  descriptor, with the rights/consent expectations.
+  descriptor, with the rights and consent expectations.
 - [The config layers](docs/the-config-layers.md) — which file you edit, which files edit
   themselves, and which one you never print.
-- [Memory](docs/memory.md) — cross-session continuity: the memory seam, the zero-dependency
-  floor, adopted backends, and what enabling it means for what's kept on disk.
+- [Memory](docs/memory.md) — continuity across conversations: the memory seam, the
+  zero-dependency floor, adopted backends, and what enabling it means for what is kept on disk.
 - [Component licensing](docs/COMPONENT-LICENSING.md) — every integrated component and its
   license, and what that means for running or redistributing Hearth.
 - [Glossary](docs/glossary/README.md) — plain-language decoder for this project's acronyms
