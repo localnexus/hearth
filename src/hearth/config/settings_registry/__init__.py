@@ -81,6 +81,7 @@ from .schema_files import (
     TtsBaselineFile,
     VadFile,
     VoiceFile,
+    WeightsDoorTable,
     WeightsFile,
     WeightsHeaderTable,
     WeightsTable,
@@ -153,7 +154,7 @@ __all__ = [
     "OverridesFile", "ProfileFile", "REGISTRY", "SERVE_SPEECH_KNOBS",
     "SchemaError", "ServeTable", "TEMP_CEILING", "TURBO_LIVE_KNOBS",
     "TtsBaselineFile", "VadFile", "VoiceFile", "WeightsFile",
-    "WeightsHeaderTable", "WeightsTable", "generate_manual_pages",
+    "WeightsDoorTable", "WeightsHeaderTable", "WeightsTable", "generate_manual_pages",
     "json_schema", "live_knob_ranges", "llm_knob_facts", "loader_check",
     "strict_check", "vad_fallback",
 ]

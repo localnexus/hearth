@@ -59,6 +59,23 @@ Hearth keeps **roots** (directories it may look in) and **enrolled weights** (a 
 - **Fit is an estimate for the display.** Weights (Σ tensor bytes) + projector + KV at the context + a 1 GiB margin, against this machine's working set (`llama-server --list-devices`, else `sysctl hw.memsize` × 0.75/0.93) minus ~4.6 GB held by the speech stages. The KV term reads `full_attention_interval`: on a hybrid build only every Nth block caches, so 262 144 tokens costs ~5.4 GB on the incumbent, not ~21.5. The server's own `--fit` decides the load; `/props` after load is the truth.
 - **Missing weights are a reported state**, never a fallback: `check` prints `[ERROR] … weights missing — <path> is not there any more` and exits 1. Nothing goes looking for another copy.
 
+### The door's own facts, and the unit rendered from them
+
+A `[server]` table says what one MODEL needs; **`[weights.door]`** in `config/weights.toml` says what the DOOR is, and stays true across model swaps: `label` (the launchd label, `com.hearth.llm` by default — it names the unit file too), `host`/`port`, `api_key_file` (a **PATH**, passed to `--api-key-file` and never opened, printed, or logged), `threads`, `load_mode` (`auto | none | mmap | mlock | mmap+mlock | dio` — the door's own `--load-mode`, which replaces the deprecated `--mlock` / `--mmap` / `--direct-io` trio), `log_file`, `webui = false` (renders `--no-webui`), and `args = []` for anything not modelled. Full commentary: [`config/weights.toml.example`](../../config/weights.toml.example).
+
+`python -m hearth.weights render <model>` composes the three sources into one command line — `[weights]` → `--model` / `--mmproj`, `[server]` → this model's flags (a `true` boolean is a bare flag, `false` is omitted, and a valued flag like `flash-attn = "on"` stays valued; a one-letter key renders as a short flag), `[weights.door]` → the door's own — and writes the launchd unit to `DATA/render/<label>.plist`. The unit's shape is today's: `RunAtLoad`, `KeepAlive {SuccessfulExit = false}`, `ThrottleInterval 10`, both streams to `<log_file>`'s sibling `<name>.launchd.log`, `WorkingDirectory` = the data folder, keys in a fixed order so two renders of one config are byte-identical.
+
+`render --diff [--against <plist>]` (default `~/Library/LaunchAgents/<label>.plist`) compares the rendered argv with a unit already on the machine as **sets of (flag, value)** — order-free, short and long spellings folded together, and two paths that resolve to the same file (a product's symlink vs the enrolled real path) counted equal. Each difference is classified: **`placement`** (`n-gpu-layers`, `main-gpu`, `tensor-split`, `split-mode` — the door's `--fit` manages these, so a hand-written unit that pins them is not in conflict), **`deprecated-form`** (`--mlock` / `--no-direct-io` against `--load-mode`), or **`real`**. Exit 1 on any `real`; that check is what an apply is held behind.
+
+`python -m hearth.weights apply <model>` previews by default and writes only with `--yes`: it copies the rendered unit to `~/Library/LaunchAgents/<label>.plist` (`HEARTH_LAUNCH_AGENTS` points that elsewhere), **archives** whatever was there as `<label>.plist.prev-<date>` rather than deleting it, and prints the two lines for you to run —
+
+```bash
+launchctl bootout gui/$UID/com.hearth.llm
+launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.hearth.llm.plist
+```
+
+— which it never runs itself. It refuses while a companion is running (process truth from the running program's `/admin/state` when it answers; otherwise the door's own `/health` and a plain warning). Rollback is the archived file plus the same two lines. The full order is **enroll → render `--diff` → apply → load**.
+
 Felt version, for the person rather than the spec: [`users-manual/weights-and-where-they-live.md`](../../src/hearth/config/users-manual/weights-and-where-they-live.md).
 
 **Different backend / token** → three env vars, read in `bot.py`'s configuration block:

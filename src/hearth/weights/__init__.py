@@ -18,7 +18,16 @@ live conversation loop imports this package — scanning is an enroll-time act;
 **R5** a scan gives the same answer with every one of those products quit,
 uninstalled, or renamed, because none of them was ever asked.
 
+Since G2 the package also RENDERS the door: `render.py` turns one model's
+enrolled `[weights]`, its `[server]` flags, and the `[weights.door]` table in
+config/weights.toml into the launchd unit that serves it — so the unit file
+stops being a second, hand-kept copy of facts Hearth already holds. `apply`
+puts that unit where launchd reads it, archives whatever was there, and prints
+the two launchctl lines for the operator: it never runs launchctl itself, and
+it refuses while a companion is talking.
+
     python -m hearth.weights roots | scan | list | enroll | unenroll | check
+                                   | render | apply
 """
 
 from __future__ import annotations
@@ -32,7 +41,10 @@ from .header import (
     read_header,
 )
 from .roots import (
+    DEFAULT_LABEL,
+    DoorConfig,
     FALLBACK_LLAMA_SERVER,
+    LOAD_MODES,
     PRODUCT_POINTERS,
     ROLE_SUBDIRS,
     Root,
@@ -86,9 +98,41 @@ from .enroll import (
     unenroll,
     write_weights_table,
 )
+# NOTE the shadowing trap G1 left: `enroll` above is a FUNCTION on this package,
+# so `hearth.weights.enroll` never reaches the submodule. `render` is the same
+# story in reverse — the name below is the RENDER FUNCTION's module, imported
+# explicitly by every caller (`from hearth.weights import render as render_mod`).
+from .render import (
+    DEPRECATED_LOAD_FLAGS,
+    Applied,
+    Difference,
+    Guard,
+    PLACEMENT_FLAGS,
+    RenderedUnit,
+    apply_unit,
+    archive_name,
+    build_argv,
+    build_plist,
+    classify,
+    companion_guard,
+    diff_argv,
+    diff_unit,
+    door_argv,
+    launch_agents_dir,
+    launchctl_lines,
+    launchd_log_path,
+    read_program_arguments,
+    render_unit,
+    server_argv,
+)
 
 __all__ = [
-    "Budget", "Candidate", "EnrolledWeights", "Estimate", "Finding",
+    "Applied", "Budget", "Candidate", "Difference", "DoorConfig",
+    "EnrolledWeights", "Estimate", "Finding", "Guard", "RenderedUnit",
+    "apply_unit", "archive_name", "build_argv", "build_plist", "classify",
+    "companion_guard", "diff_argv", "diff_unit", "door_argv",
+    "launch_agents_dir", "launchctl_lines", "launchd_log_path",
+    "read_program_arguments", "render_unit", "server_argv",
     "GGUF_MAGIC", "HeaderFacts", "Root", "WeightsConfig", "WeightsError",
     "attention_layers", "check", "enroll", "enrolled_models", "estimate",
     "identity", "is_gguf", "kv_bytes", "landing_dir", "llama_server_path",

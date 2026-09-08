@@ -6,7 +6,8 @@ here.*
 
 **Authoritative sources:** the control panel → `docs/runbook/02.5-control-panel.md`; the Hearth on/off switch →
 `config/serve.toml.example`; the launch page's `/admin` surface →
-[The one-button switch](the-one-button-switch.md). This page only *maps* them.
+[The one-button switch](the-one-button-switch.md); the model server's own service unit →
+[Weights, and where they live](weights-and-where-they-live.md). This page only *maps* them.
 
 ---
 
@@ -21,6 +22,7 @@ table carries both, plus who owns the process and how to check it's up — all *
 | **:65000** | The **control panel** — drive turns without speaking, live status, and (with the launch page) the COMPANION switcher | the voice companion — it lives *inside* that process and dies with it | **loopback** `127.0.0.1` by default | Nothing — the loopback bind *is* the switch. `WEB_HOST=0.0.0.0` opts it onto the LAN (owner opt-in); `WEB_PORT` moves it |
 | **:8080** | **Your model server** — `llama-server`'s default port. Not Hearth's: you run it, Hearth is its client | yours (`llama-server`, or LM Studio on `:1234`) | yours to choose | yours to choose. `LM_BASE_URL` / `LM_API_TOKEN` tell Hearth where and how |
 | **:65001** | **Hearth** itself (optional) — one OpenAI-compatible `/v1` door (chat, voice-out, opt-in STT-in), plus the `/admin` launch page when that switch is on | `python -m hearth.serve` (or the companion's in-process attach) | **loopback** `127.0.0.1` by default | **Access key, always on** — there is no unauthenticated mode. Only `/health` answers without it |
+| **no port of its own** | The **service unit that keeps your model server up** — on a Mac, a launchd job (`com.hearth.llm` by default) whose whole command line is the model server's flags. `python -m hearth.weights render <model>` builds it from your config and `apply` puts it in place; the two lines that stop and start it are printed for you to run | the system's service manager — it owns the process on `:8080`, and brings it back after a reboot | n/a — it opens nothing itself | You: the unit file, and the two `launchctl` lines. Hearth writes the file and never runs them |
 | **:8555** | A **speech server** (`mlx_audio.server`) — what *Hearth* proxies to for voice notes and transcription. The desk loop needs none of this: its TTS and STT run in-process | yours to run | **loopback** `127.0.0.1` | The loopback bind. Personal voices never leave the machine |
 
 Memory sidecars, if you enable the richer backend, are **children of Hearth's own process** on loopback

@@ -91,6 +91,29 @@ ModelFile.model_rebuild()  # ModelFile.weights forward-references WeightsTable
 
 # ── config/weights.toml — the roots ──────────────────────────────────────────
 
+class WeightsDoorTable(_Cfg):
+    """`[weights.door]` — the DOOR's own facts, as against any one model's.
+
+    Read by the unit renderer (`python -m hearth.weights render`) and by
+    nothing in the live loop. `api_key_file` is a PATH: it is passed to the
+    door as `--api-key-file` and never opened, printed, or logged.
+    """
+    label: str = Field("com.hearth.llm", description="launchd label the door runs under")
+    host: str = Field("127.0.0.1", description="address the door listens on (loopback by default)")
+    port: int = Field(8080, ge=1, le=65535, description="port the door listens on")
+    api_key_file: Optional[str] = Field(
+        None, description="PATH to the door's access key — never the key itself, never read here")
+    threads: Optional[int] = Field(None, ge=1, description="`--threads`; unset lets the door decide")
+    load_mode: Optional[Literal["auto", "none", "mmap", "mlock", "mmap+mlock", "dio"]] = Field(
+        None, description="`--load-mode`: how the weights are brought into memory "
+                          "(replaces the deprecated --mlock / --mmap / --direct-io trio)")
+    log_file: Optional[str] = Field(
+        None, description="`--log-file`; launchd's own capture goes beside it as <name>.launchd.log")
+    webui: bool = Field(False, description="serve the door's built-in web UI (off: renders --no-webui)")
+    args: list[str] = Field(default_factory=list,
+                            description="extra argv tokens appended verbatim — anything not modelled here")
+
+
 class WeightsFile(_Cfg):
     roots: list[str] = Field(default_factory=list,
                              description="directories Hearth may look in for weights (~ expanded)")
@@ -105,6 +128,9 @@ class WeightsFile(_Cfg):
                                         description="the door binary, used to read this machine's memory "
                                                     "budget and to validate [server] keys; defaults to the "
                                                     "one on PATH")
+    door: Optional[WeightsDoorTable] = Field(
+        None, description="the door itself — label, address, access-key PATH, load mode, log; "
+                          "read by the unit renderer, never by the live loop")
 
 
 # ── characters/<c>/voices/<v>/voice.toml ─────────────────────────────────────

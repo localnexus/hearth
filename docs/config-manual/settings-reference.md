@@ -136,11 +136,11 @@ Mic, room, and speech-habit calibration — plumbing, never character texture; p
 | `live.stop_secs` | float | `0.5` | 0.2–3.0 | `vad.stop_secs` | silence after speech before 'you finished' |
 | `live.min_volume` | float | `0.6` | 0.0–1.0 | `vad.min_volume` | loudness floor to count as speech |
 
-## `config/weights.toml` — Weights roots
+## `config/weights.toml` — Weights roots and the door
 
 *place scope · operator-owned · load facts · restart: none*
 
-WHERE Hearth is willing to look for model weights — directories, nothing more. The product pointers are exactly that: paths to the folders LM Studio, Ollama and the Hugging Face cache keep files in. No other program's background service, command line, or private cache is ever used, so a scan answers the same with all of them quit or uninstalled. Enrollment itself lives in each model directory's [weights] table; Hearth never downloads, moves, or deletes a weights file. See `python -m hearth.weights`.
+WHERE Hearth is willing to look for model weights — directories, nothing more. The product pointers are exactly that: paths to the folders LM Studio, Ollama and the Hugging Face cache keep files in. No other program's background service, command line, or private cache is ever used, so a scan answers the same with all of them quit or uninstalled. Enrollment itself lives in each model directory's [weights] table; Hearth never downloads, moves, or deletes a weights file. The one other thing this file holds is [weights.door]: the facts that belong to the DOOR rather than to any model — label, address, the PATH to its access key, load mode, log — which the unit renderer turns into a launchd plist. See `python -m hearth.weights`.
 
 All keys below live under the `[weights]` table.
 
@@ -150,6 +150,16 @@ All keys below live under the `[weights]` table.
 | `product_dirs` | bool | `true` |  | — | also point at LM Studio / Ollama / Hugging Face cache directories when they exist — POINTERS ONLY: no other program is ever run, asked, or read for its cache |
 | `landing` | str | — |  | — | Hearth's own folder for weights that arrive from here on, subdivided by role (`llm/` `tts/` `stt/`); defaults to <first root>/hearth |
 | `llama_server` | str | — |  | — | the door binary, used to read this machine's memory budget and to validate [server] keys; defaults to the one on PATH |
+| `door` | table | — |  | — | the door itself — label, address, access-key PATH, load mode, log; read by the unit renderer, never by the live loop |
+| `door.label` | str | `com.hearth.llm` |  | — | launchd label the door runs under |
+| `door.host` | str | `127.0.0.1` |  | — | address the door listens on (loopback by default) |
+| `door.port` | int | `8080` | 1–65535 | — | port the door listens on |
+| `door.api_key_file` | str | — |  | — | PATH to the door's access key — never the key itself, never read here |
+| `door.threads` | int | — | 1– | — | `--threads`; unset lets the door decide |
+| `door.load_mode` | enum(auto | none | mmap | mlock | mmap+mlock | dio) | — |  | — | `--load-mode`: how the weights are brought into memory (replaces the deprecated --mlock / --mmap / --direct-io trio) |
+| `door.log_file` | str | — |  | — | `--log-file`; launchd's own capture goes beside it as <name>.launchd.log |
+| `door.webui` | bool | `false` |  | — | serve the door's built-in web UI (off: renders --no-webui) |
+| `door.args` | list | — |  | — | extra argv tokens appended verbatim — anything not modelled here |
 
 ## `characters/<c>[/voices/<v>]/profile.toml (+ overrides.toml mirrors)` — Companion knob presets
 

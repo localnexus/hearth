@@ -45,3 +45,51 @@ product_dirs = true
 # is a flag this door actually accepts (`--help`). Defaults to the llama-server on
 # your PATH, then /opt/homebrew/bin/llama-server.
 # llama_server = "/opt/homebrew/bin/llama-server"
+
+# ── the door itself ───────────────────────────────────────────────────────────
+# Everything above is about WEIGHTS. This table is about the DOOR: the facts that
+# would still be true if every model on the machine were replaced tomorrow. A
+# model's own flags live in its `[server]` table (config/models/<model>/model.toml);
+# these live here, once. `python -m hearth.weights render <model>` turns the two
+# together with the model's enrolled `[weights]` path into a launchd unit, and
+# `apply` puts that unit where launchd reads it.
+#
+# Uncomment to render a unit. With no table at all the defaults below apply.
+
+#[weights.door]
+
+# The launchd label. It names the unit file too: ~/Library/LaunchAgents/<label>.plist.
+#label = "com.hearth.llm"
+
+# Where the door listens. Loopback unless you have a reason — this is an
+# unauthenticated-by-default local service, and a key file (below) is the only
+# thing between it and anyone else on the network.
+#host = "127.0.0.1"
+#port = 8080
+
+# A PATH to the door's access key, never the key itself. It is passed straight to
+# `--api-key-file` and is never opened, printed, or logged by Hearth.
+#   openssl rand -hex 32 > config/llm-api-key && chmod 600 config/llm-api-key
+#api_key_file = "/Users/<you>/hearth-data/config/llm-api-key"
+
+# Threads for the door. Unset lets it decide.
+#threads = 24
+
+# How the weights are brought into memory — the door's own `--load-mode`:
+#   auto (default) · none · mmap · mlock · mmap+mlock · dio
+# `mlock` keeps the file resident rather than letting the system swap or compress
+# it; `dio` reads it with DirectIO. This one flag replaces the deprecated
+# `--mlock` / `--mmap` / `--direct-io` trio, and a unit still carrying those is
+# reported as a `deprecated-form` difference by `render --diff`, not a real one.
+#load_mode = "mlock"
+
+# The door's own log. launchd's capture of stdout/stderr goes beside it, named
+# <name>.launchd.log.
+#log_file = "/Users/<you>/hearth-data/logs/llm-server.log"
+
+# The door's built-in browser UI. Off renders `--no-webui`; there is no reason to
+# serve a second chat interface next to your companion.
+#webui = false
+
+# Anything not modelled above, appended to the command line verbatim.
+#args = []

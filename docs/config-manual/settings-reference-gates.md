@@ -146,3 +146,4 @@ All keys below live under the `[openclaw]` table.
 | `T4_METRICS` | `0` | pipeline (companion) | 1 = per-turn latency marks in the log |
 | `HEARTH_DEV_RELOAD` | `0` | control panel + Hearth | 1 = re-read page files per request (dev; default reads once at import) |
 | `SERVE_TOKEN` | `(unset)` | Hearth (serve) | access key override — wins over token_source |
+| `HEARTH_LAUNCH_AGENTS` | `~/Library/LaunchAgents` | weights renderer | where `python -m hearth.weights apply` writes the door's launchd unit |

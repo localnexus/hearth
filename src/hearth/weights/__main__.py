@@ -1,6 +1,6 @@
 """python -m hearth.weights — roots, scanning, and enrollment.
 
-Five verbs. The first three only read; the two that write ask twice.
+Seven verbs. The reading ones only read; every one that writes asks twice.
 
   roots
       The directories Hearth will look in, where each came from, and whether it
@@ -25,6 +25,22 @@ Five verbs. The first three only read; the two that write ask twice.
   unenroll <model> [--yes]
       Drop the reference. The weights file is never touched.
 
+  render <model> [--diff] [--against PLIST]
+      The launchd unit this model's config comes to: the whole argv printed,
+      and the plist written to DATA/render/<label>.plist — never into
+      ~/Library/LaunchAgents. With --diff it is compared instead against the
+      unit already on the machine (default ~/Library/LaunchAgents/<label>.plist)
+      and every difference is classified: `placement` (what --fit manages),
+      `deprecated-form` (--mlock / --no-direct-io against today's --load-mode),
+      or `real`. Exit 1 if anything is real.
+
+  apply <model> [--yes]
+      Put that unit where launchd reads it. Without --yes it only shows what it
+      would do. With --yes the file already there is archived beside it first
+      (.prev-<date>, never deleted) and the two launchctl lines are printed for
+      you to run — this command never runs launchctl, and it refuses while a
+      companion is talking.
+
   check [<model>] [--llama-server P]
       Is everything still where it was: present, same size, same file, shards
       intact, projector intact, and every `[server]` key a flag this door
@@ -45,6 +61,7 @@ from pathlib import Path
 from hearth.config import config_loader as cl
 
 from . import fit as fit_mod
+from . import render as render_mod
 from . import roots as roots_mod
 from . import scan as scan_mod
 # Explicit, because the package façade re-exports `enroll` as a FUNCTION: the
@@ -302,6 +319,87 @@ def _cmd_unenroll(model: str, yes: bool) -> int:
     return 0
 
 
+# ── render ───────────────────────────────────────────────────────────────────
+
+def _print_argv(argv: list[str]) -> None:
+    print(f"  {argv[0]}")
+    i = 1
+    while i < len(argv):
+        token = argv[i]
+        nxt = argv[i + 1] if i + 1 < len(argv) else None
+        if nxt is not None and not nxt.startswith("-"):
+            print(f"    {token} {nxt}")
+            i += 2
+        else:
+            print(f"    {token}")
+            i += 1
+
+
+def _cmd_render(model: str, diff: bool, against: str | None) -> int:
+    try:
+        cfg = roots_mod.load_weights_config()
+        if not diff:
+            unit = render_mod.render_unit(model, cfg, write=True)
+            print(f"unit for {model!r} — label {unit.label}")
+            _print_argv(unit.argv)
+            print(f"wrote {unit.path}")
+            print("  not loaded: `apply` puts it where launchd reads it")
+            return 0
+        target = Path(against).expanduser() if against else (
+            render_mod.launch_agents_dir() / f"{cfg.door.label}.plist")
+        unit, differences = render_mod.diff_unit(model, target, cfg)
+    except (WeightsError, cl.ConfigError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(f"rendered {model!r} vs {target}")
+    if not differences:
+        print("  identical — every flag and value matches")
+        return 0
+    width = max(len(d.flag) for d in differences)
+    for d in sorted(differences, key=lambda d: (d.kind != "real", d.flag)):
+        print(f"  {d.kind:<15} {d.flag:<{width}}  rendered {d.shown('rendered')}"
+              f"  ·  on disk {d.shown('live')}")
+    real = [d for d in differences if d.is_real]
+    counts = {kind: sum(1 for d in differences if d.kind == kind)
+              for kind in ("real", "placement", "deprecated-form")}
+    print(f"{counts['real']} real · {counts['placement']} placement "
+          f"(--fit manages these) · {counts['deprecated-form']} deprecated-form "
+          "(--load-mode replaces --mlock/--no-direct-io)")
+    return 1 if real else 0
+
+
+# ── apply ────────────────────────────────────────────────────────────────────
+
+def _cmd_apply(model: str, yes: bool) -> int:
+    try:
+        cfg = roots_mod.load_weights_config()
+        guard = render_mod.companion_guard(cfg)
+        if guard.blocked:
+            print(f"refused — {guard.text}", file=sys.stderr)
+            return 1
+        done = render_mod.apply_unit(model, yes=yes, cfg=cfg)
+    except (WeightsError, cl.ConfigError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(f"apply {model!r} → {done.target}")
+    _print_argv(done.unit.argv)
+    if not guard.certain:
+        print(f"  note: {guard.text}")
+    if not yes:
+        print(f"  would archive the file already there as "
+              f"{render_mod.archive_name(done.target).name}"
+              if done.target.exists() else "  nothing is there today — a fresh unit")
+        print("nothing written — re-run with --yes to write", file=sys.stderr)
+        return 1
+    if done.archived is not None:
+        print(f"  archived the previous unit as {done.archived}")
+    print(f"  wrote {done.target}  (and {done.unit.path})")
+    print("load it yourself, when the moment is yours to choose:")
+    for line in done.lines:
+        print(f"    {line}")
+    return 0
+
+
 # ── check ────────────────────────────────────────────────────────────────────
 
 def _cmd_check(model: str | None, llama_server: str | None) -> int:
@@ -349,6 +447,17 @@ def main(argv: list[str] | None = None) -> int:
     p_un.add_argument("model")
     p_un.add_argument("--yes", action="store_true")
 
+    p_render = sub.add_parser("render", help="the launchd unit this config comes to")
+    p_render.add_argument("model")
+    p_render.add_argument("--diff", action="store_true",
+                          help="compare against the unit already on the machine")
+    p_render.add_argument("--against", help="the plist to compare against "
+                                            "(default ~/Library/LaunchAgents/<label>.plist)")
+
+    p_apply = sub.add_parser("apply", help="put the rendered unit where launchd reads it")
+    p_apply.add_argument("model")
+    p_apply.add_argument("--yes", action="store_true")
+
     p_check = sub.add_parser("check", help="is everything still where it was")
     p_check.add_argument("model", nargs="?")
     p_check.add_argument("--llama-server", dest="llama_server",
@@ -365,6 +474,10 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_enroll(args.model, args.path, args.key, args.mmproj, args.yes)
     if args.verb == "unenroll":
         return _cmd_unenroll(args.model, args.yes)
+    if args.verb == "render":
+        return _cmd_render(args.model, args.diff, args.against)
+    if args.verb == "apply":
+        return _cmd_apply(args.model, args.yes)
     return _cmd_check(args.model, args.llama_server)
 
 

@@ -18,6 +18,11 @@ the source rather than by trusting a review:
   R4  no layout reader is imported by the live conversation loop. The pipeline,
       the running program, and every page route must be reachable without
       `hearth.weights` existing at all.
+  R1+ (G2) the renderer starts NOTHING. It writes a launchd unit and prints the
+      two launchctl lines; it never runs launchctl, never runs the door, and the
+      one path into `~/Library/LaunchAgents` goes through the single injectable
+      helper, so a test can never be pointed at the real one by accident.
+
   R5  a scan is identical with every product absent. The scan tests run with
       none installed by construction; what is checked here is that no product
       SDK could ever be imported.
@@ -153,6 +158,52 @@ class R1_ReadersTouchFilesAndHeadersOnly(unittest.TestCase):
         for name, count in occurrences.items():
             with self.subTest(module=name):
                 self.assertEqual(count, 0)
+
+
+class R1_TheRendererStartsNothing(unittest.TestCase):
+    """G2's half of R1: rendering a unit is a file act, not a process act."""
+
+    def module(self):
+        return PACKAGE / "render.py"
+
+    def test_the_renderer_exists_and_launches_no_program_at_all(self):
+        self.assertTrue(self.module().is_file())
+        self.assertEqual(_launch_calls(_tree(self.module())), [],
+                         "render.py must start no program — not launchctl, not "
+                         "the door itself")
+
+    def test_launchctl_is_only_ever_a_printed_line(self):
+        from hearth.weights import render as render_mod
+
+        lines = render_mod.launchctl_lines(Path("/x/com.example.plist"), "com.example")
+        self.assertEqual(len(lines), 2)
+        self.assertTrue(lines[0].startswith("launchctl bootout "))
+        self.assertTrue(lines[1].startswith("launchctl bootstrap "))
+        # …and the whole package launches nothing, so those strings can only
+        # ever reach a terminal.
+        for path in _package_modules():
+            for call in _launch_calls(_tree(path)):
+                head = _argv_head(call)
+                if head is not None:
+                    self.assertNotIn("launchctl", head)
+
+    def test_the_one_road_to_launchagents_is_the_injectable_helper(self):
+        source = self.module().read_text(encoding="utf-8")
+        body = [line for line in source.splitlines() if '"LaunchAgents"' in line]
+        self.assertEqual(len(body), 1, body)
+        self.assertIn("Library", body[0])
+
+    def test_an_access_key_is_a_path_and_is_never_opened(self):
+        """`api_key_file` reaches the argv; nothing ever reads what is in it."""
+        from hearth.weights import render as render_mod, roots as roots_mod
+
+        door = roots_mod.DoorConfig(api_key_file="/x/llm-api-key")
+        self.assertIn("/x/llm-api-key", render_mod.door_argv(door))
+        source = self.module().read_text(encoding="utf-8")
+        for line in source.splitlines():
+            if "api_key_file" in line:
+                self.assertNotIn("read_text", line)
+                self.assertNotIn("open(", line)
 
 
 class R4_TheLiveLoopNeverImportsTheScanner(unittest.TestCase):

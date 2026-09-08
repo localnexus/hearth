@@ -85,3 +85,15 @@ transcript_dir = "transcripts"
 #timeout_s = 120.0            # overrun kills the command itself (never what it detached)
 #note = "free the LLM server's models (explicit cold stop — warm stays the default)"
 #probe_url = ""               # optional: reachability shown beside the actuator
+#
+# When your model server is kept up by launchd rather than by a product's CLI, the
+# same two actuators are the unit's own stop and start — the exact pair that
+# `python -m hearth.weights apply <model>` prints after it writes the unit file:
+#[serve.supervisor.actuators.lm-unload]
+#command = ["/bin/launchctl", "bootout", "gui/501/com.hearth.llm"]   # 501 = your uid (`id -u`)
+#note = "stop the model server (its launchd unit)"
+#[serve.supervisor.actuators.lm-load]
+#command = ["/bin/launchctl", "bootstrap", "gui/501",
+#           "/Users/<you>/Library/LaunchAgents/com.hearth.llm.plist"]
+#note = "start the model server from the unit `weights apply` wrote"
+#probe_url = "http://127.0.0.1:8080/health"

@@ -52,7 +52,7 @@ weights file is not read again until the model server loads it.
 **Un-enrolling** deletes those lines. Nothing else happens. The file is still on your disk, exactly
 where it was, byte for byte.
 
-## The five things you can ask
+## The seven things you can ask
 
 ```
 python -m hearth.weights roots      # which folders, and where each came from
@@ -60,6 +60,8 @@ python -m hearth.weights scan       # what is in them, and what fits this machin
 python -m hearth.weights enroll <model> --key <what scan called it>
 python -m hearth.weights unenroll <model>
 python -m hearth.weights check      # is it all still there
+python -m hearth.weights render <model>   # the unit your model server would run under
+python -m hearth.weights apply <model>    # put that unit where the machine reads it
 ```
 
 `scan` is the one worth looking at. Each line names a file, its size, its architecture, the context
@@ -71,6 +73,45 @@ storage; it is your call what to do about it, and Hearth will not do anything ab
 
 `enroll` shows you everything it is about to write and then stops. Read it, then run it again with
 `--yes`. Same habit as everywhere else in Hearth.
+
+## Changing the model, end to end
+
+On a machine where the model server is kept up by the system — a launchd unit on
+a Mac, a service file elsewhere — that unit holds a long command line: the weights
+path, the context, the port, the key file, everything. It is the same set of facts
+you already keep in Hearth's config, written a second time by hand, and the two
+drift the moment you change one.
+
+They don't have to be two things. `render` builds that command line **from** the
+config, and `apply` puts the result where the system reads it. So changing the
+model is four steps, each of which shows you what it will do first:
+
+```
+python -m hearth.weights enroll my-model --key <what scan called it> --yes
+python -m hearth.weights render my-model --diff     # what would change, and is any of it real?
+python -m hearth.weights apply  my-model --yes      # writes the unit; prints the two lines to run
+```
+
+and then the fourth step is **yours**: the two lines `apply` printed, which stop
+the old process and start the new one. Hearth prints them and does not run them,
+because restarting a model server mid-conversation is not a decision a tool should
+make for you. `apply` also refuses outright while a companion is running, and
+archives the unit that was already there as `<name>.prev-<date>` — so going back
+is copying one file into place and running the same two lines.
+
+Three facts about `--diff` make it the step worth reading. It compares as *sets of
+flags and values*, so the order the two files list things in doesn't matter. It
+knows that a **placement** flag — how many layers on the GPU, how to split across
+devices — is one the model server works out for itself now, so a hand-written unit
+that pins them and a rendered one that doesn't are the same unit. And it knows one
+spelling from another: `--load-mode mlock` says what the older `--mlock` plus
+`--no-direct-io` pair said. Everything else is a **real** difference, and a real
+difference is the only kind that makes it stop.
+
+The door's own facts — its label, address, the PATH to its access key, how it loads
+the file, where it logs — live in `config/weights.toml` under `[weights.door]`, next
+to the roots. A model's own flags live in that model's `model.toml` under `[server]`.
+That line is the whole design: swap models all day and the door table never moves.
 
 ## What "missing" looks like
 
