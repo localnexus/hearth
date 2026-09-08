@@ -108,6 +108,12 @@ class WeightsConfig:
     landing: str | None = None
     llama_server: str | None = None
     door: DoorConfig = field(default_factory=DoorConfig)
+    #: Did the file actually carry a `[weights.door]` table? The DoorConfig
+    #: above is defaults-applied either way, so this is the only way to tell a
+    #: declared door from an assumed one — and the admin surface needs the
+    #: difference: a machine that never named a door gets no built-in
+    #: load/unload actuators and no Load button.
+    door_declared: bool = False
     source: Path | None = None   # the file it came from, or None for defaults
 
 
@@ -147,6 +153,7 @@ def load_weights_config(path: Path | None = None) -> WeightsConfig:
         landing=table.get("landing"),
         llama_server=table.get("llama_server"),
         door=_door_config(table.get("door"), path),
+        door_declared=isinstance(table.get("door"), dict),
         source=path,
     )
 

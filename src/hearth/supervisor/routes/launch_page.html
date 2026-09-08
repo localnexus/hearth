@@ -85,6 +85,16 @@
   </div>
 </div>
 
+<!-- ui/launch_models.js: enroll → render → apply → load, one row per model. -->
+<div id="modelscard" class="card hidden">
+  <h2>Models</h2>
+  <p class="note">Which weights the door serves. Every button shows what it
+     would do and waits for a second press.</p>
+  <div id="models"></div>
+  <div id="modelsdoor"></div>
+  <div id="modelscan" class="hidden"></div>
+</div>
+
 <div id="actuatorcard" class="card hidden">
   <h2>Externals</h2>
   <p class="note">Declared bring-up commands. Each run holds until the command
@@ -107,6 +117,7 @@
 <script>/*KEY_HELP_JS*/</script>
 <script>/*HEARTH_RESTART_JS*/</script>
 <script>/*LAUNCH_ACTUATORS_JS*/</script>
+<script>/*LAUNCH_MODELS_JS*/</script>
 
 <script>
 "use strict";
@@ -121,6 +132,7 @@ let cookieMinted = false;  // the browser carrier for plain navigation
 function needToken(prompt) {
   show("tokencard", true); show("switchcard", false); show("stopcard", false);
   show("actuatorcard", false); show("firstrun", false);
+  show("modelscard", false);
   $("statusline").textContent = prompt || "locked — enter your access key";
 }
 
@@ -144,7 +156,10 @@ async function refresh() {
   }
   // Externals move on their own clock (and each probe costs a request), so the
   // actuator card refreshes every fourth poll rather than every one.
-  if (tick++ % 4 === 0) LaunchActuators.refresh(api, report);
+  if (tick++ % 4 === 0) {
+    LaunchActuators.refresh(api, report);
+    LaunchModels.refresh(api, report, botUp);
+  }
   const bot = (st.data && st.data.bot) || {};
   const sw = st.data && st.data.switch;
   const ext = (st.data && st.data.externals) || {};

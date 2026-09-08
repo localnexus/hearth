@@ -76,6 +76,12 @@ launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.hearth.llm.plist
 
 — which it never runs itself. It refuses while a companion is running (process truth from the running program's `/admin/state` when it answers; otherwise the door's own `/health` and a plain warning). Rollback is the archived file plus the same two lines. The full order is **enroll → render `--diff` → apply → load**.
 
+### The same four verbs, on the launch page
+
+`/admin/models` (supervisor/models/) is the web half of the commands above, drawn as the launch page's **Models** card: one row per enrolled model carrying `state` (`present | missing | changed`, from `check`'s findings), the fit verdict, a `●` when the door is holding that model's `id`, and the unit's standing (`applied | stale | unapplied`, from the same classified diff) — with **Render**, **Apply** and **Unenroll** beside it, and **Enroll from disk…** opening the scan. Every mutation is preview-then-confirm (`"yes": true` on the second call) and the preview is the artefact itself: the exact `[weights]` block, the whole argv, the classified diff, the archive name. `apply` runs the same companion guard — blocked is a 409, uncertain is a 200 carrying the warning — and still runs no launchctl.
+
+Two facts about that surface. **`api_key_file`'s PATH appears in no response body**: the argv and the diff rows are redacted and the door view answers `"set"` / `"unset"`. And when `config/weights.toml` declares a `[weights.door]`, Hearth registers two **built-in actuators** — `door-unload` (`launchctl bootout gui/<uid>/<label>`) and `door-load` (`launchctl bootstrap gui/<uid> <LaunchAgents>/<label>.plist`, probe `/health`, `timeout_s 60`, `guard = "companion"`) — which the card's **Load** / **Unload** buttons press through the ordinary actuator runner. An actuator you declared yourself under either name wins; ones under other names (a hand-written `lm-load` / `lm-unload` pair) keep working untouched.
+
 Felt version, for the person rather than the spec: [`users-manual/weights-and-where-they-live.md`](../../src/hearth/config/users-manual/weights-and-where-they-live.md).
 
 **Different backend / token** → three env vars, read in `bot.py`'s configuration block:

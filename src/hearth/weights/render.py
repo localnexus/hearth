@@ -279,6 +279,10 @@ def read_program_arguments(plist_path: Path) -> list[str]:
         raise WeightsError(f"cannot read {plist_path} ({type(exc).__name__})") from None
     except Exception as exc:                      # plistlib's own parse errors
         raise WeightsError(f"{plist_path} is not a readable plist: {exc}") from None
+    if not isinstance(data, dict):
+        # An empty <plist/> parses cleanly and comes back as None — not a
+        # parse error, and not a unit either.
+        raise WeightsError(f"{plist_path} holds no unit dictionary")
     argv = data.get("ProgramArguments")
     if not isinstance(argv, list) or not argv:
         raise WeightsError(f"{plist_path} has no ProgramArguments array")

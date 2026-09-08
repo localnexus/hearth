@@ -85,6 +85,7 @@ from .enroll import (
     COMMENT_MARK,
     KEY_ORDER,
     EnrolledWeights,
+    block_text,
     Finding,
     WeightsError,
     check,
@@ -96,6 +97,7 @@ from .enroll import (
     remove_weights_table,
     server_long_flags,
     unenroll,
+    weights_table,
     write_weights_table,
 )
 # NOTE the shadowing trap G1 left: `enroll` above is a FUNCTION on this package,
@@ -139,5 +141,5 @@ __all__ = [
     "load_enrolled", "load_weights_config", "machine_budget", "read_header",
     "remove_weights_table", "resolve_roots", "role_dirs", "scan_all",
     "scan_dir", "scan_ollama", "scan_root", "server_long_flags", "unenroll",
-    "verdict", "write_weights_table",
+    "verdict", "weights_table", "write_weights_table", "block_text",
 ]

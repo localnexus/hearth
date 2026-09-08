@@ -56,6 +56,11 @@ product_dirs = true
 #
 # Uncomment to render a unit. With no table at all the defaults below apply.
 
+# Declaring this table also gives you two BUILT-IN actuators — `door-unload` and
+# `door-load`, the launchctl pair derived from the label, your uid and the unit path —
+# which the launch page's Models card presses as Unload / Load. No serve.toml block
+# needed; see config/serve.toml.example if you would rather write your own.
+
 #[weights.door]
 
 # The launchd label. It names the unit file too: ~/Library/LaunchAgents/<label>.plist.

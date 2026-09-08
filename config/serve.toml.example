@@ -97,3 +97,12 @@ transcript_dir = "transcripts"
 #           "/Users/<you>/Library/LaunchAgents/com.hearth.llm.plist"]
 #note = "start the model server from the unit `weights apply` wrote"
 #probe_url = "http://127.0.0.1:8080/health"
+#
+# You may not need to write that pair at all. When config/weights.toml declares a
+# [weights.door] table, Hearth derives the same two actuators from it and registers
+# them BUILT IN, under the names `door-unload` and `door-load` — same fixed argv, same
+# bounded runner, both guarded by guard = "companion", and the launch page's Models
+# card presses them as Unload / Load. Every fact in them (the label, your uid, the
+# unit path, the /health probe) already lives in [weights.door], so hand-writing them
+# is copying config that exists. Declaring either NAME here overrides the built-in —
+# the file is always the authority; actuators under other names are untouched.

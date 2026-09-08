@@ -18,6 +18,13 @@ the source rather than by trusting a review:
   R4  no layout reader is imported by the live conversation loop. The pipeline,
       the running program, and every page route must be reachable without
       `hearth.weights` existing at all.
+  R1+ (G3) the admin model surface starts nothing either. `supervisor/models/`
+      is the one place outside the CLI allowed to import this package (the §9
+      amendment), and what it hands the operator is a launchd argv as DATA for
+      the actuator frame — a bounded, logged, never-a-child command run by the
+      actuator runner. The package itself spawns nothing at all, and R4 below
+      is untouched by its existence, because it does not live under routes/.
+
   R1+ (G2) the renderer starts NOTHING. It writes a launchd unit and prints the
       two launchctl lines; it never runs launchctl, never runs the door, and the
       one path into `~/Library/LaunchAgents` goes through the single injectable
@@ -204,6 +211,64 @@ class R1_TheRendererStartsNothing(unittest.TestCase):
             if "api_key_file" in line:
                 self.assertNotIn("read_text", line)
                 self.assertNotIn("open(", line)
+
+
+class R1_TheModelSurfaceStartsNothing(unittest.TestCase):
+    """G3's half of R1: the /admin/models package is file work and JSON.
+
+    The two launchctl lines it derives are actuator CONFIG — argv handed to
+    `ActuatorSet`, which is where a bounded, logged, non-child command belongs.
+    Nothing in the package may start a program itself.
+    """
+
+    PACKAGE = _SRC / "hearth" / "supervisor" / "models"
+
+    def modules(self) -> list:
+        return sorted(self.PACKAGE.glob("*.py"))
+
+    def test_the_package_exists_and_is_not_under_routes(self):
+        self.assertTrue(self.PACKAGE.is_dir(), self.PACKAGE)
+        self.assertGreaterEqual(len(self.modules()), 4)
+        for path in self.modules():
+            self.assertNotIn("routes", path.parts,
+                             "R4 scans routes/ — this package must stay beside it")
+
+    def test_no_module_starts_a_program(self):
+        for path in self.modules():
+            with self.subTest(module=path.name):
+                self.assertEqual(_launch_calls(_tree(path)), [],
+                                 f"{path.name} must start nothing — the actuator "
+                                 "runner is what presses a command")
+
+    def test_launchctl_is_only_ever_actuator_argv(self):
+        from hearth.supervisor.models import door as door_mod
+        from hearth.weights import roots as roots_mod
+
+        cfg = roots_mod.WeightsConfig(door_declared=True)
+        derived = door_mod.door_actuators(cfg, uid=501)
+        self.assertEqual(sorted(derived), [door_mod.LOAD, door_mod.UNLOAD])
+        for name, block in derived.items():
+            self.assertEqual(block["command"][0], "/bin/launchctl")
+            self.assertEqual(block["guard"], "companion")
+        # …and no module in the package ever calls one.
+        for path in self.modules():
+            for call in _launch_calls(_tree(path)):
+                self.assertIsNone(_argv_head(call))
+
+    def test_no_door_table_means_no_derived_actuators(self):
+        from hearth.supervisor.models import door as door_mod
+        from hearth.weights import roots as roots_mod
+
+        self.assertEqual(door_mod.door_actuators(roots_mod.WeightsConfig()), {})
+
+    def test_the_key_path_is_redacted_rather_than_reported(self):
+        from hearth.supervisor.models import facts as facts_mod
+
+        argv = ["/x/llama-server", "--api-key-file", "/x/llm-api-key", "--port", "8080"]
+        redacted = facts_mod.redact_argv(argv)
+        self.assertIn("--api-key-file", redacted)
+        self.assertNotIn("/x/llm-api-key", redacted)
+        self.assertIn("8080", redacted)
 
 
 class R4_TheLiveLoopNeverImportsTheScanner(unittest.TestCase):

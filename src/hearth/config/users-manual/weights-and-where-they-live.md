@@ -74,6 +74,9 @@ storage; it is your call what to do about it, and Hearth will not do anything ab
 `enroll` shows you everything it is about to write and then stops. Read it, then run it again with
 `--yes`. Same habit as everywhere else in Hearth.
 
+(If you would rather click than type, all four of these are on the launch page's **Models**
+card — see below.)
+
 ## Changing the model, end to end
 
 On a machine where the model server is kept up by the system — a launchd unit on
@@ -112,6 +115,28 @@ The door's own facts — its label, address, the PATH to its access key, how it 
 the file, where it logs — live in `config/weights.toml` under `[weights.door]`, next
 to the roots. A model's own flags live in that model's `model.toml` under `[server]`.
 That line is the whole design: swap models all day and the door table never moves.
+
+## The same four things, on the launch page
+
+You do not have to type any of that. When the launch page is on, it carries a **Models**
+card, and the card is those four verbs as buttons:
+
+| On the card | What it is |
+|---|---|
+| the row itself | one line per model you have enrolled: its name, whether the file is still there (**✓ present**, **✗ MISSING**, **⚠ changed**), whether it fits this machine, a **●** when your model server is holding that model right now, and whether the unit on disk matches what your config renders to (**applied** / **stale** / **unapplied**) |
+| **Enroll from disk…** | the scan, as a list you can pick from — each line with its size, what it is, whether it fits, and a note if some model already points at it. Choose which model directory to bind it to (or **new…** and a name), and press Enroll |
+| **Render** | draws the command line your config comes to, and every flag the unit on the machine disagrees about, marked *placement*, *deprecated-form* or *real* |
+| **Apply** | shows that same list plus the name it would archive the old unit under, and waits. Press again and it writes the unit — and prints the two lines, which it still does not run |
+| **Load** / **Unload** | those two lines, as buttons. They stop and start the model server through the same watched-command machinery the Externals card uses, so the output goes to a log rather than to your screen, and neither one runs while a companion is up unless you say so twice |
+
+Everything shows you what it would do and waits for a second press — the same habit as the
+`--yes` on the commands, in a place where you can read it. Nothing on the card starts a
+conversation, and nothing on it ever prints your model server's access key or where you
+keep it: the card says the key is *set*, and that is all it will say.
+
+The scan is the one slow button. It walks every root and reads a header per file, which
+on a real model library takes about a minute; the card says so while it waits, and keeps
+the answer until you press **Rescan**.
 
 ## What "missing" looks like
 

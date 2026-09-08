@@ -42,6 +42,17 @@ and the switch's restart rider accept "memory": full | recall-only | off (the
 sitting's --memory posture); a live handoff never does — the mode is set at
 boot and rides a live switch unchanged.
 
+/admin/models is the weights surface (supervisor/models/): the enrolled
+models with their state, fit, residency and unit, a scan of what is on disk,
+and the four preview-then-confirm verbs — enroll, unenroll, render, apply. It
+lives in its OWN package rather than here because guard rail R4's test reads
+every file in this directory and refuses an import of hearth.weights; the
+amendment the design signed off is that the admin model-management surface may
+import it while the bot, the pipeline, serve/app.py and these lifecycle routes
+still may not. When config/weights.toml declares a [weights.door], that package
+also derives the two built-in actuators (door-unload / door-load) the mount
+hands to ActuatorSet below.
+
 The operator can also declare watched externals and actuators:
 [serve.supervisor.watch.<name>] URLs join /admin/state's
 externals, and [serve.supervisor.actuators.<name>] commands — operator-fixed
@@ -67,6 +78,9 @@ having is one you can read in one place:
                   and the routing between them
     proxy.py      the catch-all forward to :65000 and the offline page
 
+The sibling packages the table mounts — curation, roster, settings, firstrun,
+models — sit one level up, beside this one.
+
 The two shells live beside entry.py, which resolves them from __file__.
 
 This __init__ is the façade: it re-exports every name the parts define, so
@@ -85,6 +99,7 @@ from .. import compact_watch
 from .. import curation as curation_mod
 from .. import firstrun as firstrun_mod
 from .. import keeper
+from .. import models as models_mod
 from .. import roster as roster_mod
 from .. import settings as settings_mod
 
@@ -143,8 +158,13 @@ def build_mount(sup_cfg: dict):
         # Stroke 4: watched externals + declared actuators (never children).
         app["watches"] = {str(n): str(dict(w or {}).get("url") or "")
                           for n, w in dict(sup_cfg.get("watch") or {}).items()}
+        # The operator's declared actuators, plus the two BUILT-IN ones derived
+        # from [weights.door] when config/weights.toml declares a door
+        # (models/door.py): door-unload / door-load, the same bounded,
+        # never-a-child frame. A declared name of the same spelling wins, and
+        # actuators declared under other names are untouched.
         app["actuators"] = actuators_mod.ActuatorSet(
-            dict(sup_cfg.get("actuators") or {}),
+            models_mod.with_door_actuators(dict(sup_cfg.get("actuators") or {})),
             log_dir=config_loader.DATA_DIR / "logs" / "actuators",
         )
         app.router.add_get("/admin/launch", _launch)
@@ -172,6 +192,10 @@ def build_mount(sup_cfg: dict):
         # /admin/memory — record-level curation (preview-then-confirm forget +
         # digest views; the CLI's web half, write-layer rule (c)).
         curation_mod.add_routes(app)
+        # /admin/models — enroll → render → apply → load, the weights surface
+        # (its own package, never under routes/: guard rail R4's test reads
+        # every file HERE and refuses an import of hearth.weights).
+        models_mod.add_routes(app)
         # /admin/roster — the onboarding wizard (create-only; facade-hosted
         # operator-layer writes per rule (c); page shell exempt like /admin/launch).
         roster_mod.add_routes(app)

@@ -180,6 +180,32 @@ def _block_lines(table: dict, when: str) -> list[str]:
     return out
 
 
+def weights_table(candidate: Candidate, mmproj: Candidate | None = None,
+                  when: str | None = None) -> dict:
+    """The `[weights]` table one candidate becomes — the value `enroll` writes.
+
+    Split out from `enroll` so a caller can SHOW the write before asking for
+    it: the admin surface's preview renders exactly this table (through
+    `block_text`) and mutates nothing.
+    """
+    return {
+        "path": str(candidate.path),
+        "mmproj": str(mmproj.path) if mmproj is not None else None,
+        "root": candidate.root_name,
+        "layout": candidate.layout,
+        "display_key": candidate.display_key,
+        "size_bytes": int(candidate.size_bytes),
+        "identity": candidate.identity,
+        "enrolled": when or date.today().isoformat(),
+        "header": candidate.header.declared() if candidate.header else {},
+    }
+
+
+def block_text(table: dict, when: str | None = None) -> str:
+    """The lines `write_weights_table` would put in the file, as one string."""
+    return "\n".join(_block_lines(table, when or date.today().isoformat()))
+
+
 def write_weights_table(model_toml_path: Path, table: dict,
                         when: str | None = None) -> None:
     """Replace the [weights] blocks in place, or append them. Nothing else moves."""
@@ -226,19 +252,7 @@ def enroll(model_name: str, candidate: Candidate,
             f"(config/models/example/model.toml.example) to "
             f"{cl.MODELS_DIR / model_name / 'model.toml'} and set its `id` — "
             "then enroll. Hearth never writes into the engine tree.")
-    header = candidate.header.declared() if candidate.header else {}
-    table = {
-        "path": str(candidate.path),
-        "mmproj": str(mmproj.path) if mmproj is not None else None,
-        "root": candidate.root_name,
-        "layout": candidate.layout,
-        "display_key": candidate.display_key,
-        "size_bytes": int(candidate.size_bytes),
-        "identity": candidate.identity,
-        "enrolled": date.today().isoformat(),
-        "header": header,
-    }
-    write_weights_table(target, table)
+    write_weights_table(target, weights_table(candidate, mmproj))
     return target
 
 
