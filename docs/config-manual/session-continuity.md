@@ -38,3 +38,18 @@ What is checked before it is kept:
 - **It gets a fresh id, and it is held.** The name comes from the moment of the deposit, never from the file, so bringing a file in can only ever add to the shelf and never overwrite a conversation already on it. The result is marked **held**, so it is sticky and no sweep will take it, and it is stamped as brought in rather than born here.
 
 A file that is not readable as a session — or one larger than a session file is allowed to be — is refused with a reason about the file, and the reason never quotes a line of what it says.
+
+## Archiving a session
+
+Archiving is putting a conversation aside, not throwing it away. The file moves into a hidden archive folder that sits beside the companion's sessions, and everything about it stays exactly as it was — same bytes, same name, same conversation.
+
+What changes is what stops happening to it:
+
+- It leaves the **resume picker**. An archived session cannot be resumed, and it will not appear on the shelf you pick from when a sitting starts.
+- It leaves the **fresh-start sweep**. The sweep that clears recall-only leftovers never looks in the archive, so a session put aside stays put aside.
+
+What does not change: the file is still yours, still on this machine, still in the companion's own private tree. **Archiving is not a deletion.** Unarchive moves it straight back onto the shelf, and it resumes like it never left. Nothing is ever overwritten either — if a session with the same name is somehow on both sides, the move is refused and told to you rather than silently resolving it.
+
+You can still list, download, and reveal an archived session; the shelf shows the archived ones when you ask for them, and shows the live ones by default.
+
+**The running companion's files are read-only.** While a companion is up, none of its session files can be archived or unarchived — stop the companion first. The reason is honest rather than cautious: the sitting in progress is being written to a file continuously, and Hearth's supervising half cannot know *which* file that is (a fresh sitting names itself inside the companion, after it starts). Fencing off the whole shelf is the only way to be sure the file being written is not the one being moved. Another companion's sessions are unaffected — nothing is holding those.

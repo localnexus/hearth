@@ -41,7 +41,13 @@ machine — the download is the off-machine answer), and GET
 POST /admin/sessions/deposit brings one IN — an uploaded (or pasted) session
 file, checked against the deposit gate in session/verbs.py and written under a
 freshly minted id, so a deposit adds to the shelf and can never replace what is
-on it.
+on it. POST /admin/sessions/archive and /unarchive are the soft verb: a move
+into (and out of) the companion's .archive/, which takes a conversation off the
+resume shelf and out of the fresh-start sweep without deleting anything —
+GET /admin/sessions?archived=1 (or =all) is how the archived ones are read
+back. Both sit behind the live-session guard: while a companion is up its whole
+shelf is read-only, because the supervisor cannot know which single file the
+running bot holds.
 
 /admin/memory is the record-level curation surface (curation.py): digest views + a
 preview-then-confirm forget — the memory CLI's web half, living here because
@@ -81,7 +87,8 @@ having is one you can read in one place:
                   attach an Authorization header
     state.py      /admin/state's reachability probes, and the declared
                   actuators (list + run)
-    sessions.py   the resume shelf, plus reveal, download and deposit
+    sessions.py   the resume shelf, plus reveal, download, deposit, and the
+                  archive/unarchive pair with the live-session guard they share
     lifecycle.py  bot start/stop, manual compaction, daemon restart
     switching.py  switch-companion: the live handoff, the supervised restart,
                   and the routing between them
@@ -117,8 +124,10 @@ from .entry import (
     _pair_claim, _pair_mint, _pair_ui)
 from .state import _actuator_run, _actuators_get, _http_alive, _state
 from .sessions import (
-    DEPOSIT_SUFFIXES, REVEAL_TIMEOUT_S, _known_character, _read_deposit_upload,
-    _session_deposit, _session_file, _session_reveal, _sessions)
+    DEPOSIT_SUFFIXES, REVEAL_TIMEOUT_S, _already, _archive_request, _guarded,
+    _known_character, _move, _read_deposit_upload, _session_archive,
+    _session_deposit, _session_file, _session_reveal, _session_unarchive,
+    _sessions)
 from .lifecycle import _bot_start, _bot_stop, _compact_start, _daemon_restart
 from .switching import (
     _FACADE_NOTE, _do_restart, _switch_get, _switch_live_get, _switch_post,
@@ -184,6 +193,8 @@ def build_mount(sup_cfg: dict):
         app.router.add_post("/admin/sessions/reveal", _session_reveal)
         app.router.add_get("/admin/sessions/file", _session_file)
         app.router.add_post("/admin/sessions/deposit", _session_deposit)
+        app.router.add_post("/admin/sessions/archive", _session_archive)
+        app.router.add_post("/admin/sessions/unarchive", _session_unarchive)
         app.router.add_post("/admin/bot/start", _bot_start)
         app.router.add_post("/admin/bot/stop", _bot_stop)
         app.router.add_post("/admin/compact", _compact_start)

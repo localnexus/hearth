@@ -1,4 +1,4 @@
-"""Supervisor — a session file out (reveal, download) and back in (deposit).
+"""Supervisor — a session file out (reveal, download), in (deposit), aside (archive).
 
 Download hands back the bytes on disk, unchanged and unparsed; reveal hands a
 path to the Finder and nothing to the caller. The no-content-read proof is the
@@ -11,7 +11,12 @@ WRITES a real session: the file it leaves behind is one the store's own load()
 reads and list_sessions lists, marked held and stamped as a deposit. And it
 never REPLACES one: two deposits in the same second are two sessions, because
 the id is minted here and never taken from the upload. The sentinel rides in on
-a deposited file too, so the same silence is checked on the way in.
+a deposited file too, so the same silence is checked on the way in — and on the
+way aside, since S4's archive/unarchive answer in the same loop.
+
+Archive also gives S2's `archived=` flag its first real file: reveal and
+download are pointed at a session that has actually been moved into `.archive/`
+rather than at one written there by hand.
 
 Run:  .venv/bin/python -m unittest discover -s tests
 """
@@ -31,6 +36,7 @@ from aiohttp import web
 from aiohttp.test_utils import AioHTTPTestCase
 
 from hearth import supervisor
+from hearth.config import config_loader
 from hearth.session import session_store, verbs as verbs_mod
 
 SENTINEL = "ZZ-SENTINEL-WHAT-WAS-SAID-ZZ"
@@ -85,7 +91,6 @@ class SessionFileRoutes(AioHTTPTestCase):
         self.session_path = self.sessions_dir / "session-x.json"
         self.on_disk = self.session_path.read_bytes()
 
-        from hearth.config import config_loader
         for attr in ("_DATA", "_ROOT"):
             patcher = mock.patch.object(config_loader, attr, self.root)
             patcher.start()
@@ -206,6 +211,36 @@ class SessionFileRoutes(AioHTTPTestCase):
                                               headers=self.BEARER, json=body)
                 self.assertEqual(resp.status, want, await resp.text())
                 self.assertNotIn(self._tmp.name, await resp.text())
+
+    async def test_download_reaches_a_really_archived_session(self):
+        """S4 gives the archived= flag a real file to hit: archive the session
+        through the verb, and the download still finds it — byte-identical."""
+        verbs_mod.archive_session(CHARACTER, "session-x")
+        resp = await self.client.get(
+            f"/admin/sessions/file?character={CHARACTER}&session=session-x",
+            headers=self.BEARER)
+        self.assertEqual(resp.status, 404, "…and only where it now is")
+        resp = await self.client.get(
+            f"/admin/sessions/file?character={CHARACTER}&session=session-x&archived=1",
+            headers=self.BEARER)
+        self.assertEqual(resp.status, 200, await resp.text())
+        self.assertEqual(await resp.read(), self.on_disk)
+
+    async def test_reveal_reaches_a_really_archived_session(self):
+        verbs_mod.archive_session(CHARACTER, "session-x")
+        seen = {}
+
+        def _argv(path):
+            seen["path"] = Path(path)
+            return [sys.executable, "-c", ""]
+
+        with mock.patch.object(verbs_mod, "reveal_argv", _argv):
+            resp = await self.client.post(
+                "/admin/sessions/reveal", headers=self.BEARER,
+                json={"character": CHARACTER, "session": "session-x",
+                      "archived": True})
+        self.assertEqual(resp.status, 200, await resp.text())
+        self.assertEqual(seen["path"].parent.name, verbs_mod.ARCHIVE_DIR)
 
     async def test_reveal_says_so_where_there_is_no_finder(self):
         with mock.patch.object(verbs_mod, "reveal_argv", lambda path: []):
@@ -337,14 +372,35 @@ class SessionFileRoutes(AioHTTPTestCase):
                     json={"character": CHARACTER,
                           "session": self.a_session(voice="v-nope")})
                 rejected_body = await rejected.text()
+                with mock.patch.object(
+                        config_loader, "load_active_selection",
+                        lambda: {"character": "zz-someone-else", "model": "m1",
+                                 "voice": "v1", "persona": "default"}):
+                    archive = await self.client.post(
+                        "/admin/sessions/archive", headers=self.BEARER,
+                        json={"character": CHARACTER, "session": "session-x"})
+                    archive_body = await archive.text()
+                    archived_shelf = await self.client.get(
+                        f"/admin/sessions?character={CHARACTER}&archived=all",
+                        headers=self.BEARER)
+                    archived_shelf_body = await archived_shelf.text()
+                    unarchive = await self.client.post(
+                        "/admin/sessions/unarchive", headers=self.BEARER,
+                        json={"character": CHARACTER, "session": "session-x"})
+                    unarchive_body = await unarchive.text()
             finally:
                 logger.remove(sink)
         self.assertEqual(shelf.status, 200)
         self.assertEqual(json.loads(shelf_body)["sessions"][0]["turns"], 1)
         self.assertEqual(deposit.status, 200, deposit_body)
+        self.assertEqual(archive.status, 200, archive_body)
+        self.assertEqual(unarchive.status, 200, unarchive_body)
         for label, body in (("shelf", shelf_body), ("reveal", reveal_body),
                             ("refusal", missing_body), ("deposit", deposit_body),
-                            ("deposit refusal", rejected_body)):
+                            ("deposit refusal", rejected_body),
+                            ("archive", archive_body),
+                            ("archived shelf", archived_shelf_body),
+                            ("unarchive", unarchive_body)):
             with self.subTest(response=label):
                 self.assertNotIn(SENTINEL, body, f"{label} must never carry content")
         self.assertIn(SENTINEL, download_body, "the download IS the content")

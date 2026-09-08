@@ -41,6 +41,9 @@ from typing import Optional
 
 SCHEMA = 2  # 2 (2026-08): adds "character" + "persona"; schema-1 files load as persona "default"
 _HOLD_MARKER = ".hold-request"  # stop.sh --hold drops this; the bot honors + consumes it in finally
+ARCHIVE_DIR = ".archive"  # the soft verb's dot-dir (session/verbs.py owns the move);
+                          # hidden from every walker below, so an archived session
+                          # is out of resume and out of the fresh-start sweep
 
 DIR_MODE = 0o700
 FILE_MODE = 0o600
@@ -262,39 +265,64 @@ class SessionMeta:
     origin: Optional[str] = None  # "deposit" for a file brought in from outside;
                                   # None (unwritten) for a session born here, so
                                   # existing files stay byte-identical
+    archived: bool = False  # NOT a file field — it is the LOCATION (.archive/),
+                            # answered by where list_sessions found the file
 
 
-def list_sessions(sessions_dir: Optional[Path] = None) -> list:
+def _meta_of(p: Path, *, archived: bool = False):
+    """One session file → its SessionMeta, or None when it is not readable as
+    one. Content is parsed to count turns and is never carried out."""
+    try:
+        data = load(p)
+    except (ValueError, json.JSONDecodeError, OSError):
+        return None  # malformed → skip; fresh/other files unaffected
+    msgs = data.get("messages", [])
+    turns = sum(1 for m in msgs if isinstance(m, dict) and m.get("role") == "user")
+    return SessionMeta(
+        path=p,
+        session_id=p.stem,
+        model=data.get("model"),
+        voice=data.get("voice"),
+        name=data.get("name"),
+        held=bool(data.get("held", False)),
+        started=data.get("started"),
+        updated=data.get("updated"),
+        turns=turns,
+        persona=str(data.get("persona") or "default"),
+        character=data.get("character"),
+        memory_mode=str(data.get("memory_mode") or "full"),
+        origin=data.get("origin") or None,
+        archived=archived,
+    )
+
+
+def list_sessions(sessions_dir: Optional[Path] = None, *,
+                  include_archived: bool = False) -> list:
     """Return SessionMeta for every readable session file, newest first.
 
     Malformed/empty files are skipped (never crash). Content is never read out.
+
+    ``.archive/`` is invisible by default, and that default is what keeps an
+    archived conversation out of the resume picker and out of the fresh-start
+    sweep: every other walker in this module (ephemeral_orphans, held_sessions,
+    discard_*, hold_latest_orphan, the CLI's list) reads the shelf through this
+    one function, and ``glob("*.json")`` does not descend. ``include_archived``
+    adds the archived files, each marked ``archived=True`` — the only caller is
+    the shelf route answering ``?archived=``.
     """
     sessions_dir = _dir(sessions_dir)
     metas = []
     if not sessions_dir.exists():
         return metas
-    for p in sorted(sessions_dir.glob("*.json")):
-        try:
-            data = load(p)
-        except (ValueError, json.JSONDecodeError, OSError):
-            continue  # malformed → skip; fresh/other files unaffected
-        msgs = data.get("messages", [])
-        turns = sum(1 for m in msgs if isinstance(m, dict) and m.get("role") == "user")
-        metas.append(SessionMeta(
-            path=p,
-            session_id=p.stem,
-            model=data.get("model"),
-            voice=data.get("voice"),
-            name=data.get("name"),
-            held=bool(data.get("held", False)),
-            started=data.get("started"),
-            updated=data.get("updated"),
-            turns=turns,
-            persona=str(data.get("persona") or "default"),
-            character=data.get("character"),
-            memory_mode=str(data.get("memory_mode") or "full"),
-            origin=data.get("origin") or None,
-        ))
+    found = [(p, False) for p in sorted(sessions_dir.glob("*.json"))]
+    if include_archived:
+        archive = sessions_dir / ARCHIVE_DIR
+        if archive.is_dir():
+            found += [(p, True) for p in sorted(archive.glob("*.json"))]
+    for p, archived in found:
+        meta = _meta_of(p, archived=archived)
+        if meta is not None:
+            metas.append(meta)
     metas.sort(key=lambda m: (m.updated or m.started or ""), reverse=True)
     return metas
 
@@ -323,7 +351,10 @@ def resolve_resume_arg(arg: str, sessions_dir: Optional[Path] = None):
         sessions_dir / (arg if arg.endswith(".json") else f"{arg}.json"),
         sessions_dir / f"session-{arg}.json",
     ):
-        if cand.exists():
+        # The name forms name a file DIRECTLY on the shelf: a "name" carrying a
+        # separator (".archive/x") would otherwise be a way to resume out of the
+        # archive, and archived sessions are hidden from resume.
+        if cand.parent == sessions_dir and cand.exists():
             return cand
     for m in list_sessions(sessions_dir):
         if m.name == arg:

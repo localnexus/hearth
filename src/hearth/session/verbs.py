@@ -25,11 +25,19 @@ persona file that exists, that every message carries a role the pipeline knows,
 and that no system message rides in (the store never keeps one, so accepting one
 would be a way to smuggle a prompt past the persona). The reasons it raises are
 about the file, never about what the file says.
+
+Archive is the soft verb: ``archive_session`` moves a file into the companion's
+``.archive/`` and ``unarchive_session`` moves it back, both through the same
+fence and both by ``os.replace`` — nothing is ever removed and nothing is ever
+overwritten. ``live_guard`` is the rule the mutating verbs share: while a
+companion is up, its WHOLE shelf is read-only, because the supervisor cannot
+name the single file the bot holds.
 """
 
 from __future__ import annotations
 
 import ipaddress
+import os
 import re
 import sys
 from pathlib import Path
@@ -41,7 +49,9 @@ SESSION_ID_RE = re.compile(r"[A-Za-z0-9._-]+")
 
 #: The archive convention (build-session-file-management §6.3), a dot-dir
 #: beside the sessions themselves so the shelf answers "archived" from
-#: location rather than from a field.
+#: location rather than from a field. Spelled here AND in ``session_store``
+#: (which must not import this module to walk its own shelf); a test pins the
+#: two spellings equal.
 ARCHIVE_DIR = ".archive"
 
 #: The biggest upload a deposit will read. A 100k-token sitting is about half a
@@ -153,6 +163,68 @@ def reserve_session_path(character: str, session: str, *, archived: bool = False
     if real.exists() or real.is_symlink():
         raise SessionPathError("session id already exists")
     return real
+
+
+# ── archive / unarchive: the soft verb, a move and never a delete ────────────
+
+def archive_session(character: str, session: str) -> Path:
+    """Move a saved session into the companion's ``.archive/`` and return where
+    it landed.
+
+    Both halves pass the fence: the source has to BE there (unarchived), and the
+    destination must NOT be taken. A name that exists on both sides raises
+    rather than resolving the clash — an archive that could overwrite an archive
+    would be a delete wearing the soft verb's name. The ``.archive/`` dir is
+    created 0700 like the sessions dir itself, and the move is ``os.replace``:
+    same filesystem, atomic, the bytes never read.
+    """
+    from hearth.session import session_store  # lazy: keeps this module import-light
+
+    src = resolve_session_path(character, session)
+    dest = reserve_session_path(character, session, archived=True)
+    session_store.ensure_dir(dest.parent)
+    os.replace(src, dest)
+    return dest
+
+
+def unarchive_session(character: str, session: str) -> Path:
+    """The mirror: move an archived session back onto the shelf.
+
+    Same two questions in the other order — it has to be in ``.archive/``, and
+    the live name must be free.
+    """
+    src = resolve_session_path(character, session, archived=True)
+    dest = reserve_session_path(character, session)
+    os.replace(src, dest)
+    return dest
+
+
+# ── the live-session guard: whose shelf is read-only right now ───────────────
+
+def live_guard(character: str, bot_state: str, active_character) -> Optional[str]:
+    """The refusal reason when a mutating verb reaches the RUNNING companion's
+    shelf, or None when the verb may proceed.
+
+    The guard is coarse on purpose. The supervisor knows that a bot is up and
+    which companion ``active.toml`` points at, but it does NOT know which
+    session id that bot holds — a ``--new`` sitting mints its id inside the
+    child and never tells the supervisor. So the honest fence is the whole
+    shelf: while the active companion is up, every one of its session files is
+    read-only, because any one of them could be the file being written. Another
+    companion's shelf is untouched by that — nothing is holding it.
+
+    Process truth, not page state: ``bot_state`` comes from the child's own
+    ``status()`` (an adopted desk bot counts as running just as a managed one
+    does), and anything that is not ``"down"`` — starting, running, stopping —
+    counts as up.
+    """
+    if str(bot_state or "down") == "down":
+        return None
+    if active_character is None or character != active_character:
+        return None
+    return (f"{character} is running — stop the companion first; its session "
+            f"files are read-only while it is up")
+
 
 
 # ── the deposit gate: is this file a session, and is it THIS companion's? ────

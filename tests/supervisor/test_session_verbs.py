@@ -6,6 +6,15 @@ directory or a missing file wearing a session's name — plus the two things the
 fence must NOT refuse: an ordinary session, and one inside `.archive/`. The
 refusal reason is checked for what it does not say: never the path.
 
+The archive round-trip is the third block: a move in, a move back, the private
+0700 dot-dir, and the two ways it must refuse — a name that exists on BOTH
+sides (neither file is touched) and anything the fence already rejects. Nothing
+here ever deletes.
+
+The live-guard matrix is the fourth. The rule is coarse on purpose — the
+running companion's whole shelf, not one file — so the matrix is small: state ×
+whose shelf.
+
 The loopback matrix is here too, because "is the browser on this machine?" is
 the whole difference between reveal and download.
 
@@ -108,6 +117,117 @@ class Confinement(_Rooted):
                 except verbs.SessionPathError as exc:
                     self.assertNotIn("/", exc.reason)
                     self.assertNotIn(self._tmp.name, str(exc))
+
+
+class ArchiveRoundTrip(_Rooted):
+    """The soft verb moves a file and never removes or overwrites one."""
+
+    def archive_dir(self) -> Path:
+        return self.sessions / verbs.ARCHIVE_DIR
+
+    def test_the_constant_is_spelled_the_same_in_the_store(self):
+        from hearth.session import session_store
+        self.assertEqual(verbs.ARCHIVE_DIR, session_store.ARCHIVE_DIR)
+
+    def test_a_session_goes_in_and_comes_back(self):
+        before = (self.sessions / "session-a.json").read_bytes()
+        dest = verbs.archive_session(self.CHARACTER, "session-a")
+        self.assertEqual(dest.parent.name, verbs.ARCHIVE_DIR)
+        self.assertTrue(dest.is_file())
+        self.assertEqual(dest.read_bytes(), before)
+        self.assertFalse((self.sessions / "session-a.json").exists())
+        back = verbs.unarchive_session(self.CHARACTER, "session-a")
+        self.assertEqual(back, (self.sessions / "session-a.json").resolve())
+        self.assertEqual(back.read_bytes(), before)
+        self.assertFalse((self.archive_dir() / "session-a.json").exists())
+
+    def test_the_archive_dir_is_created_private(self):
+        self.assertFalse(self.archive_dir().exists())
+        verbs.archive_session(self.CHARACTER, "session-a")
+        self.assertEqual(oct(self.archive_dir().stat().st_mode)[-3:], "700")
+
+    def test_archiving_what_is_not_there(self):
+        with self.assertRaises(verbs.SessionPathError) as cm:
+            verbs.archive_session(self.CHARACTER, "session-nope")
+        self.assertEqual(cm.exception.reason, "no such session")
+        # …and an already-archived id looks exactly the same from here: the
+        # ROUTE is what turns this into "already archived".
+        verbs.archive_session(self.CHARACTER, "session-a")
+        with self.assertRaises(verbs.SessionPathError) as cm:
+            verbs.archive_session(self.CHARACTER, "session-a")
+        self.assertEqual(cm.exception.reason, "no such session")
+
+    def test_a_collision_is_refused_and_neither_side_is_touched(self):
+        arch = self.archive_dir()
+        arch.mkdir()
+        (arch / "session-a.json").write_text('{"messages": ["archived"]}',
+                                             encoding="utf-8")
+        live = (self.sessions / "session-a.json").read_bytes()
+        old = (arch / "session-a.json").read_bytes()
+        with self.assertRaises(verbs.SessionPathError) as cm:
+            verbs.archive_session(self.CHARACTER, "session-a")
+        self.assertEqual(cm.exception.reason, "session id already exists")
+        with self.assertRaises(verbs.SessionPathError):
+            verbs.unarchive_session(self.CHARACTER, "session-a")
+        self.assertEqual((self.sessions / "session-a.json").read_bytes(), live)
+        self.assertEqual((arch / "session-a.json").read_bytes(), old)
+
+    def test_the_fence_still_holds_on_the_way_in(self):
+        for bad in ("../../../../etc/passwd", ".hold-request", "a/b", ".."):
+            with self.subTest(sid=bad):
+                with self.assertRaises(verbs.SessionPathError) as cm:
+                    verbs.archive_session(self.CHARACTER, bad)
+                self.assertEqual(cm.exception.reason, "invalid session id")
+                with self.assertRaises(verbs.SessionPathError):
+                    verbs.unarchive_session(self.CHARACTER, bad)
+
+    def test_a_symlink_is_never_moved(self):
+        outside = self.root / "outside.json"
+        outside.write_text("{}", encoding="utf-8")
+        (self.sessions / "escape.json").symlink_to(outside)
+        with self.assertRaises(verbs.SessionPathError) as cm:
+            verbs.archive_session(self.CHARACTER, "escape")
+        self.assertIn("link", cm.exception.reason)
+        self.assertTrue(outside.is_file())
+        self.assertTrue((self.sessions / "escape.json").is_symlink())
+
+    def test_no_reason_carries_a_path(self):
+        for sid in ("../x", "session-nope"):
+            try:
+                verbs.archive_session(self.CHARACTER, sid)
+            except verbs.SessionPathError as exc:
+                self.assertNotIn(self._tmp.name, str(exc))
+
+
+class LiveGuardMatrix(unittest.TestCase):
+    """While a companion is up, its WHOLE shelf is read-only — the supervisor
+    cannot name the one file the running bot holds, so it fences all of them.
+    Another companion's shelf is free, and a bot that is down fences nothing."""
+
+    def test_the_running_companions_shelf_is_closed(self):
+        for state in ("running", "starting", "stopping"):
+            with self.subTest(state=state):
+                reason = verbs.live_guard("zz-one", state, "zz-one")
+                self.assertIsNotNone(reason)
+                self.assertIn("zz-one is running", reason)
+                self.assertIn("stop the companion first", reason)
+                self.assertIn("read-only while it is up", reason)
+
+    def test_another_companions_shelf_is_open(self):
+        for state in ("running", "starting", "stopping"):
+            self.assertIsNone(verbs.live_guard("zz-two", state, "zz-one"), state)
+
+    def test_a_bot_that_is_down_fences_nothing(self):
+        for active in ("zz-one", "zz-two", None):
+            self.assertIsNone(verbs.live_guard("zz-one", "down", active))
+            self.assertIsNone(verbs.live_guard("zz-one", "", active))
+            self.assertIsNone(verbs.live_guard("zz-one", None, active))
+
+    def test_no_active_companion_known_is_not_this_ones_problem(self):
+        # The pure rule cannot fail closed on its own — it has no way to tell
+        # "unknown" from "someone else". The ROUTE helper is where an unreadable
+        # active.toml becomes a refusal.
+        self.assertIsNone(verbs.live_guard("zz-one", "running", None))
 
 
 class LoopbackMatrix(unittest.TestCase):

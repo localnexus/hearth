@@ -96,7 +96,8 @@ class AdminRoutes(AioHTTPTestCase):
         for path in ("/admin/state", "/admin/sessions", "/admin/sessions/file", "/say"):
             resp = await self.client.get(path)
             self.assertEqual(resp.status, 401, path)
-        for path in ("/admin/sessions/reveal", "/admin/sessions/deposit"):
+        for path in ("/admin/sessions/reveal", "/admin/sessions/deposit",
+                     "/admin/sessions/archive", "/admin/sessions/unarchive"):
             resp = await self.client.post(path, json={})
             self.assertEqual(resp.status, 401, path)
 

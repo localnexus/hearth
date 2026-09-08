@@ -1,6 +1,6 @@
-"""routes/sessions.py — the resume shelf, getting a file out, and bringing one in.
+"""routes/sessions.py — the resume shelf, a file out, a file in, a file archived.
 
-Four routes, one contract: the route layer never reads a line of what was
+Six routes, one contract: the route layer never reads a line of what was
 said. The shelf answers ids, names, counts and stamps (the list_sessions
 contract); reveal hands a path to the Finder and never to the response;
 download streams the bytes straight off disk without parsing them. File paths
@@ -27,6 +27,21 @@ writes it under a **freshly minted id**. The id never comes from the upload, so
 a deposit can add a conversation to the shelf and can never replace one; the
 reservation refuses a name already taken rather than overwriting it. The answer
 is a count and an id, never a line of the file and never a path.
+
+**Archive** (`POST /admin/sessions/archive`) and **unarchive** are the soft
+verb, and the only pair that MOVES a file: into `sessions/<c>/.archive/` and
+back out. Nothing is removed, nothing is overwritten, and the archived shelf is
+readable through `GET /admin/sessions?archived=1` (or `all`) — the default
+shelf still answers the live sessions only, which is what keeps an archived
+conversation out of the resume picker and out of the fresh-start sweep.
+
+They are also the first routes behind the **live-session guard** (`_guarded`).
+The supervisor knows the bot is up and knows which companion `active.toml`
+points at, but it cannot know which session id a `--new` sitting minted inside
+the child — so the guard is the whole shelf: while the active companion is
+running, every one of its session files is read-only, and another companion's
+are free. An unreadable `active.toml` fails closed. Destroy and rename will
+reuse this exact helper.
 
 The fence they share lives in `hearth.session.verbs` — id shape, no traversal,
 no symlink escape, the resolved path still under the companion's sessions dir —
@@ -67,9 +82,17 @@ async def _sessions(request: web.Request) -> web.Response:
     Conversation content is never read out (the list_sessions contract), and
     file paths are not exposed — session_id is the resume key. ?character=<name>
     lists another companion's shelf (validated against the switch picker's
-    choices); absent, the ACTIVE companion's."""
+    choices); absent, the ACTIVE companion's.
+
+    ?archived= steers WHICH shelf: absent (the default) the live sessions only,
+    which is what the resume picker wants; `1` the archived ones only; `all`
+    both. Every row carries `archived`, so a mixed listing is readable without
+    a second call."""
     from hearth.session import session_store  # lazy: mirrors the package gate idiom
 
+    archived_q = (request.query.get("archived") or "").strip().lower()
+    want_archived = archived_q in ("1", "true", "yes", "only", "all")
+    only_archived = want_archived and archived_q != "all"
     character = request.query.get("character") or None
     if character is not None:
         known = {c["name"] for c in switch_mod.choices()["characters"]}
@@ -82,11 +105,13 @@ async def _sessions(request: web.Request) -> web.Response:
         return web.json_response(
             {"error": f"cannot resolve the active companion ({type(exc).__name__})"},
             status=409)
-    metas = session_store.list_sessions(sdir)
+    metas = session_store.list_sessions(sdir, include_archived=want_archived)
+    if only_archived:
+        metas = [m for m in metas if m.archived]
 
-    def _est_tokens(session_id: str):
+    def _est_tokens(meta):
         try:  # bytes/4 — the same estimator the compaction trigger uses
-            return (sdir / f"{session_id}.json").stat().st_size // 4
+            return meta.path.stat().st_size // 4
         except OSError:
             return None
 
@@ -104,7 +129,8 @@ async def _sessions(request: web.Request) -> web.Response:
             "model": m.model,
             "voice": m.voice,
             "origin": m.origin,
-            "est_tokens": _est_tokens(m.session_id),
+            "archived": m.archived,
+            "est_tokens": _est_tokens(m),
         } for m in metas],
     })
 
@@ -314,3 +340,130 @@ async def _session_deposit(request: web.Request) -> web.Response:
         "turns": sum(1 for m in messages if m.get("role") == "user"),
         "dropped_system_messages": verbs_mod.dropped_system_messages(data, payload),
     })
+
+
+# ── the live-session guard, and the soft verb it first protects ──────────────
+
+def _guarded(request: web.Request, character: str):
+    """The one place a mutating session verb asks "may I touch this shelf?".
+
+    Returns a 409 response to send back, or None to proceed. Process truth is
+    the child's own `status()["state"]` — an adopted desk bot reads as running
+    exactly like a managed one, and `starting`/`stopping` count as up. The
+    rule itself is `verbs.live_guard`, so it can be reasoned about without a
+    request in hand.
+
+    Two ways this fails closed. A `bot_child` that is absent (only tests build
+    an app without one) reads as down, because in that app nothing is running.
+    An `active.toml` that cannot be read is the dangerous case: the companion
+    could be the running one and we cannot tell, so the verb is refused rather
+    than guessed at. Archive and unarchive use this today; destroy and rename-id
+    will use the same helper.
+    """
+    from hearth.config import config_loader  # lazy: mirrors the package gate idiom
+
+    child = request.app.get("bot_child")
+    state = "down"
+    if child is not None:
+        try:
+            state = str((child.status() or {}).get("state") or "down")
+        except Exception:  # noqa: BLE001 — an unreadable child is treated as up
+            state = "running"
+    try:
+        active = config_loader.load_active_selection()["character"]
+    except Exception:  # noqa: BLE001 — cannot tell whose shelf this is → refuse
+        return web.json_response({
+            "ok": False,
+            "error": (f"{character} may be running — the active companion could not "
+                      f"be read; stop the companion first, its session files are "
+                      f"read-only while it is up"),
+        }, status=409)
+    reason = verbs_mod.live_guard(character, state, active)
+    if reason is None:
+        return None
+    return web.json_response({"ok": False, "error": reason}, status=409)
+
+
+def _archive_request(request: web.Request, body):
+    """The shared front half of archive/unarchive: character + session out of
+    the body, the character known, and the shelf not read-only. Returns
+    ``(character, session, response)`` — a response means stop here."""
+    character = str((body or {}).get("character") or "")
+    session = str((body or {}).get("session") or "").removesuffix(".json")
+    if not character or not session:
+        return None, None, web.json_response(
+            {"ok": False, "error": "character and session required"}, status=400)
+    if not verbs_mod.valid_session_id(session):
+        return None, None, web.json_response(
+            {"ok": False, "error": "invalid session id"}, status=400)
+    if not _known_character(character):
+        return None, None, web.json_response(
+            {"ok": False, "error": f"unknown character {character!r}"}, status=404)
+    return character, session, _guarded(request, character)
+
+
+def _already(character: str, session: str, *, archived: bool):
+    """Is the session already where the verb wanted to put it?
+
+    Archiving a session that is already archived reaches ``resolve`` with
+    nothing on the live shelf and would answer 404 — a true statement about the
+    source and a wrong answer to the question that was asked. So before the 404
+    is sent, the destination is checked: if the file is already there, the verb
+    has nothing to do and says so with ``already``.
+    """
+    try:
+        verbs_mod.resolve_session_path(character, session, archived=archived)
+    except verbs_mod.SessionPathError:
+        return False
+    return True
+
+
+async def _move(request: web.Request, *, archive: bool) -> web.Response:
+    """The body of both verbs — the same act with the direction flipped."""
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001 — a bad body is a 400, not a traceback
+        body = {}
+    character, session, resp = _archive_request(request, body)
+    if resp is not None:
+        return resp
+    verb = verbs_mod.archive_session if archive else verbs_mod.unarchive_session
+    try:
+        verb(character, session)
+    except verbs_mod.SessionPathError as exc:
+        if exc.reason == "no such session":
+            if _already(character, session, archived=archive):
+                return web.json_response({"ok": True, "session_id": session,
+                                          "archived": archive, "already": True})
+            return web.json_response({"ok": False, "error": exc.reason}, status=404)
+        if exc.reason == "session id already exists":
+            # Both sides hold this name. Neither is overwritten — the person is
+            # told, and decides which one they meant.
+            where = "archived" if archive else "on the shelf"
+            return web.json_response(
+                {"ok": False,
+                 "error": f"a session with this id is already {where}"}, status=409)
+        status = 400 if exc.reason == "invalid session id" else 404
+        return web.json_response({"ok": False, "error": exc.reason}, status=status)
+    except OSError as exc:
+        return web.json_response(
+            {"ok": False,
+             "error": f"the session could not be moved ({type(exc).__name__})"},
+            status=500)
+    return web.json_response({"ok": True, "session_id": session, "archived": archive})
+
+
+async def _session_archive(request: web.Request) -> web.Response:
+    """POST /admin/sessions/archive {character, session}: move a saved session
+    into the companion's archive. It leaves the resume shelf and the fresh-start
+    sweep, and nothing else happens to it — this is the soft verb, reversible by
+    construction. 200 `{ok, session_id, archived: true}`, or `already: true`
+    when it was archived before. Refused while the companion is up."""
+    return await _move(request, archive=True)
+
+
+async def _session_unarchive(request: web.Request) -> web.Response:
+    """POST /admin/sessions/unarchive {character, session}: put an archived
+    session back on the shelf. The mirror of archive, same guard, same
+    refusals."""
+    return await _move(request, archive=False)
