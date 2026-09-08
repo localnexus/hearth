@@ -37,6 +37,8 @@ API (mounted by routes.build_mount iff [serve.supervisor] enabled; authed):
          down, the companion maps "none", or the backend keeps no index)
     POST /admin/memory/forget {character, session, yes?}
          yes absent/false → preview only; yes true → backend facts, then the record
+         (the mutation half is `forget_session`, shared with the session destroy
+         verb — destroy IS this forget plus the file unlink, in one act)
     GET  /admin/memory/ui                    → the review-and-prune pane (static
          chrome, auth-exempt beside /admin/launch and /admin/roster — every fact
          it shows arrives via the authed routes above)
@@ -213,12 +215,56 @@ async def _forget(request: web.Request) -> web.Response:
                        'facts, permanently — repeat with "yes": true',
         })
 
-    glue = request.app["deps"].memory
+    result = await forget_session(request.app, character, session_id)
+    status = result.pop("status")
+    return web.json_response(result, status=status)
+
+
+async def forget_session(app: web.Application, character: str,
+                         session_id: str) -> dict:
+    """The forget MUTATION on its own, for any verb that needs it.
+
+    ``_forget`` is the route around it; the session destroy verb
+    (``routes/sessions.py``) is the second caller, because destroy is the
+    memory forget and the file unlink in ONE act — a red verb that unlinked
+    the file and left the extracted facts behind would be a confidentiality
+    bug wearing a confidentiality badge.
+
+    Returns exactly the dict the forget route answers with, plus ``status``
+    (the HTTP code) — so the route stays what it was, and a second caller can
+    read the outcome instead of an aiohttp response. Ordering is the CLI's and
+    is the whole safety property: backend facts first, record files second, so
+    a failed index update keeps everything and the verb is re-runnable.
+
+    Note for the second caller: ``preview`` carries the record's digest — the
+    one key in here that is derived from what was said. A response that is not
+    the curation pane's must drop it.
+    """
+    from hearth.memory import records as records_mod
+
+    paths = records_mod.epoch_paths(records_mod.records_dir(character), session_id)
+    if not paths:
+        return {"status": 404,
+                "error": f"no memory record {session_id!r} for {character!r}",
+                "hint": "GET /admin/memory/records lists what exists"}
+
+    def _preview() -> dict:
+        try:
+            summary = _record_summary(records_mod.load_record(paths[0]))
+            summary["epochs"] = len(paths)
+            return summary
+        except (ValueError, OSError, json.JSONDecodeError):
+            return {"session_id": session_id,
+                    "digest": "(malformed record — no digest available)"}
+
+    preview = await asyncio.to_thread(_preview)
+
+    glue = app["deps"].memory
     if glue is None:
-        return web.json_response(
-            {"error": "Hearth's memory lane disabled ([memory.serve]) — curate at "
-                      "the desk: python -m hearth.memory forget --session "
-                      f"{session_id} --character {character}"}, status=409)
+        return {"status": 409,
+                "error": "Hearth's memory lane disabled ([memory.serve]) — curate at "
+                         "the desk: python -m hearth.memory forget --session "
+                         f"{session_id} --character {character}"}
 
     # Backend first, record second — a failed index update keeps the record.
     backend = await asyncio.to_thread(glue.curation_backend, character)
@@ -229,13 +275,12 @@ async def _forget(request: web.Request) -> web.Response:
                        for p in paths]
             excised = all(results)
         except Exception as exc:  # noqa: BLE001 — report; the record stays put
-            return web.json_response(
-                {"ok": False,
-                 "error": f"backend forget failed ({type(exc).__name__}) — "
-                          "record kept, nothing deleted"}, status=502)
+            return {"status": 502, "ok": False,
+                    "error": f"backend forget failed ({type(exc).__name__}) — "
+                             "record kept, nothing deleted"}
     for p in paths:
         await asyncio.to_thread(p.unlink)
-    result = {"ok": True, "forgotten": True, "preview": preview,
+    result = {"status": 200, "ok": True, "forgotten": True, "preview": preview,
               "backend": getattr(backend, "name", None)}
     if backend is None:
         result["index"] = "none"  # companion mapped "none" — no index existed
@@ -246,7 +291,7 @@ async def _forget(request: web.Request) -> web.Response:
         result["hint"] = ("backend holds facts stored before keyed retain: run "
                           "`python -m hearth.memory rebuild --clean --yes "
                           f"--character {character}` at the desk")
-    return web.json_response(result)
+    return result
 
 
 def add_routes(app: web.Application) -> None:

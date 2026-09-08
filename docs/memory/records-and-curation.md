@@ -103,6 +103,19 @@ in view). `rebuild --clean` stays CLI-only: a wipe-then-replay runs the
 extraction model over every record and belongs at the desk, not on a request
 timeout.
 
+**Destroy is this forget plus the file.** A session has two halves on disk —
+the conversation itself under `characters/<c>/sessions/`, and the record (plus
+its epochs, plus the facts indexed from them) described here. Forgetting one
+conversation removes the second half and leaves the transcript where it is,
+which is the right verb when what you want gone is what the companion *learned*
+from a sitting. `POST /admin/sessions/destroy` is the verb for when the sitting
+itself should stop existing: it runs exactly this forget, in this order — the
+index first, the record files second — and then unlinks the session file, in
+one confirmed act, so a conversation can never be deleted while the facts drawn
+out of it stay banked. It is described from the other side in
+[session continuity](../config-manual/session-continuity.md), including the
+things neither verb can reach.
+
 For a browser, `GET /admin/memory/ui` serves the **review-and-prune pane** —
 a static shell (auth-exempt like the launch and roster pages; every fact
 arrives via the authed routes) that renders the companions with their record

@@ -43,6 +43,11 @@ class _SupActuator(_Cfg):
     guard: str = Field("", description="\"companion\" ⇒ refused (409) while a companion is running unless the press confirms with ?force=1 — for commands whose cost the next turn pays (freeing the model); empty ⇒ runs any time")
 
 
+class _ServeSessions(_Cfg):
+    destroy_for_all: bool = Field(False, description="offer the session DESTROY verb to every caller holding the access key, not only to a browser on this machine — destroy unlinks the session file and forgets its memory record, epochs and indexed facts in one act, and cannot be undone; ships OFF",
+                                  json_schema_extra=_effect("facade"))
+
+
 class _ServeSupervisor(_Cfg):
     enabled: bool = Field(False, description="mount the launch page (/admin routes + panel proxy) when Hearth runs standalone")
     panel_url: str = Field("http://127.0.0.1:65000", description="the companion's control panel — proxy target + reachability probe")
@@ -72,6 +77,8 @@ class ServeTable(_Cfg):
     identity: Optional[_ServeIdentity] = Field(None, description="fixed identity for Hearth's served lane instead of the active.toml snapshot")
     characters: dict[str, str] = Field(default_factory=dict,
                                        description="roster a client may declare: character name → its voice bundle (/v1/models)")
+    sessions: Optional[_ServeSessions] = Field(
+        None, description="who may destroy a saved session from the panel; absent = same-machine callers only")
     supervisor: Optional[_ServeSupervisor] = Field(
         None, description="the launch page: standalone Hearth owns the voice companion as a child process; absent/off ⇒ byte-identical")
 

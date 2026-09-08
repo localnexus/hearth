@@ -53,3 +53,29 @@ What does not change: the file is still yours, still on this machine, still in t
 You can still list, download, and reveal an archived session; the shelf shows the archived ones when you ask for them, and shows the live ones by default.
 
 **The running companion's files are read-only.** While a companion is up, none of its session files can be archived or unarchived — stop the companion first. The reason is honest rather than cautious: the sitting in progress is being written to a file continuously, and Hearth's supervising half cannot know *which* file that is (a fresh sitting names itself inside the companion, after it starts). Fencing off the whole shelf is the only way to be sure the file being written is not the one being moved. Another companion's sessions are unaffected — nothing is holding those.
+
+## Destroying a session
+
+Destroy is the one verb here that takes something away, and the only one that cannot be undone. It exists for the case archiving does not answer: when a conversation should stop existing on this machine — not moved aside, not in a trash folder waiting to be emptied, gone.
+
+Because confidentiality is the whole reason it exists, it is a **sweep and not just an unlink**. One act removes:
+
+- **the session file** — the conversation itself, on the shelf or in the archive;
+- **the session's memory record** and every compaction epoch of it — the canonical per-session file under `characters/<c>/memory/records/`;
+- **the facts extracted from it**, excised from the memory bank by the same forget the memory pane runs (see [records and curation](../memory/records-and-curation.md)).
+
+The memory goes first. If the bank cannot be updated, nothing is deleted — the file stays, the record stays, and you can run destroy again once the memory lane is back. The alternative ordering would leave you with the conversation gone and everything extracted from it still banked, which is the exact failure this verb exists to prevent. A sitting that banked nothing (`--memory recall-only`, or `off`) has no record, and the answer says so rather than pretending it swept one; a session that lost its file but kept its record can still be finished off.
+
+**What destroy cannot reach**, said the same way every time, in the preview and again in the answer:
+
+- lines in `logs/bot.log` (timings and ids only, never words)
+- the model server's prompt cache in memory (cleared by its next restart)
+- copies outside Hearth: Time Machine and APFS snapshots, your own backups, mirrors
+
+The first two are Hearth's own and carry nothing you said; the third is not Hearth's to promise, and a verb that quietly implied otherwise would be worse than no verb at all.
+
+**Confirming.** Destroy asks twice. The first call answers a plan — what would go, what cannot be reached — and touches nothing. It also names the exact word to send back: the session's **name** if it has one, its **id** if it does not. Anything else is refused and nothing is touched. "OK" is not a confirmation; the point of typing the name is that you have looked at which conversation this is.
+
+**Where it is offered.** By default only from a browser on the machine Hearth itself runs on — the irreversible verb stays off the phone unless you say otherwise. Setting `destroy_for_all = true` under `[serve.sessions]` in `config/serve.toml` offers it to everyone who holds the access key, wherever they are; it ships off, and it lands at the next restart of Hearth. (There is no separate audience or role system yet: past the door every caller is equally trusted, so "the operator" means "at this machine" until there is one.)
+
+As with archiving, **the running companion's files are read-only**: stop the companion before destroying one of its sessions.

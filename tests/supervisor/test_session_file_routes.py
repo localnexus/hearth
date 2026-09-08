@@ -341,7 +341,9 @@ class SessionFileRoutes(AioHTTPTestCase):
     async def test_no_route_but_the_download_carries_a_word_of_it(self):
         """The sentinel lives in the session's messages. It may appear in the
         download body and NOWHERE else — not in the shelf, not in reveal, not
-        in a refusal, and not in a log line."""
+        in a refusal, not in destroy's plan or its answer, and not in a log
+        line. Destroy runs LAST here, because it is the verb that ends the
+        file."""
         logged = []
         from hearth.supervisor.routes import sessions as _s
         with mock.patch.object(verbs_mod, "reveal_argv",
@@ -388,6 +390,15 @@ class SessionFileRoutes(AioHTTPTestCase):
                         "/admin/sessions/unarchive", headers=self.BEARER,
                         json={"character": CHARACTER, "session": "session-x"})
                     unarchive_body = await unarchive.text()
+                    destroy_plan = await self.client.post(
+                        "/admin/sessions/destroy", headers=self.BEARER,
+                        json={"character": CHARACTER, "session": "session-x"})
+                    destroy_plan_body = await destroy_plan.text()
+                    destroyed = await self.client.post(
+                        "/admin/sessions/destroy", headers=self.BEARER,
+                        json={"character": CHARACTER, "session": "session-x",
+                              "confirm": "session-x"})
+                    destroyed_body = await destroyed.text()
             finally:
                 logger.remove(sink)
         self.assertEqual(shelf.status, 200)
@@ -395,12 +406,17 @@ class SessionFileRoutes(AioHTTPTestCase):
         self.assertEqual(deposit.status, 200, deposit_body)
         self.assertEqual(archive.status, 200, archive_body)
         self.assertEqual(unarchive.status, 200, unarchive_body)
+        self.assertEqual(destroy_plan.status, 200, destroy_plan_body)
+        self.assertEqual(destroyed.status, 200, destroyed_body)
+        self.assertFalse(self.session_path.exists(), "destroy is the hard verb")
         for label, body in (("shelf", shelf_body), ("reveal", reveal_body),
                             ("refusal", missing_body), ("deposit", deposit_body),
                             ("deposit refusal", rejected_body),
                             ("archive", archive_body),
                             ("archived shelf", archived_shelf_body),
-                            ("unarchive", unarchive_body)):
+                            ("unarchive", unarchive_body),
+                            ("destroy plan", destroy_plan_body),
+                            ("destroyed", destroyed_body)):
             with self.subTest(response=label):
                 self.assertNotIn(SENTINEL, body, f"{label} must never carry content")
         self.assertIn(SENTINEL, download_body, "the download IS the content")

@@ -436,5 +436,75 @@ class DepositGate(_Deposited):
         self.assertNotIn(secret, reason)
 
 
+class DestroyPlan(_Rooted):
+    """The plan destroy answers before it is confirmed: what would go, and what
+    would survive it. Nothing here mutates anything — that is the point of a
+    plan — except the two `destroy_file` cases at the end."""
+
+    def setUp(self):
+        super().setUp()
+        self.records = self.root / "characters" / self.CHARACTER / "memory" / "records"
+        self.records.mkdir(parents=True)
+        from hearth.memory import records as records_mod
+        patcher = mock.patch.object(records_mod, "records_dir", lambda c: self.records)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def record(self, stem):
+        (self.records / f"{stem}.json").write_text("{}", encoding="utf-8")
+
+    def test_a_session_that_banked_nothing(self):
+        plan = verbs.destroy_plan(self.CHARACTER, "session-a")
+        self.assertEqual(plan["session_id"], "session-a")
+        self.assertIs(plan["archived"], False)
+        self.assertIs(plan["file"], True)
+        self.assertEqual(plan["memory"], {"records": 0, "backend": False})
+        self.assertEqual(plan["cannot_reach"], list(verbs.CANNOT_REACH))
+
+    def test_the_record_and_every_compaction_epoch_are_counted(self):
+        self.record("session-a")
+        self.record("session-a.c2026.09.06")
+        self.record("session-b")  # another session's — never counted here
+        plan = verbs.destroy_plan(self.CHARACTER, "session-a")
+        self.assertEqual(plan["memory"], {"records": 2, "backend": True})
+
+    def test_an_archived_session_is_planned_where_it_actually_is(self):
+        verbs.archive_session(self.CHARACTER, "session-a")
+        self.assertIs(verbs.destroy_plan(self.CHARACTER, "session-a")["file"], False)
+        plan = verbs.destroy_plan(self.CHARACTER, "session-a", archived=True)
+        self.assertIs(plan["file"], True)
+        self.assertIs(plan["archived"], True)
+
+    def test_a_half_done_sweep_still_plans(self):
+        """The file unlinked by hand, the record still banked: destroy has to
+        be able to finish that, so a missing file is a fact and not an error."""
+        (self.sessions / "session-a.json").unlink()
+        self.record("session-a")
+        plan = verbs.destroy_plan(self.CHARACTER, "session-a")
+        self.assertIs(plan["file"], False)
+        self.assertEqual(plan["memory"], {"records": 1, "backend": True})
+
+    def test_a_malformed_id_still_raises(self):
+        for bad in ("../../etc/passwd", ".hold-request", "a/b"):
+            with self.subTest(sid=bad):
+                with self.assertRaises(verbs.SessionPathError) as cm:
+                    verbs.destroy_plan(self.CHARACTER, bad)
+                self.assertEqual(cm.exception.reason, "invalid session id")
+
+    def test_what_it_cannot_reach_is_said_the_same_way_every_time(self):
+        plan = verbs.destroy_plan(self.CHARACTER, "session-a")
+        self.assertEqual(len(plan["cannot_reach"]), 3)
+        joined = " ".join(plan["cannot_reach"])
+        for expected in ("logs", "prompt cache", "Time Machine"):
+            self.assertIn(expected, joined)
+        self.assertNotIn(self._tmp.name, joined, "the plan never maps the disk")
+
+    def test_destroy_file_removes_it_once_and_says_so(self):
+        path = self.sessions / "session-a.json"
+        self.assertIs(verbs.destroy_file(path), True)
+        self.assertFalse(path.exists())
+        self.assertIs(verbs.destroy_file(path), False, "re-runnable, not an error")
+
+
 if __name__ == "__main__":
     unittest.main()

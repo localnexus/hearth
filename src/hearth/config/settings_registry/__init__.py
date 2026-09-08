@@ -105,6 +105,7 @@ from .schema_tables import (
     _SIDECAR_NOTE,
     _ServeIdentity,
     _ServeIdentityTts,
+    _ServeSessions,
     _ServeSupervisor,
     _SupActuator,
     _SupWatch,

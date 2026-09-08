@@ -1,6 +1,7 @@
-"""routes/sessions.py — the resume shelf, a file out, a file in, a file archived.
+"""routes/sessions.py — the resume shelf, a file out, a file in, a file archived,
+a file destroyed.
 
-Six routes, one contract: the route layer never reads a line of what was
+Seven routes, one contract: the route layer never reads a line of what was
 said. The shelf answers ids, names, counts and stamps (the list_sessions
 contract); reveal hands a path to the Finder and never to the response;
 download streams the bytes straight off disk without parsing them. File paths
@@ -35,13 +36,25 @@ readable through `GET /admin/sessions?archived=1` (or `all`) — the default
 shelf still answers the live sessions only, which is what keeps an archived
 conversation out of the resume picker and out of the fresh-start sweep.
 
+**Destroy** (`POST /admin/sessions/destroy`) is the one hard verb, and the only
+one that takes something away. It asks twice — without `confirm` it answers a
+plan and touches nothing — and it is a SWEEP rather than an unlink: the file
+and the session's memory (its record, each compaction epoch, and the indexed
+facts behind them, through the same `curation.forget_session` the memory pane
+uses) go in ONE act, memory first so a failed index update leaves everything
+intact and re-runnable. Because confidentiality is the whole reason the verb
+exists, it also says out loud what it CANNOT reach (`verbs.CANNOT_REACH`).
+It is the only verb offered for a recall-only sitting, and the only one behind
+an exposure check: same-machine callers always, everyone else only where
+[serve.sessions] destroy_for_all says so.
+
 They are also the first routes behind the **live-session guard** (`_guarded`).
 The supervisor knows the bot is up and knows which companion `active.toml`
 points at, but it cannot know which session id a `--new` sitting minted inside
 the child — so the guard is the whole shelf: while the active companion is
 running, every one of its session files is read-only, and another companion's
-are free. An unreadable `active.toml` fails closed. Destroy and rename will
-reuse this exact helper.
+are free. An unreadable `active.toml` fails closed. Destroy uses the same
+helper, and rename will.
 
 The fence they share lives in `hearth.session.verbs` — id shape, no traversal,
 no symlink escape, the resolved path still under the companion's sessions dir —
@@ -58,6 +71,7 @@ import asyncio
 import json
 
 from aiohttp import web
+from loguru import logger
 
 from hearth.session import verbs as verbs_mod
 
@@ -467,3 +481,159 @@ async def _session_unarchive(request: web.Request) -> web.Response:
     session back on the shelf. The mirror of archive, same guard, same
     refusals."""
     return await _move(request, archive=False)
+
+
+# ── destroy: the one hard verb ───────────────────────────────────────────────
+
+def _destroy_offered(request: web.Request) -> bool:
+    """Who may destroy. Two ways to be allowed, and no third.
+
+    The panel has no audience or role concept in code yet — one access key,
+    one caller, and that caller is the operator. So the decision D1 asked for
+    ("operator always; anyone else only behind a setting, off by default") is
+    implemented with the only distinction the request actually carries: the
+    person is at the machine Hearth runs on (a loopback peer), or the install
+    has said out loud that destroy is offered to everyone who holds the key
+    ([serve.sessions] destroy_for_all). Nothing here is an auth layer, and it
+    is not pretending to be one — past the door every caller is equally
+    trusted; this only keeps the irreversible verb off the phone by default.
+    """
+    if verbs_mod.is_loopback_peer(request.remote):
+        return True
+    try:
+        cfg = getattr(request.app["deps"], "cfg", None) or {}
+        return bool(dict(cfg.get("sessions") or {}).get("destroy_for_all"))
+    except Exception:  # noqa: BLE001 — an unreadable config is not an offer
+        return False
+
+
+def _confirm_with(path, session: str) -> str:
+    """The exact word the person has to type back: the session's NAME when it
+    has one, its id otherwise. The name is SessionMeta's — a field, the same
+    one the shelf answers — and never a line of the conversation."""
+    from hearth.session import session_store  # lazy: mirrors the package gate idiom
+
+    if path is None:
+        return session
+    meta = session_store._meta_of(path)
+    name = getattr(meta, "name", None) if meta is not None else None
+    return name.strip() if isinstance(name, str) and name.strip() else session
+
+
+async def _session_destroy(request: web.Request) -> web.Response:
+    """POST /admin/sessions/destroy {character, session, archived?, confirm?}:
+    unlink the file AND forget the session's memory in one act.
+
+    This is the only verb here that takes something away, so it is the only one
+    that asks twice. Without `confirm` it answers a PLAN and touches nothing:
+    what would go (the file, the memory record and each compaction epoch, the
+    indexed facts behind them), the word to type back, and — said out loud,
+    because confidentiality is the whole reason the verb exists — what destroy
+    CANNOT reach. With `confirm`, the word has to match the session's name (or
+    its id, when it has no name) exactly; anything else is a 409 and nothing is
+    touched.
+
+    On a match the memory goes FIRST. A failed index update then keeps
+    everything, including the file, and the verb can be run again — the
+    opposite order would leave a person with the conversation gone and the
+    facts extracted from it still in the bank, which is the failure this verb
+    exists to prevent. A sitting that banked nothing (recall-only, or memory
+    off) has no record, and the memory step says `no-record` rather than
+    pretending it did something.
+
+    A file that is already gone while records remain is not an error: destroy
+    finishes a sweep somebody started by hand.
+
+    The answer carries ids and booleans. Nothing is logged but a single line
+    naming the companion and the session id.
+    """
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001 — a bad body is a 400, not a traceback
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    character = str(body.get("character") or "")
+    session = str(body.get("session") or "").removesuffix(".json")
+    if not character or not session:
+        return web.json_response(
+            {"ok": False, "error": "character and session required"}, status=400)
+    if not verbs_mod.valid_session_id(session):
+        return web.json_response({"ok": False, "error": "invalid session id"},
+                                 status=400)
+    if not _known_character(character):
+        return web.json_response({"ok": False, "error": f"unknown character {character!r}"},
+                                 status=404)
+    if not _destroy_offered(request):
+        return web.json_response({
+            "ok": False,
+            "error": ("destroy is not offered here — enable [serve.sessions] "
+                      "destroy_for_all, or use the panel on the machine Hearth "
+                      "runs on"),
+        }, status=403)
+    resp = _guarded(request, character)
+    if resp is not None:
+        return resp
+
+    archived = bool(body.get("archived")) or \
+        request.query.get("archived") in ("1", "true", "yes")
+    try:
+        path = verbs_mod.resolve_session_path(character, session, archived=archived)
+    except verbs_mod.SessionPathError as exc:
+        if exc.reason != "no such session":
+            return web.json_response({"ok": False, "error": exc.reason}, status=400)
+        if _already(character, session, archived=not archived):
+            where = "archived" if not archived else "on the shelf"
+            return web.json_response(
+                {"ok": False, "error": f"no such session — that id is {where}"},
+                status=404)
+        if not verbs_mod.record_paths(character, session):
+            return web.json_response({"ok": False, "error": "no such session"},
+                                     status=404)
+        path = None  # a sweep someone half-finished: no file, records still banked
+
+    plan = verbs_mod.destroy_plan(character, session, archived=archived)
+    confirm_with = _confirm_with(path, session)
+
+    if "confirm" not in body:
+        return web.json_response({
+            "ok": True, "destroyed": False, "plan": plan,
+            "confirm_with": confirm_with,
+            "warning": ("destroy is permanent: it unlinks the file and forgets "
+                        "the session's memory record, epochs and indexed facts "
+                        "in one act"),
+        })
+    if str(body.get("confirm") or "") != confirm_with:
+        return web.json_response(
+            {"ok": False, "destroyed": False, "error": "confirmation did not match"},
+            status=409)
+
+    memory = {"forgotten": False, "index": "no-record"}
+    if plan["memory"]["records"]:
+        from .. import curation as curation_mod  # lazy: mirrors the package gate idiom
+
+        result = await curation_mod.forget_session(request.app, character, session)
+        status = int(result.pop("status", 200))
+        if status != 200:
+            # Memory first, and the file is still here: nothing is half-done.
+            return web.json_response(
+                {"ok": False, "destroyed": False, "stage": "memory",
+                 "error": result.get("error") or "the memory forget did not finish"},
+                status=status)
+        memory = {"forgotten": bool(result.get("forgotten")),
+                  "index": result.get("index") or "none"}
+        if result.get("hint"):
+            memory["hint"] = result["hint"]
+
+    try:
+        removed = verbs_mod.destroy_file(path) if path is not None else False
+    except OSError as exc:
+        return web.json_response(
+            {"ok": False, "destroyed": False, "stage": "file",
+             "error": f"the session file could not be removed ({type(exc).__name__})"},
+            status=500)
+    logger.info("[sessions] destroyed {}/{}", character, session)
+    return web.json_response({
+        "ok": True, "destroyed": True, "file": removed, "memory": memory,
+        "cannot_reach": list(verbs_mod.CANNOT_REACH),
+    })

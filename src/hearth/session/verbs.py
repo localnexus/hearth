@@ -32,6 +32,14 @@ fence and both by ``os.replace`` — nothing is ever removed and nothing is ever
 overwritten. ``live_guard`` is the rule the mutating verbs share: while a
 companion is up, its WHOLE shelf is read-only, because the supervisor cannot
 name the single file the bot holds.
+
+Destroy is the one hard verb, and the two functions it needs live here in
+their honest shape. ``destroy_plan`` answers what the act would take — the
+file, the memory record and its compaction epochs, the backend document behind
+them — and, in the same breath, ``CANNOT_REACH``: the places a trace may
+survive that are not Hearth's to promise. ``destroy_file`` is the unlink
+itself, and it returns False rather than raising when the file is already
+gone, because a half-finished sweep must be finishable.
 """
 
 from __future__ import annotations
@@ -197,6 +205,69 @@ def unarchive_session(character: str, session: str) -> Path:
     dest = reserve_session_path(character, session)
     os.replace(src, dest)
     return dest
+
+
+# ── destroy: the one hard verb, and the honest half of it ───────────────────
+
+#: What destroy CANNOT reach. Fixed text, said out loud in the preview and
+#: again in the answer, because the whole point of the verb is confidentiality
+#: and a verb that quietly leaves copies behind is worse than no verb at all.
+#: Each line is a place a trace of the sitting may still exist after destroy
+#: has done everything it can do.
+CANNOT_REACH = (
+    "lines in logs/bot.log (timings and ids only, never words)",
+    "the model server's prompt cache in memory (cleared by its next restart)",
+    "copies outside Hearth: Time Machine and APFS snapshots, your own backups, mirrors",
+)
+
+
+def record_paths(character: str, session: str) -> list:
+    """Every memory record file of one session — the bare record plus each
+    compaction epoch. Empty for a sitting that banked nothing (``off`` or
+    ``recall-only``), and empty for a sweep somebody already half-finished."""
+    from hearth.memory import records as records_mod  # lazy: import-light
+
+    try:
+        return list(records_mod.epoch_paths(records_mod.records_dir(character), session))
+    except OSError:
+        return []
+
+
+def destroy_plan(character: str, session: str, *, archived: bool = False) -> dict:
+    """What destroying this session would take with it — and what it would not.
+
+    Pure: it reads locations and counts, never a line of the session or of the
+    record. A file that is not there is not an error here — a sweep can be
+    half-done (the file unlinked by hand, the memory record still banked), and
+    destroy has to be able to finish it — so ``file`` is False and the plan
+    still names the records that remain. A malformed id still raises.
+    """
+    try:
+        resolve_session_path(character, session, archived=archived)
+        present = True
+    except SessionPathError as exc:
+        if exc.reason != "no such session":
+            raise
+        present = False
+    paths = record_paths(character, session)
+    return {
+        "session_id": session,
+        "archived": bool(archived),
+        "file": present,
+        "memory": {"records": len(paths), "backend": bool(paths)},
+        "cannot_reach": list(CANNOT_REACH),
+    }
+
+
+def destroy_file(path) -> bool:
+    """Unlink one session file. True when this call removed it, False when it
+    was already gone — destroy is re-runnable, so a missing file is an outcome
+    rather than a failure."""
+    try:
+        Path(path).unlink()
+    except FileNotFoundError:
+        return False
+    return True
 
 
 # ── the live-session guard: whose shelf is read-only right now ───────────────

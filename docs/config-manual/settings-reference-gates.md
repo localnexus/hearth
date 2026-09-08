@@ -38,6 +38,7 @@ All keys below live under the `[serve]` table.
 | `transcript_dir` | str | `transcripts` |  | — | relative ⇒ inside each companion's own directory; absolute used as-is |
 | `identity` | table | — |  | — | fixed identity for Hearth's served lane instead of the active.toml snapshot |
 | `characters` | map(str → str) | — |  | — | roster a client may declare: character name → its voice bundle (/v1/models) |
+| `sessions` | table | — |  | — | who may destroy a saved session from the panel; absent = same-machine callers only |
 | `supervisor` | table | — |  | — | the launch page: standalone Hearth owns the voice companion as a child process; absent/off ⇒ byte-identical |
 | `identity.character` | str | **required** |  | — | pinned character for Hearth's served lane (independent of active.toml) |
 | `identity.voice` | str | **required** |  | — | pinned voice bundle for that character |
@@ -48,6 +49,7 @@ All keys below live under the `[serve]` table.
 | `identity.tts.repetition_penalty` | float | — | 0.5–5.0 | — | pinned repetition penalty |
 | `identity.tts.speed` | float | — | 0.0– | — | pinned playback-rate multiplier (upstream mlx-audio) |
 | `identity.tts.allow_tag_profiles` | bool | `false` |  | — | policy flag: may per-tag profiles overlay the pin? never forwarded upstream |
+| `sessions.destroy_for_all` | bool | `false` |  | — (lands at the next restart of Hearth) | offer the session DESTROY verb to every caller holding the access key, not only to a browser on this machine — destroy unlinks the session file and forgets its memory record, epochs and indexed facts in one act, and cannot be undone; ships OFF |
 | `supervisor.enabled` | bool | `false` |  | — | mount the launch page (/admin routes + panel proxy) when Hearth runs standalone |
 | `supervisor.panel_url` | str | `http://127.0.0.1:65000` |  | — | the companion's control panel — proxy target + reachability probe |
 | `supervisor.stop_grace_s` | float | `15.0` | 0.0– | — | seconds after SIGINT before escalating (memory-consolidation headroom) |
