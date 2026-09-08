@@ -32,6 +32,15 @@
   .state { font-family: ui-monospace, monospace; font-size: 0.85em; opacity: 0.85; }
   .err { color: #c33; }
   .hidden { display: none; }
+  table.sess { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+  table.sess th { text-align: left; font-weight: 600; opacity: 0.7; }
+  table.sess td, table.sess th { padding: 0.25em 0.4em; vertical-align: top;
+         border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent); }
+  table.sess button { padding: 0.15em 0.6em; margin: 0 0.15em 0.15em 0;
+         font-size: 0.95em; }
+  button.danger { color: #c33; border-color: #c33; }
+  button.linky { border: none; background: none; padding: 0.15em 0.2em;
+         text-decoration: underline; opacity: 0.8; }
   a { color: inherit; }
 </style>
 </head>
@@ -72,6 +81,18 @@
       <button id="compactbtn" title="Compact the selected conversation with the local model before starting — pick a session first">Compact selected session</button></div>
     <div id="compactqueue" class="hidden"></div>
   </div>
+</div>
+
+<!-- ui/launch_sessions.js: the saved conversations, and the verbs on them. -->
+<div id="sessionscard" class="card hidden">
+  <h2>Sessions</h2>
+  <p class="note">The selected companion's saved conversations — the same shelf
+     the Conversation picker draws from. Which verbs a row offers depends on
+     where this browser is sitting and on the conversation's memory posture.</p>
+  <div id="sessionsnote"></div>
+  <div id="sessionshead"></div>
+  <div id="sessions"></div>
+  <div id="sessionsdeposit"></div>
 </div>
 
 <div id="stopcard" class="card hidden">
@@ -118,6 +139,7 @@
 <script>/*HEARTH_RESTART_JS*/</script>
 <script>/*LAUNCH_ACTUATORS_JS*/</script>
 <script>/*LAUNCH_MODELS_JS*/</script>
+<script>/*LAUNCH_SESSIONS_JS*/</script>
 
 <script>
 "use strict";
@@ -132,7 +154,7 @@ let cookieMinted = false;  // the browser carrier for plain navigation
 function needToken(prompt) {
   show("tokencard", true); show("switchcard", false); show("stopcard", false);
   show("actuatorcard", false); show("firstrun", false);
-  show("modelscard", false);
+  show("modelscard", false); show("sessionscard", false);
   $("statusline").textContent = prompt || "locked — enter your access key";
 }
 
@@ -236,6 +258,25 @@ const card = window.HearthSwitchCard.mount($("switchmount"), {
 async function loadStartForm() {
   if (!(await card.load())) return;
   await loadSessions();
+  loadSessionsCard();   // the guard changes with the bot state, so does the card
+}
+
+// The raw authed fetch: api() parses JSON, and two of the session verbs want
+// the response itself — a file to save (a navigation cannot carry the bearer,
+// so a plain link would 401) and a multipart body that must not be serialized.
+function authFetch(path, opts) {
+  const o = Object.assign({ headers: {} }, opts || {});
+  o.headers["Authorization"] = "Bearer " + token();
+  return fetch(path, o);
+}
+
+// The Sessions card and the Conversation picker read the same shelf, so every
+// verb that changes it reloads both — the card's own onChanged is loadSessions.
+function loadSessionsCard() {
+  const name = card.character();
+  if (!name) return;
+  LaunchSessions.refresh(api, report, {
+    character: name, up: botUp, authFetch, onChanged: loadSessions });
 }
 
 async function loadSessions() {
@@ -287,7 +328,8 @@ async function doStop() {
 // ── wiring ──────────────────────────────────────────────────────────────────
 
 wireToken(refresh);
-card.onCharacter(loadSessions);   // the session list follows the chosen companion
+card.onCharacter(() => { loadSessions(); loadSessionsCard(); });
+// ↑ both halves of the shelf follow the chosen companion
 $("compactbtn").addEventListener("click", doCompact);
 $("stopbtn").addEventListener("click", doStop);
 const hearthRestart = window.HearthRestart.mount($("hearthcard"), api, report);

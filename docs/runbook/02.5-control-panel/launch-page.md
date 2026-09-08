@@ -34,6 +34,17 @@ WebRTC). Open `http://<facade-host>:65001/admin/launch`; it asks for the serve a
   question naming the cost (whatever the command frees, the next turn pays to bring back), and
   only a confirmed press goes through. That is the shape for the "free the model server's
   models" command — a live session owns its model's residency.
+- **Sessions** — the selected companion's saved conversations, one row each, with the
+  verbs on them: reveal (only where the browser is on this machine — it retires itself the
+  first time it is refused), download (an authed fetch, since a link cannot carry the access
+  key), archive/unarchive, rename (a title; the id only through `change id…`, and only when
+  nothing knows the id), and a red **Destroy** that shows its plan and asks for the word the
+  row displays. A **Bring in** file picker at the foot deposits a session file onto the shelf.
+  A recall-only conversation is offered destroy and nothing else, and while the companion is up
+  its whole shelf is read-only. Full account: [session continuity](../../config-manual/session-continuity.md).
+- **Models** (only when weights are enrolled or a door is declared): which weights the door
+  serves, one row per enrolled model, with enroll · render · apply · unenroll and the door's own
+  Load / Unload. Every button shows what it would do and waits for a second press.
 - **First run** (new installs only): while the selected model config still carries the shipped
   placeholder id, or no companion on this install has a session yet, a card at the top offers the
   first-run page (`/admin/first-run`, [admin surface](admin-surface.md)) — and while the id is the

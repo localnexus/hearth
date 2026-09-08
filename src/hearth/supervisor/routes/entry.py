@@ -32,7 +32,7 @@ from loguru import logger
 
 from hearth.ui import (
     admin_shell, brand, compact_queue, first_run_offer, hearth_restart, key_help,
-    launch_actuators, launch_models, pages, switch_card)
+    launch_actuators, launch_models, launch_sessions, pages, switch_card)
 
 # The standing launch surface: pure static chrome (no names, no state, no
 # tokens baked in — the serve middleware exempts this ONE page from auth, so
@@ -46,7 +46,8 @@ _LAUNCH_PAGE = pages.Page(
     Path(__file__).parent / "launch_page.html",
     pages.chain(switch_card.splice, compact_queue.splice, first_run_offer.splice,
                 key_help.splice, hearth_restart.splice, launch_actuators.splice,
-                launch_models.splice, admin_shell.splice, brand.splice))
+                launch_models.splice, launch_sessions.splice,
+                admin_shell.splice, brand.splice))
 # The pairing page takes neither shared script: it is what a device WITHOUT the
 # bearer opens, so the admin shell has nothing to carry for it.
 _PAIR_PAGE = pages.Page(Path(__file__).parent / "pair_page.html", brand.splice)

@@ -97,3 +97,21 @@ If none of those knows the session, the id can be changed and the file simply mo
 Things that do *not* count: a line in the log, the panel's own view of the moment, a copy of the conversation you exported somewhere else. Those record what was true when they were written; none of them goes looking for the file later.
 
 As with archiving and destroying, **the running companion's files are read-only** — including their titles. Stop the companion first.
+
+## The Sessions card
+
+Everything above has a button. The launch page (`/admin/launch`) carries a **Sessions** card beside the Conversation picker — the same shelf seen from the other side: the picker chooses which conversation to resume, the card decides which conversations there are. It follows whichever companion is selected, and reloads itself after a start or a stop, because what it may offer changes with them.
+
+One row per saved conversation: the word it goes by (its title, else the name it was held under, else its id), its turns, when it was last written, its memory posture, and whether it is held, archived, or brought in. A **show archived** box adds the archived ones. Then the verbs:
+
+- **Reveal** shows the file in the file manager — and disappears from every row the first time it is refused, because that refusal means this browser is not on the machine Hearth runs on (or the machine is not a Mac). Download is what remains, and it is enough.
+- **Download** hands you the file. It is not an ordinary link: a link cannot carry the access key, so the card fetches the file with the key as a header and saves what comes back.
+- **Archive** / **Unarchive** put a conversation aside and bring it back.
+- **Rename** asks for a title. Changing the **id** is a separate small link, `change id…`, because it is the act that is only sometimes allowed: if anything still knows the session by that id, the answer lists what does, in Hearth's own words, and the title is what you wanted anyway.
+- **Destroy** is red and asks twice. The first press shows the plan — the file, how many memory records go with it, and what destroy cannot reach — and a box that will only accept **the word the row is showing you**: its title, its name, or its id, whichever the shelf displays. The second press does it. Where destroy is not offered, the first press says so and the button leaves every row for the rest of the visit.
+
+At the foot of the card, **Bring in** takes a session file from this device and deposits it on the shelf; the answer says how many turns arrived and how many prompt messages were dropped on the way in, and a file that is refused is refused in a sentence about the file.
+
+A **recall-only** conversation is the privacy tier's own case: it is not offered load or rename, so **Destroy is the only verb on its row**.
+
+While the companion is up its whole shelf is read-only, and the card says so once at the top rather than once per refused press.
