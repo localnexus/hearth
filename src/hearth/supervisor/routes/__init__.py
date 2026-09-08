@@ -38,6 +38,10 @@ get a session FILE out, the same contract holding: POST /admin/sessions/reveal
 shows it in the Finder (fixed argv, and a 409 when the browser is not on this
 machine — the download is the off-machine answer), and GET
 /admin/sessions/file streams the bytes as a download without parsing them.
+POST /admin/sessions/deposit brings one IN — an uploaded (or pasted) session
+file, checked against the deposit gate in session/verbs.py and written under a
+freshly minted id, so a deposit adds to the shelf and can never replace what is
+on it.
 
 /admin/memory is the record-level curation surface (curation.py): digest views + a
 preview-then-confirm forget — the memory CLI's web half, living here because
@@ -77,7 +81,7 @@ having is one you can read in one place:
                   attach an Authorization header
     state.py      /admin/state's reachability probes, and the declared
                   actuators (list + run)
-    sessions.py   the resume shelf, plus reveal and download
+    sessions.py   the resume shelf, plus reveal, download and deposit
     lifecycle.py  bot start/stop, manual compaction, daemon restart
     switching.py  switch-companion: the live handoff, the supervised restart,
                   and the routing between them
@@ -113,7 +117,8 @@ from .entry import (
     _pair_claim, _pair_mint, _pair_ui)
 from .state import _actuator_run, _actuators_get, _http_alive, _state
 from .sessions import (
-    REVEAL_TIMEOUT_S, _known_character, _session_file, _session_reveal, _sessions)
+    DEPOSIT_SUFFIXES, REVEAL_TIMEOUT_S, _known_character, _read_deposit_upload,
+    _session_deposit, _session_file, _session_reveal, _sessions)
 from .lifecycle import _bot_start, _bot_stop, _compact_start, _daemon_restart
 from .switching import (
     _FACADE_NOTE, _do_restart, _switch_get, _switch_live_get, _switch_post,
@@ -178,6 +183,7 @@ def build_mount(sup_cfg: dict):
         app.router.add_get("/admin/sessions", _sessions)
         app.router.add_post("/admin/sessions/reveal", _session_reveal)
         app.router.add_get("/admin/sessions/file", _session_file)
+        app.router.add_post("/admin/sessions/deposit", _session_deposit)
         app.router.add_post("/admin/bot/start", _bot_start)
         app.router.add_post("/admin/bot/stop", _bot_stop)
         app.router.add_post("/admin/compact", _compact_start)

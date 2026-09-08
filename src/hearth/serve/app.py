@@ -549,11 +549,14 @@ async def _transcriptions(request: web.Request) -> web.Response:
 # ── app factory + lifecycle ───────────────────────────────────────────────────
 
 def build_app(deps: FacadeDeps) -> web.Application:
-    # 32 MB body cap: raised from aiohttp's 1 MB default for the roster
-    # wizard's sample upload. The auth middleware answers 401 before any
-    # handler reads a body, so the widened cap is reachable only through the
+    # 33 MB body cap: raised from aiohttp's 1 MB default for the roster
+    # wizard's sample upload, and kept one megabyte above the session-deposit
+    # cap (verbs.MAX_DEPOSIT_BYTES, 32 MB) so that an over-large session file is
+    # refused by the verb — which can say what the limit is about — rather than
+    # by the server's generic body check. The auth middleware answers 401 before
+    # any handler reads a body, so the widened cap is reachable only through the
     # bearer door (and the loopback/overlay bind is the outer wall).
-    app = web.Application(middlewares=[_auth], client_max_size=32 * 1024**2)
+    app = web.Application(middlewares=[_auth], client_max_size=33 * 1024**2)
     app["deps"] = deps
     app.router.add_get("/health", _health)
     app.router.add_get("/v1/models", _models)

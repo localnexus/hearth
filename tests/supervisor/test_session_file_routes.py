@@ -1,10 +1,17 @@
-"""Supervisor — getting a session file out: reveal and download.
+"""Supervisor — a session file out (reveal, download) and back in (deposit).
 
-Two routes, one contract. Download hands back the bytes on disk, unchanged and
-unparsed; reveal hands a path to the Finder and nothing to the caller. The
-no-content-read proof is the same shape the shelf test uses: a sentinel string
-is written into a session's messages, and it must appear in exactly ONE place —
-the download body — and in no other response and no log line.
+Download hands back the bytes on disk, unchanged and unparsed; reveal hands a
+path to the Finder and nothing to the caller. The no-content-read proof is the
+same shape the shelf test uses: a sentinel string is written into a session's
+messages, and it must appear in exactly ONE place — the download body — and in
+no other response and no log line.
+
+Deposit is the way back in, and it is tested for the two things it promises. It
+WRITES a real session: the file it leaves behind is one the store's own load()
+reads and list_sessions lists, marked held and stamped as a deposit. And it
+never REPLACES one: two deposits in the same second are two sessions, because
+the id is minted here and never taken from the upload. The sentinel rides in on
+a deposited file too, so the same silence is checked on the way in.
 
 Run:  .venv/bin/python -m unittest discover -s tests
 """
@@ -68,6 +75,8 @@ class SessionFileRoutes(AioHTTPTestCase):
         char_dir = self.root / "characters" / CHARACTER
         char_dir.mkdir(parents=True)
         (char_dir / "persona.md").write_text("test persona marker", encoding="utf-8")
+        (char_dir / "voices" / "v1").mkdir(parents=True)
+        (char_dir / "voices" / "v1" / "voice.toml").write_text("", encoding="utf-8")
         self.sessions_dir = char_dir / "sessions"
         store = session_store.SessionStore(
             session_id="session-x", model="m1", voice="v1", prompt_sha256="d",
@@ -77,9 +86,38 @@ class SessionFileRoutes(AioHTTPTestCase):
         self.on_disk = self.session_path.read_bytes()
 
         from hearth.config import config_loader
-        patcher = mock.patch.object(config_loader, "_DATA", self.root)
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        for attr in ("_DATA", "_ROOT"):
+            patcher = mock.patch.object(config_loader, attr, self.root)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def a_session(self, **over):
+        """A well-formed session file as it would arrive from someone's disk."""
+        payload = {
+            "schema": 2, "model": "m1", "voice": "v1", "persona": "default",
+            "started": "2026-09-07T09:00:00", "updated": "2026-09-07T09:30:00",
+            "held": False, "character": CHARACTER,
+            "messages": [{"role": "system", "content": "a smuggled prompt"},
+                         {"role": "user", "content": SENTINEL},
+                         {"role": "assistant", "content": "said back"}],
+        }
+        payload.update(over)
+        return payload
+
+    async def deposit_json(self, **over):
+        return await self.client.post(
+            "/admin/sessions/deposit", headers=self.BEARER,
+            json={"character": over.pop("character_field", CHARACTER),
+                  "session": self.a_session(**over)})
+
+    async def deposit_multipart(self, session=None, character=CHARACTER):
+        form = aiohttp.FormData()
+        form.add_field("character", character)
+        form.add_field("file",
+                       json.dumps(session if session is not None else self.a_session()),
+                       filename="session.json", content_type="application/json")
+        return await self.client.post("/admin/sessions/deposit",
+                                      headers=self.BEARER, data=form)
 
     # ── download ────────────────────────────────────────────────────────────
 
@@ -176,6 +214,93 @@ class SessionFileRoutes(AioHTTPTestCase):
                 json={"character": CHARACTER, "session": "session-x"})
         self.assertEqual(resp.status, 501)
 
+
+    # ── deposit ─────────────────────────────────────────────────────────────
+
+    async def test_a_multipart_deposit_becomes_a_session_on_the_shelf(self):
+        resp = await self.deposit_multipart()
+        self.assertEqual(resp.status, 200, await resp.text())
+        data = await resp.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["character"], CHARACTER)
+        self.assertEqual(data["turns"], 1)
+        self.assertEqual(data["dropped_system_messages"], 1)
+        written = self.sessions_dir / f"{data['session_id']}.json"
+        on_disk = session_store.load(written)  # the store reads its own back
+        self.assertEqual(on_disk["schema"], session_store.SCHEMA)
+        self.assertIs(on_disk["held"], True)
+        self.assertEqual(on_disk["origin"], "deposit")
+        self.assertNotIn("system", [m["role"] for m in on_disk["messages"]])
+        self.assertEqual(oct(written.stat().st_mode)[-3:], "600")
+        [meta] = [m for m in session_store.list_sessions(self.sessions_dir)
+                  if m.session_id == data["session_id"]]
+        self.assertEqual(meta.origin, "deposit")
+        self.assertTrue(meta.held)
+        self.assertEqual(meta.turns, 1)
+
+    async def test_a_json_body_deposit_lands_the_same_way(self):
+        resp = await self.deposit_json()
+        self.assertEqual(resp.status, 200, await resp.text())
+        data = await resp.json()
+        on_disk = session_store.load(self.sessions_dir / f"{data['session_id']}.json")
+        self.assertEqual(on_disk["character"], CHARACTER)
+        self.assertEqual(on_disk["voice"], "v1")
+
+    async def test_a_deposit_never_replaces_a_session(self):
+        first = await (await self.deposit_json()).json()
+        second = await (await self.deposit_multipart()).json()
+        self.assertNotEqual(first["session_id"], second["session_id"])
+        for sid in (first["session_id"], second["session_id"]):
+            self.assertTrue((self.sessions_dir / f"{sid}.json").is_file())
+        # …and the session that was already there is untouched.
+        self.assertEqual(self.session_path.read_bytes(), self.on_disk)
+
+    async def test_the_upload_cannot_choose_its_own_id(self):
+        resp = await self.deposit_json(session_id="session-x", name="session-x")
+        data = await resp.json()
+        self.assertNotEqual(data["session_id"], "session-x")
+        self.assertEqual(self.session_path.read_bytes(), self.on_disk)
+
+    async def test_a_file_over_the_cap_is_refused_before_it_is_parsed(self):
+        with mock.patch.object(verbs_mod, "MAX_DEPOSIT_BYTES", 64):
+            resp = await self.deposit_multipart()
+            self.assertEqual(resp.status, 413, await resp.text())
+            resp = await self.deposit_json()
+            self.assertEqual(resp.status, 413, await resp.text())
+        self.assertEqual(list(self.sessions_dir.glob("session-*.json")),
+                         [self.session_path])
+
+    async def test_deposit_refusals(self):
+        cases = [
+            ("no session in the body", {"character": CHARACTER}, 400, "no session"),
+            ("a session that is not an object", {"character": CHARACTER,
+                                                 "session": "hello"}, 400,
+             "not a session file"),
+            ("another companion's", {"character": CHARACTER,
+                                     "session": self.a_session(character="zz-other")},
+             400, "another companion"),
+            ("a voice this one has not", {"character": CHARACTER,
+                                          "session": self.a_session(voice="v-nope")},
+             400, "voice"),
+            ("no such companion", {"character": "zz-nobody",
+                                   "session": self.a_session()}, 404, "unknown"),
+            ("no companion named", {"session": self.a_session()}, 400, "character"),
+        ]
+        for label, body, want, needle in cases:
+            with self.subTest(case=label):
+                resp = await self.client.post("/admin/sessions/deposit",
+                                              headers=self.BEARER, json=body)
+                self.assertEqual(resp.status, want, await resp.text())
+                text = await resp.text()
+                self.assertIn(needle, text)
+                self.assertNotIn(self._tmp.name, text, "a refusal must not map the disk")
+
+    async def test_a_body_that_is_not_json_at_all(self):
+        resp = await self.client.post(
+            "/admin/sessions/deposit", headers=self.BEARER, data=b"<not json>")
+        self.assertEqual(resp.status, 400)
+        self.assertIn("JSON", await resp.text())
+
     # ── the contract: content is read by nothing but the download ───────────
 
     async def test_no_route_but_the_download_carries_a_word_of_it(self):
@@ -205,12 +330,21 @@ class SessionFileRoutes(AioHTTPTestCase):
                     f"/admin/sessions/file?character={CHARACTER}&session=session-x",
                     headers=self.BEARER)
                 download_body = await download.text()
+                deposit = await self.deposit_multipart()
+                deposit_body = await deposit.text()
+                rejected = await self.client.post(
+                    "/admin/sessions/deposit", headers=self.BEARER,
+                    json={"character": CHARACTER,
+                          "session": self.a_session(voice="v-nope")})
+                rejected_body = await rejected.text()
             finally:
                 logger.remove(sink)
         self.assertEqual(shelf.status, 200)
         self.assertEqual(json.loads(shelf_body)["sessions"][0]["turns"], 1)
+        self.assertEqual(deposit.status, 200, deposit_body)
         for label, body in (("shelf", shelf_body), ("reveal", reveal_body),
-                            ("refusal", missing_body)):
+                            ("refusal", missing_body), ("deposit", deposit_body),
+                            ("deposit refusal", rejected_body)):
             with self.subTest(response=label):
                 self.assertNotIn(SENTINEL, body, f"{label} must never carry content")
         self.assertIn(SENTINEL, download_body, "the download IS the content")

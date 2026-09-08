@@ -25,3 +25,16 @@ The control panel offers two ways to reach a saved session's file, and which one
 - **Download** hands you the file itself, from anywhere the panel reaches. The file is your conversation — the persona prompt is never in it — so it leaves unchanged and with nothing stripped out.
 
 Both work from a session id and never from a path you type: a session that is not this companion's own is refused, and the refusal says so without naming any location on disk.
+
+## Bringing a session file in
+
+The other direction: pick a session file — one you downloaded from here before, or one from another install of Hearth — and it joins the companion's shelf, ready to resume like any other saved session.
+
+What is checked before it is kept:
+
+- **It has to be this companion's.** A session file names the companion it belongs to, and a conversation is a record of one companion rather than something transferable between them; a file naming a different one is refused. An older file that names none is stamped with the companion you are depositing it into.
+- **Its voice has to be one this companion has.** A session remembers which voice bundle was speaking, and a session that resumed into a voice this companion cannot speak would fail at the first turn instead of at the door. The same goes for the persona variant it names.
+- **No prompt is ever accepted.** A session file here never carries the persona, and any system message in the file you pick is dropped rather than stored — so a file cannot put words in the companion's mouth on the way in. The answer tells you how many were dropped.
+- **It gets a fresh id, and it is held.** The name comes from the moment of the deposit, never from the file, so bringing a file in can only ever add to the shelf and never overwrite a conversation already on it. The result is marked **held**, so it is sticky and no sweep will take it, and it is stamped as brought in rather than born here.
+
+A file that is not readable as a session — or one larger than a session file is allowed to be — is refused with a reason about the file, and the reason never quotes a line of what it says.

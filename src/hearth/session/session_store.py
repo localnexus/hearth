@@ -259,6 +259,9 @@ class SessionMeta:
     persona: str = "default"
     character: Optional[str] = None
     memory_mode: str = "full"  # the sitting's stamped posture ("full" when unstamped)
+    origin: Optional[str] = None  # "deposit" for a file brought in from outside;
+                                  # None (unwritten) for a session born here, so
+                                  # existing files stay byte-identical
 
 
 def list_sessions(sessions_dir: Optional[Path] = None) -> list:
@@ -290,6 +293,7 @@ def list_sessions(sessions_dir: Optional[Path] = None) -> list:
             persona=str(data.get("persona") or "default"),
             character=data.get("character"),
             memory_mode=str(data.get("memory_mode") or "full"),
+            origin=data.get("origin") or None,
         ))
     metas.sort(key=lambda m: (m.updated or m.started or ""), reverse=True)
     return metas
