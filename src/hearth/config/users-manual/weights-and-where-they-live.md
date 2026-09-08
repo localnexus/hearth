@@ -34,6 +34,16 @@ If one of those folders turns out to already live inside a root of your own — 
 where the apps' folders are shortcuts into one models directory you keep — Hearth quietly skips it
 rather than showing you everything twice.
 
+A root is also a **fence**. A shortcut (symlink) inside a root that leads *outside* every root you
+named is listed by name, with where it points, and is not followed — a root is your statement of what
+Hearth may read, and a shortcut is not that statement. If you want what is on the other end, add that
+folder as a root of its own. One reason this matters on a Mac: a shortcut onto an external or network
+drive is a place Hearth's own background process may not be allowed to read, and the system does not
+refuse such a read — it waits, silently, for a permission dialog nobody sees. The scan you run in a
+terminal can see that drive because the terminal was granted the permission and the running program was not.
+Naming the drive as a root is the moment to grant it (System Settings → Privacy & Security → Files and
+Folders, or Full Disk Access, for the Python that runs Hearth).
+
 ## The landing folder
 
 Weights that arrive from here on can go somewhere that is Hearth's, not some app's:

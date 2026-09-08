@@ -144,7 +144,8 @@ def _cmd_scan(root_name: str | None, ctx: int | None, as_json: bool) -> int:
           f"({_gb(budget.working_set_bytes)} working set − {_gb(budget.reserve_bytes)} "
           f"for speech; {budget.source})")
     models = [c for c in found if c.kind == "model"]
-    if not models:
+    elsewhere = [c for c in found if c.kind == "elsewhere"]
+    if not models and not elsewhere:
         print("no weights found")
         return 0
     for cand in models:
@@ -166,6 +167,10 @@ def _cmd_scan(root_name: str | None, ctx: int | None, as_json: bool) -> int:
             print(f"      header unreadable: {cand.header_error}")
         for proj in cand.mmproj_candidates:
             print(f"      mmproj  {_gb(proj.size_bytes):>9}  {proj.display_key}")
+    for cand in elsewhere:
+        print(f"  {cand.display_key}")
+        print(f"      not followed: {cand.header_error}")
+
     print(f"{len(models)} candidate(s) in {len(resolved)} root(s)")
     return 0
 

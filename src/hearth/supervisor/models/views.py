@@ -207,6 +207,10 @@ def _walk(cfg: roots_mod.WeightsConfig, budget) -> tuple[dict, list]:
         "roots": [{"name": r.name, "kind": r.kind, "path": str(r.path)}
                   for r in resolved],
         "candidates": [_candidate_json(c, budget, known) for c in models],
+        # symlinks that leave the roots: named, never followed (scan.py's fence)
+        "elsewhere": [{"display_key": c.display_key, "path": str(c.path),
+                       "note": c.header_error}
+                      for c in found if c.kind == "elsewhere"],
     }
     return body, models
 

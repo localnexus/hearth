@@ -259,3 +259,48 @@ class RealPaths(_Tree):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SymlinksLeavingTheRoots(_Tree):
+    """The fence: a link out of every declared root is named, never followed —
+    and never stat()ed through, because on a Mac that open can block forever
+    on a permission prompt a daemon will not see."""
+
+    def setUp(self):
+        super().setUp()
+        self.root_dir = self.base / "root"
+        self.outside = self.base / "outside"
+        (self.root_dir / "inside").mkdir(parents=True)
+        self.outside.mkdir()
+        tiny_gguf(self.root_dir / "inside" / "in.gguf", name="in")
+        tiny_gguf(self.outside / "out.gguf", name="out")
+        (self.root_dir / "away").symlink_to(self.outside)                    # dir link out
+        (self.root_dir / "away.gguf").symlink_to(self.outside / "out.gguf")  # file link out
+        (self.root_dir / "near").symlink_to(self.root_dir / "inside")        # dir link in
+
+    def test_links_out_are_reported_and_not_followed(self):
+        found = scan_all([Root("r", self.root_dir, "user")], use_cache=False)
+        models = [c for c in found if c.kind == "model"]
+        elsewhere = [c for c in found if c.kind == "elsewhere"]
+        self.assertEqual(sorted(c.display_key for c in models), ["inside/in"])  # near/ = same file, deduped
+        self.assertEqual(sorted(c.display_key for c in elsewhere), ["away", "away.gguf"])
+        for c in elsewhere:
+            self.assertIn(str(self.outside.resolve()), c.header_error)
+            self.assertEqual(c.size_bytes, 0)
+            self.assertEqual(c.identity, "")
+            self.assertEqual(c.duplicates, [])
+        self.assertFalse(any("out" in c.display_key for c in models))
+
+    def test_a_link_into_another_declared_root_is_followed(self):
+        roots = [Root("r", self.root_dir, "user"), Root("o", self.outside, "user")]
+        found = scan_all(roots, use_cache=False)
+        self.assertEqual([c for c in found if c.kind == "elsewhere"], [])
+        # the outside file is reached three ways (away.gguf, away/out.gguf,
+        # o's own walk) and kept once, by real path
+        paths = [c.path for c in found if c.kind == "model"]
+        self.assertEqual(paths.count((self.outside / "out.gguf").resolve()), 1, paths)
+
+    def test_a_lone_root_fences_on_itself(self):
+        found = scan_root(Root("r", self.root_dir, "user"), use_cache=False)
+        self.assertEqual(sorted(c.display_key for c in found if c.kind == "elsewhere"),
+                         ["away", "away.gguf"])

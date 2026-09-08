@@ -246,6 +246,13 @@ window.LaunchModels = (function () {
     head.appendChild(again);
     host.appendChild(head);
     for (const c of d.candidates || []) host.appendChild(candidateRow(api, report, c));
+    // Symlinks that leave the roots are named and never followed (the scan
+    // fence): the note carries the target, so adding it as a root is one edit.
+    for (const e of d.elsewhere || []) {
+      const row = mk("div", "row note");
+      row.appendChild(mk("span", "grow", e.display_key + " — not followed: " + e.note));
+      host.appendChild(row);
+    }
   }
 
   function candidateRow(api, report, c) {

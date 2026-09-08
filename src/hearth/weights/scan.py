@@ -55,6 +55,47 @@ HIDDEN_SKIP = (".internal", ".cache")
 HEADER_CACHE_PATH = cl.DATA_DIR / ".cache" / "weights-headers.json"
 
 
+# ── the fence: a root is a declaration, a symlink out of it is not ──────────
+#
+# A symlink inside a root that resolves OUTSIDE every declared root is reported
+# and never followed. Two reasons. The root is the user's statement of what
+# Hearth may read, and a link is not that statement. And a link can lead onto
+# an external or network volume the daemon is not allowed to touch — on macOS
+# that open() does not fail, it BLOCKS, waiting on a consent prompt no daemon
+# will ever see (found live 2026-09-07: the launch page's scan hung in
+# opendir on a link into an exFAT volume the terminal could read and the
+# daemon could not). Readlink alone is safe; stat through the link is not, so
+# the fence is checked before anything touches the target.
+
+def _inside(target: Path, boundaries: list[Path] | None) -> bool:
+    if boundaries is None:
+        return True
+    return any(target == b or b in target.parents for b in boundaries)
+
+
+def _elsewhere(link: Path, target: Path, root: Root) -> "Candidate":
+    try:
+        rel = str(link.relative_to(root.path))
+    except ValueError:
+        rel = link.name
+    return Candidate(path=link, display_key=rel, root_name=root.name,
+                     layout="link", kind="elsewhere", size_bytes=0,
+                     header_error=f"points outside your roots → {target} — "
+                                  "add that folder as a root if Hearth may read it")
+
+
+def _fence(entry: Path, root: Root, boundaries: list[Path] | None,
+           out: list) -> bool:
+    """True when `entry` is a symlink leaving the roots (recorded, not followed)."""
+    if boundaries is None or not entry.is_symlink():
+        return False
+    target = Path(os.path.realpath(entry))
+    if _inside(target, boundaries):
+        return False
+    out.append(_elsewhere(entry, target, root))
+    return True
+
+
 @dataclass
 class Candidate:
     """One set of weights found on disk. A reference, never a copy."""
@@ -168,13 +209,22 @@ def _looks_like_mmproj(name: str, facts: HeaderFacts | None) -> bool:
 
 
 def scan_dir(directory: Path, root: Root, layout: str = "plain",
-             key_prefix: str | None = None, use_cache: bool = True) -> list[Candidate]:
-    """Every GGUF in ONE directory: shards grouped, projectors paired."""
+             key_prefix: str | None = None, use_cache: bool = True,
+             boundaries: list[Path] | None = None) -> list[Candidate]:
+    """Every GGUF in ONE directory: shards grouped, projectors paired. A
+    symlinked file that leaves the roots is reported, never opened."""
+    fenced: list[Candidate] = []
     try:
-        entries = sorted(p for p in directory.iterdir()
-                         if p.is_file() and p.name.endswith(".gguf"))
+        entries = []
+        for p in sorted(directory.iterdir()):
+            if not p.name.endswith(".gguf"):
+                continue
+            if _fence(p, root, boundaries, fenced):
+                continue
+            if p.is_file():
+                entries.append(p)
     except OSError:
-        return []
+        return fenced
 
     groups: dict[str, list[Path]] = {}
     for path in entries:
@@ -205,7 +255,7 @@ def scan_dir(directory: Path, root: Root, layout: str = "plain",
     for cand in out:
         if cand.kind == "model":
             cand.mmproj_candidates = list(projectors)
-    return out
+    return out + fenced
 
 
 # ── the Ollama reader ────────────────────────────────────────────────────────
@@ -273,13 +323,22 @@ def scan_ollama(store: Path, root: Root | None = None,
 
 # ── the walk ─────────────────────────────────────────────────────────────────
 
-def scan_root(root: Root, use_cache: bool = True) -> list[Candidate]:
-    """Everything under one root, each directory read by the layout it shows."""
+def scan_root(root: Root, use_cache: bool = True,
+              boundaries: list[Path] | None = None) -> list[Candidate]:
+    """Everything under one root, each directory read by the layout it shows.
+
+    `boundaries` are the real paths of every declared root; a symlink that
+    resolves outside all of them is reported as kind "elsewhere" and not
+    walked. Alone, a root fences on itself.
+    """
+    if boundaries is None:
+        boundaries = [Path(os.path.realpath(root.path))]
     out: list[Candidate] = []
     for dirpath, dirnames, _files in os.walk(root.path, followlinks=True):
         here = Path(dirpath)
         dirnames[:] = sorted(d for d in dirnames
-                             if not d.startswith(".") and d not in HIDDEN_SKIP)
+                             if not d.startswith(".") and d not in HIDDEN_SKIP
+                             and not _fence(here / d, root, boundaries, out))
 
         if "manifests" in dirnames and "blobs" in dirnames:
             out += scan_ollama(here, root, use_cache)
@@ -293,11 +352,12 @@ def scan_root(root: Root, use_cache: bool = True) -> list[Candidate]:
                 for sub_dir, sub_dirs, _f in os.walk(rev, followlinks=True):
                     sub_dirs[:] = sorted(d for d in sub_dirs
                                          if not d.startswith(".") and d not in HIDDEN_SKIP)
-                    out += scan_dir(Path(sub_dir), root, "hf", key, use_cache)
+                    out += scan_dir(Path(sub_dir), root, "hf", key, use_cache,
+                                    boundaries)
             dirnames[:] = []
             continue
 
-        out += scan_dir(here, root, "plain", None, use_cache)
+        out += scan_dir(here, root, "plain", None, use_cache, boundaries)
     return out
 
 
@@ -305,10 +365,11 @@ def scan_all(roots: list[Root] | None = None, use_cache: bool = True) -> list[Ca
     """Every candidate under every resolved root, deduped by real path, with
     `duplicates` filled: the same identity found somewhere else."""
     roots = resolve_roots() if roots is None else roots
+    boundaries = [Path(os.path.realpath(r.path)) for r in roots]
     found: list[Candidate] = []
     seen: set[Path] = set()
     for root in roots:
-        for cand in scan_root(root, use_cache):
+        for cand in scan_root(root, use_cache, boundaries):
             if cand.path in seen:
                 continue
             seen.add(cand.path)
@@ -316,7 +377,8 @@ def scan_all(roots: list[Root] | None = None, use_cache: bool = True) -> list[Ca
 
     by_identity: dict[str, list[Candidate]] = {}
     for cand in found:
-        by_identity.setdefault(cand.identity, []).append(cand)
+        if cand.identity:            # "elsewhere" rows were never read
+            by_identity.setdefault(cand.identity, []).append(cand)
     for group in by_identity.values():
         if len(group) < 2:
             continue
