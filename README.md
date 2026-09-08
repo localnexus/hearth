@@ -12,7 +12,7 @@ sovereign inference.*
 
 ## What a talk is like
 
-You press Start on a web page, say hello, and in under a second a voice answers. You
+You press Start on a web page, say hello, and a couple of seconds after you stop talking a voice answers. You
 keep talking the way you would on a phone call; there is no button to press between turns and
 no typing. When you stop, the conversation is saved as a file in a folder on your computer, and
 you can open it again later or throw it away.
@@ -63,12 +63,12 @@ Details, measured numbers, and what makes a lighter setup work:
 
 1. **Install.** One command downloads Hearth, sets up its environment, and fetches the speech
    models (about 5 GB, it asks first). It stops and tells you if it needs something only you can
-   do, like typing your password. → [Installing Hearth](docs/installing.md)
+   do, like typing your password. → [Quick guide: install](docs/quick/install.md)
 2. **Bring a model.** Hearth does not ship the language model. You download one and run it with
-   a small local model server. The guide names the one we use. → [Installing Hearth, step 2](docs/installing.md)
+   a small local model server. The guide names the one we use. → [Quick guide: install](docs/quick/install.md#the-download)
 3. **Talk.** A first-run setup creates your access key and turns the web pages on, then offers
    to start Hearth. Open the address it shows in your browser, press Start, and speak first;
-   there is no greeting.
+   there is no greeting. → [Quick guide: your first talk](docs/quick/first-talk.md)
 
 <details>
 <summary>The commands, for the reader who wants them now</summary>
@@ -87,13 +87,16 @@ from a terminal window, because macOS grants the microphone to the terminal app,
 Python. Every step as commands you run yourself: [Installing by hand](docs/installing-by-hand.md).
 </details>
 
+Short pages for each step, plus [uninstalling](docs/quick/uninstall.md) and
+[when it goes wrong](docs/quick/when-it-goes-wrong.md): [the quick guides](docs/quick/README.md).
+
 ## Make it yours
 
 - **A voice.** Record 10 to 15 seconds of clean speech, drop it in a folder, and point Hearth
   at it. Only clone a voice you have the right to use, and never share a cloned voice of a real
-  person without their consent. → [Bring your own voice](docs/bring-your-own-voice.md)
+  person without their consent. → [Quick guide: make a voice](docs/quick/make-a-voice.md)
 - **A character.** Write who the companion is in a plain text file: name, manner, what it cares
-  about. → [Authoring a character](docs/authoring-a-character.md)
+  about. → [Quick guide: make a character](docs/quick/make-a-character.md)
 - **Memory.** Off until you turn it on. → [Memory](docs/memory.md)
 
 ## Where your words live
