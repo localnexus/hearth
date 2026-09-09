@@ -31,25 +31,27 @@ Silero VAD runs on `onnxruntime`; pipecat and the Python glue are platform-agnos
 
 ### Memory — the sizing that matters
 
-Everything shares one unified-memory pool: resident model weights plus the model's active KV context. Approximate resident weight footprint with the default stack:
+Look up your Mac's memory (Apple menu → About This Mac → *Memory*):
 
-| Component | Footprint |
+| Your Mac's memory | Can it run Hearth? |
 |---|---|
-| model — a ~35B-parameter, 3B-active MoE at Q8_0 | ~37 GB |
-| TTS — Chatterbox-Turbo fp16 | ~3 GB |
-| STT — Whisper-large-v3-turbo | ~1.6 GB |
-| Silero VAD | < 0.1 GB |
-| **Weight floor** | **~42 GB** |
+| 16 or 24 GB | **No.** Even the smallest download of the model is bigger than what your Mac can hold in memory alongside everything else. A different, smaller model might work; this page does not cover one yet. |
+| 32 GB | **No, not with this model.** The smallest download comes about one gigabyte short of fitting, so Hearth will refuse to load it. |
+| 48 GB | **Yes, with a smaller download of the model**, and with the conversation length capped. It will feel tight. |
+| 64 GB | **Yes.** Every download of the model fits. The full-quality one runs with a shorter conversation window, which real talks never fill. |
+| 96 GB | **Yes, comfortably.** The full-quality download at its full conversation length. |
+| 128 GB or more | **Yes, with room to spare** for a second model loaded beside it. |
 
-Add the model's KV cache (1–5 GB in a typical session; the loaded context window is large — 262,144 tokens — but real sessions occupy a small fraction of it) plus macOS, the model server process, and the Python runtime (~8–12 GB). That gives a **comfortable operating floor of roughly 55–60 GB in use**.
+**Which model.** Every row above describes [Unsloth's build of Qwen3.6-35B-A3B](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF), the set of files this project recommends and measured. The author's own companion runs the Q8_0 of [a derivative build of the same model](https://huggingface.co/llmfan46/Qwen3.6-35B-A3B-uncensored-heretic-Native-MTP-Preserved-GGUF), which was tested the same way a day earlier and has the same footprint and speed.
 
-| Unified memory | Verdict |
-|---|---|
-| 16–24 GB | Not viable with the default stack — the OS pages weights to flash, breaking the real-time loop. |
-| 32–48 GB | Only with a smaller model quant and lighter model (see below); expect memory pressure. |
-| **64–96 GB** | **Practical minimum** for the default Q8_0 stack. |
-| **128–192 GB** | **Recommended** — no memory-pressure risk, full context window, room to keep a second model loaded for comparison. |
-| 256 GB+ | Comfortable headroom; RAM stops being a constraint (fp16 TTS is chosen precisely because memory is not scarce here). |
+That is the whole decision for most readers. Three words explain where it comes from:
+
+- **Quant.** The model comes as one set of files on Hugging Face, and each file is the same model at a different level of compression. The name of each file's compression level is its *quant*: **Q8_0** is the least compressed (biggest, best), **UD-Q3_K_M** the most (smallest, some quality lost). You download one of them, not all.
+- **Context.** How much of the conversation the model can hold in mind at once, counted in *tokens* (roughly three-quarters of a word each). 16k means sixteen thousand tokens, about a short talk; 64k a long one; 262k the most this model allows. Holding more costs memory.
+- **Resident.** How much of your Mac's memory the model server actually occupies once the file is loaded and a talk is going. It is always more than the file on disk. This is the number that decides whether it fits. Disk space is a separate question (see *Disk* below).
+
+The measured size of every download at every context length, the rule Hearth applies to decide
+what fits, and what is still an estimate: [Hardware measurements](hardware-measurements.md).
 
 ### Latency (measured on high-end Apple Silicon)
 
@@ -66,9 +68,10 @@ First-run weight download is **~42 GB** (model ~37 GB, TTS ~3 GB, STT ~1.6 GB, V
 
 ### Lowering the floor
 
-- **Smaller model quant** — Q4_K_M roughly halves the model weights (~18–19 GB) at some quality cost, dropping the operating floor toward ~35–40 GB.
-- **Lighter model** — a smaller MoE (e.g. a ~24B, 2B-active model) has a lower footprint and swaps in via `model =` in `config/active.toml`.
-- **Lower-quant TTS** — `chatterbox-turbo-{8bit,6bit,4bit}` saves ~1–2 GB at some voice-quality cost.
+- **A smaller download of the same model.** The mid-size one is 22.7 GB instead of 37.8 GB and sounds nearly the same; the smallest is 17.1 GB. Which one to pick for your memory size: [Hardware measurements](hardware-measurements.md).
+- **A shorter conversation window.** Letting the model hold less of the talk at once saves about 5 GB at the full-quality download. Hearth's fit check does this for you when it has to.
+- **A lighter model.** A smaller model swaps in via `model =` in `config/active.toml`.
+- **A smaller voice engine.** `chatterbox-turbo-{8bit,6bit,4bit}` saves ~1–2 GB at some voice-quality cost.
 
 ### Audio input
 
@@ -96,4 +99,4 @@ Calling a hosted model, TTS, or STT API would be the easy path, and it is delibe
 
 ---
 
-*Numbers here are approximate and drawn from measurements on Apple Silicon plus quantization math. Verify against your actual download sizes and a live memory reading on your target machine before committing to a deployment.*
+*Memory numbers are measured on one Mac (an M3 Ultra, 2026-09-08); the verdicts by memory size apply Hearth's own fit rule to them and have not yet been confirmed by hand on smaller machines. Verify with a live memory reading on your own Mac before committing to a deployment.*

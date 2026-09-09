@@ -96,7 +96,8 @@ that streams `reasoning_content` while `content` stays empty stalls the voice lo
 instruct model, or a hybrid-thinking model (Qwen3.6-class, GLM, …) with thinking forced off
 (Hearth sends `reasoning_effort = "none"` from your model config on every request; `llama-server`
 also has start-up switches for stubborn templates). For memory sizing — the default stack is
-built around a ~35B-parameter, 3B-active MoE at Q8_0, ~37 GB — see HARDWARE-REQUIREMENTS.
+built around a ~35B-parameter, 3B-active MoE at Q8_0, ~38 GB, with seven lighter quants of the
+same file set measured tier by tier — see HARDWARE-REQUIREMENTS.
 
 `llama-server` is keyless unless you start it with `--api-key`; if you do, export the same
 value as `LM_API_TOKEN` when launching Hearth.

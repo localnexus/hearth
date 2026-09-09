@@ -47,10 +47,10 @@ Three questions. If the answer to all three is yes, keep reading.
 
 | Your Mac's memory | What to expect |
 |---|---|
-| 16 to 24 GB | Not enough for the default setup. The computer runs out of room and the voice stutters. |
-| 32 to 48 GB | Works with a smaller model. Expect it to feel tight. |
-| 64 to 96 GB | The practical minimum for the default model. |
-| 128 GB or more | Comfortable. Room for the full conversation length and a second model. |
+| 16 to 32 GB | Not enough. Even the smallest download of the model does not fit beside everything else. |
+| 48 GB | Works with a smaller download of the model. Expect it to feel tight. |
+| 64 GB | The practical minimum for the full-quality model. |
+| 96 GB or more | Comfortable. Full quality, full conversation length, room for a second model. |
 
 Hearth needs about **60 GB of free disk** (most of it is the model you download) and a working
 microphone and speaker. It was built and measured on Apple chips; Intel Macs cannot run it. A
@@ -59,13 +59,33 @@ rented Linux machine with an NVIDIA card is a planned second path, not a finishe
 Details, measured numbers, and what makes a lighter setup work:
 [Hardware requirements](docs/HARDWARE-REQUIREMENTS.md).
 
+## Where the model comes from
+
+Hearth does not ship the language model. You download one file and tell Hearth where it is.
+The memory table above is about that file, so pick the size that fits your Mac.
+
+- **The one this project recommends:** [Unsloth's build of Qwen3.6-35B-A3B](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF).
+  It comes in eight sizes, from 17 GB to 38 GB; every one was measured for this project, and
+  the [hardware page](docs/HARDWARE-REQUIREMENTS.md) says which fits your memory. The model is
+  Apache-2.0 licensed. Q8_0 is the full-quality file and the default.
+- **The one the author talks to:** the Q8_0 of
+  [a derivative build of the same model](https://huggingface.co/llmfan46/Qwen3.6-35B-A3B-uncensored-heretic-Native-MTP-Preserved-GGUF),
+  tested the same way a day earlier. It has the same footprint and speed.
+- **Any other model** that runs in a local server speaking the common chat API also works, with
+  two rules: the server must have it loaded, and it must not show its thinking out loud.
+  → [Bring a model server](docs/installing.md#3-bring-a-model-server)
+
+The install guide has the download command. Which server to run it in is covered under
+[Bring-your-own philosophy](#bring-your-own-philosophy) below.
+
 ## Get it running
 
 1. **Install.** One command downloads Hearth, sets up its environment, and fetches the speech
    models (about 5 GB, it asks first). It stops and tells you if it needs something only you can
    do, like typing your password. → [Quick guide: install](docs/quick/install.md)
-2. **Bring a model.** Hearth does not ship the language model. You download one and run it with
-   a small local model server. The guide names the one we use. → [Quick guide: install](docs/quick/install.md#the-download)
+2. **Bring a model.** Download the recommended file named in
+   [Where the model comes from](#where-the-model-comes-from) and run it with a small local model
+   server. → [Quick guide: install](docs/quick/install.md#the-download)
 3. **Talk.** A first-run setup creates your access key and turns the web pages on, then offers
    to start Hearth. Open the address it shows in your browser, press Start, and speak first;
    there is no greeting. → [Quick guide: your first talk](docs/quick/first-talk.md)
@@ -99,12 +119,21 @@ Short pages for each step, plus [uninstalling](docs/quick/uninstall.md) and
   about. → [Quick guide: make a character](docs/quick/make-a-character.md)
 - **Memory.** Off until you turn it on. → [Memory](docs/memory.md)
 
-## Where your words live
+## What you keep, and where it lives
 
-Everything Hearth knows about you is in one folder on your computer: your settings, your
-characters, your voices, your saved conversations, and its memory notes if you turned memory
-on. They are ordinary files. You can read them, copy them, or delete the folder, and then they
-are gone. Nothing is sent anywhere.
+**What you keep.** Everything: every conversation, the notes Hearth makes about you if you
+turn memory on, the characters you wrote, and the voices you gave it.
+
+**Where it lives.** In one folder on your computer, as ordinary files. Open them in any text
+editor. Fix a note that is wrong. Delete a talk you would rather forget. Delete the folder, and
+it is all gone.
+
+**How you take it with you.** Copy the folder. That is the whole export. It works on the next
+Mac, or in the next version of Hearth, and there is no account to close because there was never
+one to open.
+
+**What leaves the machine.** Nothing. The model, the voice, and the memory all run here. Once
+the downloads are done, pull the network cable and it still talks.
 
 ## Bring-your-own philosophy
 
