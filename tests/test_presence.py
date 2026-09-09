@@ -86,6 +86,7 @@ class PresenceRouteTests(unittest.TestCase):
 
     def setUp(self):
         presence.attach(None)
+        presence.attach_level(None)
 
     def _get(self, ctx) -> dict:
         async def go():
@@ -108,8 +109,9 @@ class PresenceRouteTests(unittest.TestCase):
 
     def test_shape_before_attach(self):
         body = self._get(_ctx())
-        self.assertEqual(set(body), {"bot_speaking", "user_speaking", "muted", "ts"})
+        self.assertEqual(set(body), {"bot_speaking", "user_speaking", "muted", "level", "level_ts", "ts"})
         self.assertFalse(body["user_speaking"])
+        self.assertEqual((body["level"], body["level_ts"]), (0.0, 0.0))  # before attach_level: shape, zeros
         self.assertIsInstance(body["ts"], float)
 
     def test_composes_the_three_flags(self):
@@ -118,6 +120,16 @@ class PresenceRouteTests(unittest.TestCase):
         body = self._get(_ctx(muted=False, speaking=True))
         self.assertEqual((body["bot_speaking"], body["user_speaking"], body["muted"]),
                          (True, True, False))
+
+    def test_level_rides_the_object(self):
+        """S2: the played-voice level joins the object from the attached LevelTap."""
+        from hearth.control.control_taps import LevelTap
+        lt = LevelTap(); lt._level = 0.42; lt._last_ts = 12.5
+        import time as _t; lt._seen_ts = _t.monotonic()   # fresh frame → not yet decayed
+        presence.attach_level(lt)
+        body = self._get(_ctx())
+        self.assertAlmostEqual(body["level"], 0.42)
+        self.assertEqual(body["level_ts"], 12.5)
 
     def test_muted_mic_never_reads_as_speaking(self):
         tap = PresenceTap(); tap._user_speaking = True  # the stuck-true case

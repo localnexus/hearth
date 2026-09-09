@@ -31,8 +31,14 @@ mic reported as a speaking one.
 Wiring: build_pipeline constructs ``PresenceTap()``, places it after ``vad``,
 and calls ``attach(tap)``; until then the route reports user_speaking false.
 
+S2 (mouth, 2026-09-08): ``level`` + ``level_ts`` join the object —
+the played voice's per-frame RMS from a LevelTap wired AFTER transport.output()
+(playback time, not TTS time; see LevelTap's docstring for why). 0–1 float; 0.0
+on its own once the audio stops, never a held value; before attach_level the
+field is 0.0 so a reader always sees the shape.
+
 API:
-    GET /presence → {bot_speaking, user_speaking, muted, ts}
+    GET /presence → {bot_speaking, user_speaking, muted, level, level_ts, ts}
         Sent with ``Access-Control-Allow-Origin: *`` — the reader is another
         app's webview, not this panel's page (see the route for why that is
         safe on this route and would not be on the POSTs).
@@ -86,6 +92,7 @@ class PresenceTap(FrameProcessor):
 
 
 _TAP: PresenceTap | None = None
+_LEVEL = None   # LevelTap (control_taps) after transport.output(); None until attach_level
 
 
 def attach(tap: PresenceTap) -> None:
@@ -94,14 +101,24 @@ def attach(tap: PresenceTap) -> None:
     _TAP = tap
 
 
+def attach_level(tap) -> None:
+    """bot.py hands over the played-audio LevelTap (S2). None detaches."""
+    global _LEVEL
+    _LEVEL = tap
+
+
 def snapshot(mute_gate, speaking_tap) -> dict:
     """The presence object — pure, so it is testable without a server."""
     muted = bool(mute_gate.is_muted)
     heard = bool(_TAP.user_speaking) if _TAP is not None else False
+    level = float(_LEVEL.level()) if _LEVEL is not None else 0.0
+    level_ts = float(_LEVEL.level_ts) if _LEVEL is not None else 0.0
     return {
         "bot_speaking": bool(speaking_tap.is_speaking),
         "user_speaking": heard and not muted,
         "muted": muted,
+        "level": level,
+        "level_ts": level_ts,
         "ts": time.time(),
     }
 

@@ -72,7 +72,7 @@ from hearth.stt.stt_service import MLXWhisperSTTService
 from hearth.control.control import start_web_server
 from hearth.control.engine_probe_llamaserver import fetch_engine_info_for
 from hearth.pipeline import model_residency
-from hearth.control.control_taps import MuteGate, SpeakingTap
+from hearth.control.control_taps import LevelTap, MuteGate, SpeakingTap
 from hearth.session.session_cli import resolve_session
 from hearth.recording.recording import (
     MicRecordTap,
@@ -235,6 +235,7 @@ async def build_pipeline(
         → llm          (OpenAILLMService pointing at your OpenAI-compatible server)
         → tts          (MLXAudioTTSService, sentence-at-a-time, streaming chunks)
         → transport.output()
+        → level_tap    (LevelTap: played-voice RMS at playback time → "level" on GET /presence)
         → speaking_tap (SpeakingTap: tracks BotStarted/StoppedSpeakingFrame for /say)
         → assistant_agg (collects LLM tokens → writes to context after full response)
     """
@@ -391,6 +392,11 @@ async def build_pipeline(
     # for the read-only /presence route; features/presence.py owns the route).
     presence_tap = hearth.control.features.presence.PresenceTap()
     hearth.control.features.presence.attach(presence_tap)
+    # LevelTap after transport.output() (S2, the desk-figure mouth): the played voice's
+    # RMS at playback time — the transport pushes each chunk downstream only
+    # after writing it to the device. Levels only; no audio kept.
+    level_tap = LevelTap()
+    hearth.control.features.presence.attach_level(level_tap)
 
     # Session recording. Two passive taps + a Recorder driven by the panel's Record
     # button. Disarmed →
@@ -493,6 +499,7 @@ async def build_pipeline(
         tts,
         tts_record_tap,      # M7 RECORD (passive, armed via panel): the companion's voice, native 24 kHz
         transport.output(),
+        level_tap,           # S2 (passive): played-voice RMS → "level" on GET /presence
         speaking_tap,
         assistant_agg,
     ])
