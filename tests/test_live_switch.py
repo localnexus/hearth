@@ -91,6 +91,11 @@ class _FakeSeam:
         self.companion = companion
         self.ended = None
         self.closed = False
+        # Stands in for the hindsight adapter (and its sidecar): the warm-store
+        # reuse gate hands THIS across a switch that changes neither the
+        # companion nor the persona.
+        self.backend = f"backend-{companion}"
+        self.reused_backend = None
 
     def augment(self, system):
         return system + "\n\nMEM:" + self.companion
@@ -144,8 +149,9 @@ class _Base(unittest.IsolatedAsyncioTestCase):
         self.seams = []
 
     def _mk(self, memory_mode: str = "full") -> switcher_mod.LiveSwitcher:
-        def seam_factory(char, persona):
+        def seam_factory(char, persona, reuse_backend=None):
             s = _FakeSeam(char)
+            s.reused_backend = reuse_backend
             self.seams.append(s)
             return s
 
@@ -216,6 +222,29 @@ class SwitcherPrepare(_Base):
         self.assertTrue((await sw.prepare({"character": "beta"}))["ok"])
         self.assertTrue(first.closed, "a superseded arm must release its seam")
         self.assertEqual((await sw.describe())["pending"]["character"], "beta")
+
+    async def test_same_identity_switch_keeps_the_warm_backend(self):
+        """The memory store is scoped to companion + persona, so a switch that
+        changes NEITHER (voice-only, or model-only as here) must hand the live
+        backend over rather than build a second one — the fix for the sidecar
+        respawn that a voice handoff used to trigger."""
+        sw = self._mk()
+        self.resident = ["model-two"]
+        self.assertTrue((await sw.prepare({"model": "m2"}))["ok"])
+        self.assertIs(self.seams[0].reused_backend, self.boot_seam.backend,
+                      "same companion + persona ⇒ the warm store is handed over")
+
+    async def test_character_change_builds_its_own_backend(self):
+        sw = self._mk()
+        self.assertTrue((await sw.prepare({"character": "beta"}))["ok"])
+        self.assertIsNone(self.seams[0].reused_backend,
+                          "a different companion gets its own store")
+
+    async def test_persona_change_builds_its_own_backend(self):
+        sw = self._mk()
+        self.assertTrue((await sw.prepare({"persona": "alt"}))["ok"])
+        self.assertIsNone(self.seams[0].reused_backend,
+                          "the store is persona-scoped — a variant gets its own")
 
     async def test_prepare_busy_refused(self):
         sw = self._mk()

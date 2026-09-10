@@ -56,11 +56,12 @@ def _now_iso() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
-def _default_seam_factory(character: str, persona: str):
+def _default_seam_factory(character: str, persona: str, reuse_backend=None):
     """The real memory seam (lazy import — keeps this module import-light)."""
     from hearth import memory as hearth_memory
 
-    return hearth_memory.maybe_attach(character, persona=persona)
+    return hearth_memory.maybe_attach(character, persona=persona,
+                                      reuse_backend=reuse_backend)
 
 
 async def fetch_resident_ids(provider: str, base_url: str, token: str):
@@ -257,8 +258,25 @@ class LiveSwitcher:
                         "(live swap offers resident models only) — "
                         "the restart path still works"]}
 
+            # The memory store is scoped to companion + persona, so a switch
+            # that changes NEITHER (a voice-only handoff) must not rebuild it:
+            # the old side's finalize would close the sidecar the new seam just
+            # spawned, and a fresh one reloads ~1 GB of weights for an
+            # identical store. Hand the warm backend over instead; the new seam
+            # borrows it (owns_backend=False) so only the seam that is truly
+            # last closes it. Session state still rolls — the SEAM is rebuilt,
+            # the BACKEND is kept.
+            cur_sel = self._current["selection"]
+            reuse_backend = (
+                getattr(self._seam, "backend", None)
+                if (self._seam is not None
+                    and target["character"] == cur_sel.get("character")
+                    and target["persona"] == cur_sel.get("persona"))
+                else None)
+
             def _attach_and_resolve():
-                seam = self._seam_factory(target["character"], target["persona"])
+                seam = self._seam_factory(target["character"], target["persona"],
+                                          reuse_backend=reuse_backend)
                 try:
                     system_aug = seam.augment(system) if seam is not None else system
                     sdir = session_store.companion_sessions_dir(target["character"])

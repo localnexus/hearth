@@ -465,8 +465,10 @@ async def build_pipeline(
         # The sitting's memory mode rides a live switch: the incoming
         # companion attaches under the SAME mode (off ⇒ no seam), and the
         # outgoing side's finalize suppresses itself via its own retain flag.
-        seam_factory=lambda character, persona: hearth_memory.maybe_attach(
-            character, persona=persona, mode=memory_mode),
+        seam_factory=lambda character, persona, reuse_backend=None:
+            hearth_memory.maybe_attach(character, persona=persona,
+                                       mode=memory_mode,
+                                       reuse_backend=reuse_backend),
     )
     config_reload_proc = config_reload.ConfigReloadProcessor(
         _reloader, tts, vad_analyzer=vad_analyzer, switcher=live_switcher)

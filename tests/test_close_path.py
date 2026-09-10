@@ -1,4 +1,5 @@
-"""close_path: finalize + compaction request run BEFORE the memory tail."""
+"""close_path: finalize + compaction request run BEFORE the memory tail,
+and a seam that BORROWED its backend releases nothing when it closes."""
 import sys
 import unittest
 from pathlib import Path
@@ -69,3 +70,45 @@ class TestClosePath(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class _CountingBackend:
+    """Stands in for the hindsight adapter — close() stops a real sidecar."""
+
+    name = "hindsight"
+
+    def __init__(self):
+        self.closes = 0
+
+    def close(self, fast: bool = False):
+        self.closes += 1
+
+
+class TestBackendOwnership(unittest.TestCase):
+    """A live switch that changes neither companion nor persona hands the warm
+    backend to the incoming seam. The outgoing seam then finalizes in the
+    background — and must NOT stop the sidecar the live seam is now using."""
+
+    @staticmethod
+    def _seam(backend, owns):
+        from hearth.memory import MemorySeam
+
+        return MemorySeam("alpha", "default", backend, {}, owns_backend=owns)
+
+    def test_owner_closes_its_backend(self):
+        b = _CountingBackend()
+        self._seam(b, True).close()
+        self.assertEqual(b.closes, 1)
+
+    def test_borrower_leaves_the_backend_alone(self):
+        b = _CountingBackend()
+        self._seam(b, False).close()
+        self.assertEqual(b.closes, 0,
+                         "closing a borrowed backend would stop the live sidecar")
+
+    def test_ownership_defaults_to_true(self):
+        b = _CountingBackend()
+        self._seam(b, True).close()
+        from hearth.memory import MemorySeam
+
+        self.assertTrue(MemorySeam("alpha", "default", b, {}).owns_backend)

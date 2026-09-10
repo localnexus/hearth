@@ -106,10 +106,14 @@ class MemorySeam:
     """The engine-facing wrapper: containment + prompt framing + record writing."""
 
     def __init__(self, companion: str, persona: str, backend, cfg: dict,
-                 retain: bool = True) -> None:
+                 retain: bool = True, owns_backend: bool = True) -> None:
         self.companion = companion
         self.persona = persona
         self.backend = backend
+        # False when a live switch handed us the backend of the seam still
+        # live (same companion and persona): the store is SHARED, so close()
+        # must release nothing. See close() and switcher._attach_and_resolve.
+        self.owns_backend = bool(owns_backend)
         # Per-session mode, recall-only ⇒ False: recall stays live, but
         # on_session_end retains nothing and the intent slot is peeked, never
         # consumed. Default True keeps every existing construction unchanged.
@@ -471,7 +475,13 @@ class MemorySeam:
     def close(self) -> None:
         """Contained resource release (stops an embedded server if one runs).
         After an exhausted close budget a backend that offers it is closed
-        FAST — the remaining supervisor grace is seconds, not a graceful wait."""
+        FAST — the remaining supervisor grace is seconds, not a graceful wait.
+
+        A seam that does not OWN its backend releases nothing: a voice-only
+        live switch keeps the warm store, and stopping the sidecar here would
+        pull it out from under the seam that is now live."""
+        if not self.owns_backend:
+            return
         try:
             if self._close_fast and getattr(self.backend, "supports_fast_close", False):
                 self.backend.close(fast=True)
@@ -482,7 +492,7 @@ class MemorySeam:
 
 
 def maybe_attach(companion: str, persona: str = "default",
-                 mode: str = "full") -> Optional[MemorySeam]:
+                 mode: str = "full", reuse_backend=None) -> Optional[MemorySeam]:
     """The activation gate. None when config/memory.toml is absent, disabled,
     or maps this companion to "none" — engine byte-identical, nothing loaded.
     Malformed config ⇒ ConfigError naming the file (fail-fast, config tier).
@@ -503,8 +513,16 @@ def maybe_attach(companion: str, persona: str = "default",
     backend_name = str(dict(cfg.get("companions") or {}).get(companion, cfg.get("backend", "floor")))
     if backend_name == "none":
         return None
-    backend = _build_backend(backend_name, cfg)
-    logger.info("[memory] seam attached: companion={} backend={}{}",
+    # Live-switch reuse: the caller may hand us the backend of the seam still
+    # live when companion AND persona are unchanged (a voice-only switch).
+    # Rebuilding it there respawns the sidecar and reloads ~1 GB of weights for
+    # a store that never changed, so keep the warm one — and do not own it.
+    shared = (reuse_backend is not None
+              and getattr(reuse_backend, "name", None) == backend_name)
+    backend = reuse_backend if shared else _build_backend(backend_name, cfg)
+    logger.info("[memory] seam attached: companion={} backend={}{}{}",
                 companion, backend_name,
+                " (warm store kept)" if shared else "",
                 " mode=recall-only (nothing will be retained)" if mode == "recall-only" else "")
-    return MemorySeam(companion, persona, backend, cfg, retain=(mode != "recall-only"))
+    return MemorySeam(companion, persona, backend, cfg, retain=(mode != "recall-only"),
+                      owns_backend=not shared)
