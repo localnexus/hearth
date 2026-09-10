@@ -42,6 +42,18 @@ def _fake(src: str, **kw) -> BotChild:
     return BotChild(argv=[_PY, "-c", src], **kw)
 
 
+# Dies gracefully, but not instantly: the close tail in miniature, so stop()'s
+# ladder and the reaper task genuinely race on the same death.
+SLOW_GRACEFUL = (
+    "import signal, sys, time\n"
+    "def bye(*a):\n"
+    "    time.sleep(0.5)\n"
+    "    sys.exit(0)\n"
+    "signal.signal(signal.SIGINT, bye)\n"
+    "while True: time.sleep(0.1)\n"
+)
+
+
 _NOMATCH = "zz-hearth-test-nomatch-zz"
 
 
@@ -99,6 +111,31 @@ class ChildLifecycle(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(0.1)
         self.assertEqual(c.state, "down")
         self.assertEqual(c.last_exit["code"], 7)
+        c.close()
+
+    async def test_deliberate_stop_is_not_logged_as_a_self_exit(self):
+        """The reaper wakes on the same death as stop()'s ladder and usually
+        wins the race. Until 2026-09-09 it logged "exited on its own" there, so
+        the facade log read as though the Stop button had never been pressed —
+        which is exactly how a slow stop got diagnosed as a dead button."""
+        from loguru import logger
+
+        lines: list = []
+        sink = logger.add(lines.append, level="DEBUG")
+        c = _fake(SLOW_GRACEFUL)
+        try:
+            self.assertTrue((await c.start())["ok"])
+            await asyncio.sleep(0.4)  # let the child install its handler
+            res = await c.stop()
+            self.assertTrue(res["ok"], res)
+        finally:
+            logger.remove(sink)
+        self.assertNotIn("exited on its own", "".join(lines),
+                         "a stop() is not a spontaneous exit")
+        # stop() still owns the bookkeeping it stepped in front of
+        self.assertEqual(c.state, "down")
+        self.assertIsNone(c.pid)
+        self.assertEqual(c.last_exit["code"], 0)
         c.close()
 
     async def test_adopt_and_stop_external(self):

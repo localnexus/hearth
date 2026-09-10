@@ -229,15 +229,27 @@ class BotChild:
         return {"ok": True, "escalated": escalated, "held": bool(hold)}
 
     async def _reap(self, proc) -> None:
-        """Record a child that exits on its own (desk Ctrl-C, crash, outage)."""
+        """Record a child that exits on its own (desk Ctrl-C, crash, outage).
+
+        A stop() in flight is NOT that. Both this task and stop()'s ladder wake
+        on the same death, and this one usually wins — so before 2026-09-09
+        every deliberate stop was logged "exited on its own", which made the
+        facade log read as though the button had never been pressed. stop()
+        owns the bookkeeping on its own path; step aside and let it finish.
+        """
         code = await proc.wait()
-        if self._proc is proc:  # not superseded by a later start/stop
-            self.last_exit = {"code": code, "at": _now_iso()}
-            self.state = "down"
-            self.pid = None
-            self._proc = None
-            self._close_log()
-            logger.info("[supervisor] bot exited on its own (code {})", code)
+        if self._proc is not proc:  # superseded by a later start/stop
+            return
+        if self.state == "stopping":
+            logger.debug("[supervisor] child reaped mid-stop (code {}) — "
+                         "stop() owns the outcome", code)
+            return
+        self.last_exit = {"code": code, "at": _now_iso()}
+        self.state = "down"
+        self.pid = None
+        self._proc = None
+        self._close_log()
+        logger.info("[supervisor] bot exited on its own (code {})", code)
 
     def close(self) -> None:
         """Daemon shutdown: abandon (never kill) the child; adopt on relaunch."""

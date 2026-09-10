@@ -312,17 +312,32 @@ async function doCompact() {
   } finally { busy = false; refresh(); }
 }
 
+// A stop that is WORKING can sit here for two minutes: the graceful ladder runs
+// the memory close tail first, and that owns a real budget ([memory]
+// close_budget_s, 120 s by default) before the supervisor's grace even starts.
+// A single static "stopping…" over that span reads as a dead button — observed
+// 2026-09-09, where the operator clicked again and fired a second SIGINT at an
+// already-dying bot. So: count the seconds out loud, say how long is normal,
+// and hold the button down until the answer lands.
 async function doStop() {
   const name = $("stopname").value.trim();
   const body = name ? { hold: true, name } : {};
-  busy = true; report("stopping…");
+  busy = true;
+  $("stopbtn").disabled = true;
+  const t0 = Date.now();
+  const elapsed = () => report("stopping… " + Math.round((Date.now() - t0) / 1000) +
+                               "s · the memory close runs first (up to ~2 min)");
+  elapsed();
+  const tick = setInterval(elapsed, 1000);
   try {
     const r = await api("/admin/bot/stop", { json: body });
+    clearInterval(tick);
     if (r.data && r.data.ok) { report("stopped" + (name ? " — conversation named " + name : "")); $("stopname").value = ""; }
     else report("stop failed: " + JSON.stringify((r.data && r.data.error) || r.status), true);
   } catch (e) {
+    clearInterval(tick);
     report(e.message === "401" ? "key refused" : "stop failed: " + e.message, true);
-  } finally { busy = false; refresh(); }
+  } finally { clearInterval(tick); $("stopbtn").disabled = false; busy = false; refresh(); }
 }
 
 // ── wiring ──────────────────────────────────────────────────────────────────
