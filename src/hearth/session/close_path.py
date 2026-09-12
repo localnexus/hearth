@@ -26,37 +26,95 @@ from typing import Callable, Optional
 
 from loguru import logger
 
+from . import close_row
+
 
 def run_close(store, seam, messages, *, live_tokens: Optional[int] = None,
               finalize: Callable, request: Callable,
-              emit: Callable[[str], None] = print) -> list:
+              emit: Callable[[str], None] = print,
+              record: Optional[Callable] = close_row.record,
+              facts: Optional[dict] = None) -> list:
     """Run the three steps in order; every step is contained. Returns the
-    status lines in the order they were emitted (tests assert on this)."""
+    status lines in the order they were emitted (tests assert on this).
+
+    ``record`` receives ``(store, outcomes, lines)`` once the three steps are
+    done and writes the durable close row (session/close_row.py) — injected the
+    same way ``finalize`` and ``request`` are, so a test can assert on the row
+    without touching the ledger. Pass ``record=None`` to disable it.
+
+    ``facts`` carries what the CALLER observed and this function cannot: the
+    capture finalize (§4 D8) and the live-switcher drain (§4 D4) both happen in
+    bot.py's ``finally`` before this runs. They are merged into the row as-is.
+
+    Two properties the row depends on, both load-bearing:
+
+    * **The row is written LAST, and only on the graceful path.** §4's B2/B3 —
+      SIGINT outlived, escalated to SIGTERM, which the runner does not handle —
+      never reach this line. A missing row IS the force-close signal; see
+      close_row's docstring. Recording earlier would forge evidence of a close
+      that did not finish.
+    * **The row is never worth a close.** ``record`` is called inside its own
+      guard: a ledger that cannot be written loses the audit trail and nothing
+      else. The conversation is the truth; the row is the courtesy.
+    """
     lines: list = []
+    outcomes: dict = dict(facts or {})
 
     def say(line: str) -> None:
         lines.append(line)
         emit(line)
 
     if store is not None:
+        session_out: dict = {}
+        outcomes["session"] = session_out
         try:
-            status = finalize(store, messages)
+            status = finalize(store, messages, outcome=session_out)
             say(f"[session] {status}")
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — §4 D5, §5's only provable UNSAFE band
+            session_out["result"] = "failed"
+            session_out["error"] = type(exc).__name__
+            errno = getattr(exc, "errno", None)
+            if errno is not None:                       # spec §4: disk full rolls up here
+                session_out["errno"] = errno
             logger.warning("[session] finalize failed: {}", type(exc).__name__)
         else:
+            compaction_out: dict = {}
+            outcomes["compaction"] = compaction_out
             try:
-                note = request(store, live_tokens=live_tokens or None)
+                note = request(store, live_tokens=live_tokens or None,
+                               outcome=compaction_out)
             except Exception as exc:  # noqa: BLE001
+                compaction_out["result"] = "failed"
+                compaction_out["error"] = type(exc).__name__
                 logger.warning("[session] compaction request failed: {}", type(exc).__name__)
                 note = None
             if note:
                 say(f"[session] {note}")
     if seam is not None:
+        memory_out: dict = {}
+        outcomes["memory"] = memory_out
         try:
-            mem_status = seam.on_session_end(messages, store)
+            mem_status = seam.on_session_end(messages, store, outcome=memory_out)
             if mem_status:
                 say(f"[memory] {mem_status}")
+        except BaseException as exc:  # noqa: BLE001 — re-raised below; the row is written first
+            memory_out["result"] = "raised"
+            memory_out["error"] = type(exc).__name__
+            raise
         finally:
             seam.close()
+            _record(record, store, outcomes, lines)
+        return lines
+    _record(record, store, outcomes, lines)
     return lines
+
+
+def _record(record: Optional[Callable], store, outcomes: dict, lines: list) -> None:
+    """Write the close row, contained. A ledger failure is never a close failure."""
+    if record is None:
+        return
+    try:
+        record(store, outcomes, lines)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[session] close row failed ({}) — close unaffected",
+                       type(exc).__name__)

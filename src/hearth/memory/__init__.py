@@ -373,7 +373,7 @@ class MemorySeam:
 
     # ── store + consolidate (session end) ────────────────────────────────────
 
-    def on_session_end(self, messages, store=None) -> str:
+    def on_session_end(self, messages, store=None, *, outcome=None) -> str:
         """Write the canonical record, then index + consolidate. Fully contained
         — returns a short status string for the shutdown log, never raises.
         Runs AFTER session_store.finalize on the bot's close path (close_path.py)
@@ -383,27 +383,51 @@ class MemorySeam:
 
         A recall-only session (retain=False) suppresses ALL of it — record,
         index, consolidate, intent capture — and says so in the status, so the
-        shutdown log can never be misread as a memory failure."""
+        shutdown log can never be misread as a memory failure.
+
+        ``outcome``, when given, is filled for the close row (session/
+        close_row.py): ``result`` ∈ recall-only · record-build-failed ·
+        record-write-failed · empty · kept, plus ``index`` ∈ ok · skipped ·
+        deferred (**§4 D1/D2**), ``consolidate`` ∈ ok · failed, and ``intent``
+        ∈ ok · failed · off (**§4 D9**). Those three were caught-and-logged and
+        nothing more, which is why §4 marks them WEAK: a deferred index and a
+        clean close read identically to anything but a human eye.
+
+        The tail runs on a worker thread bounded by ``close_budget_s``. When the
+        budget is exhausted the thread is STILL RUNNING and will keep mutating
+        the shared dict, so the budget branch below records ``index=deferred``
+        directly on the caller's ``outcome`` — the row must describe what was
+        true at the deadline, not race the worker for a later value."""
+        out = outcome if outcome is not None else {}
         if not self.retain:
+            out["result"] = "recall-only"
             logger.info("[memory] recall-only session — nothing retained")
             return "recall-only session — nothing retained"
         try:
             record = self._make_record(messages, store)
         except Exception as exc:  # noqa: BLE001
+            out["result"] = "record-build-failed"
+            out["error"] = type(exc).__name__
             logger.warning("[memory] record build failed ({}) — nothing stored", type(exc).__name__)
             return "record build failed — nothing stored"
         if record is None:
+            out["result"] = "empty"
             return ""  # empty session: no record, no status noise
         try:
             records_mod.write_record(record)
         except Exception as exc:  # noqa: BLE001 — the canonical write comes first;
             # if IT fails there is nothing safe to index either.
+            out["result"] = "record-write-failed"
+            out["error"] = type(exc).__name__
             logger.warning("[memory] canonical record write failed ({})", type(exc).__name__)
             return "canonical record write failed"
+        out["result"] = "kept"
+        out["session_id"] = record.session_id
         status = f"record kept ({record.session_id})"
         tail: dict = {"status": status}
         if self.close_budget_s <= 0:
             self._index_tail(record, tail)
+            _merge_tail(out, tail)
             return tail["status"]
         worker = threading.Thread(target=self._index_tail, args=(record, tail),
                                   name="memory-close-tail", daemon=True)
@@ -411,41 +435,56 @@ class MemorySeam:
         worker.join(self.close_budget_s)
         if worker.is_alive():
             self._close_fast = True
+            out["index"] = "deferred"
+            out["budget_s"] = self.close_budget_s
             logger.warning("[memory] close budget exhausted ({:.0f}s) — record kept, index "
                            "deferred: `python -m hearth.memory rebuild --character {}` heals it",
                            self.close_budget_s, self.companion)
             return tail["status"] + " — close budget exhausted, index deferred (rebuild heals)"
+        _merge_tail(out, tail)
         return tail["status"]
 
     def _index_tail(self, record: SessionRecord, tail: dict) -> None:
         """The slow half of a close: backend index → consolidate → intent.
-        Contained per step; ``tail['status']`` carries the human suffix."""
+        Contained per step; ``tail['status']`` carries the human suffix and the
+        other keys carry the machine-readable half for the close row."""
         try:
             self.backend.store(self.companion, record)
+            tail["index"] = "ok"
         except Exception as exc:  # noqa: BLE001 — log and drop
+            tail["index"] = "skipped"
+            tail["index_error"] = type(exc).__name__
             logger.warning("[memory] {} store failed ({}) — record kept, index skipped",
                            self.backend.name, type(exc).__name__)
             tail["status"] += " — backend index skipped"
         try:
             self.backend.consolidate(self.companion)
+            tail["consolidate"] = "ok"
         except Exception as exc:  # noqa: BLE001
+            tail["consolidate"] = "failed"
+            tail["consolidate_error"] = type(exc).__name__
             logger.warning("[memory] {} consolidate failed ({})",
                            self.backend.name, type(exc).__name__)
-        self._capture_intent(record)
+        self._capture_intent(record, tail)
 
-    def _capture_intent(self, record: SessionRecord) -> None:
+    def _capture_intent(self, record: SessionRecord, tail: Optional[dict] = None) -> None:
         """The one extra question in the extraction lane, fully contained.
 
         Runs LAST on purpose: the canonical record is sacred and already on
         disk, so a slow, absent, or broken extraction model costs this hint and
         nothing else. Off unless [memory.intent] enables it for this companion.
         """
+        t = tail if tail is not None else {}
         if not self.intent_enabled:
+            t["intent"] = "off"
             return
         try:
             intent_mod.capture(self.companion, record.messages,
                                record.session_id, self._intent_cfg)
+            t["intent"] = "ok"
         except Exception as exc:  # noqa: BLE001 — close must never fail on a hint
+            t["intent"] = "failed"
+            t["intent_error"] = type(exc).__name__
             logger.warning("[memory] intent capture failed ({}) — close unaffected",
                            type(exc).__name__)
 
@@ -489,6 +528,19 @@ class MemorySeam:
                 self.backend.close()
         except Exception as exc:  # noqa: BLE001
             logger.warning("[memory] backend close failed ({})", type(exc).__name__)
+
+
+def _merge_tail(out: dict, tail: dict) -> None:
+    """Lift the index tail's machine-readable keys onto the close row's outcome.
+
+    ``status`` stays behind — it is the human line, already emitted by the
+    shutdown log and carried verbatim in the row's ``lines``. Only called when
+    the worker finished inside the budget; on expiry the caller records
+    ``index=deferred`` itself rather than reading a dict a live thread still owns.
+    """
+    for k, v in tail.items():
+        if k != "status":
+            out[k] = v
 
 
 def maybe_attach(companion: str, persona: str = "default",

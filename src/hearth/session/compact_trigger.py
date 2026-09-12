@@ -40,24 +40,39 @@ def queue_dir() -> Path:
     return Path(config_loader.DATA_DIR) / "ops" / "compact-queue"
 
 
-def maybe_request(store, *, live_tokens: Optional[int] = None) -> Optional[str]:
+def maybe_request(store, *, live_tokens: Optional[int] = None,
+                  outcome: Optional[dict] = None) -> Optional[str]:
     """Drop a compaction request if the closed session warrants one.
 
     Returns a short human status line for the shutdown log, or None when no
     request was made (small session, not held, no character, or .failed).
+
+    ``outcome``, when given, is filled for the close row (session/close_row.py):
+    ``result`` ∈ not-held · no-file · no-character · below-threshold · requested
+    · prior-failed · already-running · failed, plus ``est_tokens`` where known.
+    This is **§4's D6** — before, a request that never got queued was a returned
+    string and nothing else, so the only way to know the auto lane had not armed
+    was to read the shutdown log by eye. A silently unqueued compaction is how a
+    session grows past its budget unnoticed.
     """
+    out = outcome if outcome is not None else {}
     try:
         if store is None or not getattr(store, "held", False):
+            out["result"] = "not-held"
             return None
         path = getattr(store, "path", None)
         if path is None or not Path(path).exists():
+            out["result"] = "no-file"
             return None
         character = getattr(store, "character", None)
         if not character:
+            out["result"] = "no-character"
             return None
         est = Path(path).stat().st_size // 4
         tokens = max(est, int(live_tokens or 0))
+        out["est_tokens"] = tokens
         if tokens < TRIGGER_TOKENS:
+            out["result"] = "below-threshold"
             return None
 
         session = Path(path).stem
@@ -67,9 +82,11 @@ def maybe_request(store, *, live_tokens: Optional[int] = None) -> Optional[str]:
         # Path.with_suffix would mangle them.
         base = f"{character}.{session}"
         if (qdir / f"{base}.failed").exists():
+            out["result"] = "prior-failed"
             return (f"auto-compaction wanted (~{tokens} tok) but a prior attempt "
                     f"failed — clear {base}.failed to re-arm")
         if (qdir / f"{base}.running").exists():
+            out["result"] = "already-running"
             return None  # already being compacted
         payload = {
             "character": character,
@@ -81,6 +98,9 @@ def maybe_request(store, *, live_tokens: Optional[int] = None) -> Optional[str]:
         tmp = qdir / f"{base}.request.tmp"
         tmp.write_text(json.dumps(payload, indent=1), encoding="utf-8")
         os.replace(tmp, qdir / f"{base}.request")
+        out["result"] = "requested"
         return f"auto-compaction requested (~{tokens} tokens ≥ {TRIGGER_TOKENS})"
     except Exception as exc:  # noqa: BLE001 — never break a shutdown path
+        out["result"] = "failed"
+        out["error"] = type(exc).__name__
         return f"auto-compaction request failed ({type(exc).__name__})"

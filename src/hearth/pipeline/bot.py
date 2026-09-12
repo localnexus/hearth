@@ -662,12 +662,17 @@ async def main(
         meter.print_summary()
         # M7: never lose an in-flight capture — a Ctrl-C mid-recording finalizes
         # (stems closed, mixdown rendered) exactly as if Record had been pressed off.
+        # close_facts: what only THIS frame can see. close_path records them on
+        # the close row (§4 D8 capture, D4 drain) — they happen here, before it runs.
+        close_facts: dict = {"capture": {"result": "not-armed"}}
         if recorder.armed:
             try:
                 res = await recorder.stop()
+                close_facts["capture"] = {"result": "ok"}
                 print(f"[record] finalized on shutdown → {res.get('mix') or res.get('stems')}",
                       flush=True)
             except Exception as exc:  # noqa: BLE001
+                close_facts["capture"] = {"result": "failed", "error": type(exc).__name__}
                 logger.warning("[record] shutdown finalize failed ({})", type(exc).__name__)
         engine_repoll_task.cancel()
         await web_runner.cleanup()
@@ -683,7 +688,7 @@ async def main(
         # A live companion switch may have replaced the store/seam mid-run —
         # the switcher owns the CURRENT pair. Drain its background old-session
         # finalize first so the two never interleave.
-        await live_switcher.drain(30.0)
+        close_facts["drain"] = {"result": await live_switcher.drain(30.0)}
         seam_now = live_switcher.current_seam
         store_now = live_switcher.current_store
         close_path.run_close(
@@ -692,6 +697,7 @@ async def main(
             finalize=session_store.finalize,
             request=compact_trigger.maybe_request,
             emit=lambda line: print(line, flush=True),
+            facts=close_facts,
         )
         live_switcher.close_pending()
 

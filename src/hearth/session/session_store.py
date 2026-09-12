@@ -39,6 +39,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from loguru import logger
+
 SCHEMA = 2  # 2 (2026-08): adds "character" + "persona"; schema-1 files load as persona "default"
 _HOLD_MARKER = ".hold-request"  # stop.sh --hold drops this; the bot honors + consumes it in finally
 ARCHIVE_DIR = ".archive"  # the soft verb's dot-dir (session/verbs.py owns the move);
@@ -457,32 +459,65 @@ def hold_latest_orphan(name: Optional[str] = None, sessions_dir: Optional[Path] 
 
 # ── finalize (called from bot.py's shutdown finally) ─────────────────────────
 
-def finalize(store: "SessionStore", messages) -> str:
+def finalize(store: "SessionStore", messages, *, outcome: Optional[dict] = None) -> str:
     """Apply the shutdown keep-decision. Returns a short human status string.
 
     Saved-by-default: hold-request present → promote to held/named (keep).
     already held → keep (sticky). recall-only sitting → true-delete (the
     privacy tier stays transcript-ephemeral). otherwise → saved.
+
+    ``outcome``, when given, is filled with the machine-readable result for the
+    close row (session/close_row.py): ``result`` ∈ none · held · held-kept ·
+    deleted · nothing-to-delete · empty · saved, and for a hold request
+    ``hold_requested`` / ``hold_name`` / ``hold_ok``.
+
+    **Why the rename is caught and the snapshot is not** (spec-session-close-ux
+    §4): a failed rename is **D7** — the user named the session, the name did
+    not take, and the conversation is still written under its old name. That is
+    survivable and must be *recorded*, not raised. A failed snapshot is **D5** —
+    the conversation may not be on disk at all, §5's only provable UNSAFE band —
+    and must keep propagating to close_path, which records it as such. Catching
+    both together is what made the two indistinguishable before.
     """
+    out = outcome if outcome is not None else {}
     if store is None:
+        out["result"] = "none"
         return "no session"
     requested, name = read_hold_request(store.sessions_dir)
     if requested:
+        out["hold_requested"] = True
+        out["hold_name"] = name or None
+        out["hold_ok"] = True
+        renamed = True
         if name:
-            store.rename(name)
-            store.name = name
+            try:
+                store.rename(name)
+                store.name = name
+            except Exception as exc:  # noqa: BLE001 — D7, not D5: see the docstring
+                renamed = False
+                out["hold_ok"] = False
+                out["hold_error"] = type(exc).__name__
+                logger.warning("[session] hold rename to {!r} failed ({}) — keeping the "
+                               "conversation under its current name", name, type(exc).__name__)
         store.held = True
         store.snapshot(messages)
-        return f"held → {store.path.name}"
+        out["result"] = "held" if renamed else "held-unnamed"
+        return f"held → {store.path.name}" if renamed else (
+            f"held → {store.path.name} (could not use the name {name!r})")
     if store.held:
+        out["result"] = "held-kept"
         return f"held session kept → {store.path.name}"
     if getattr(store, "memory_mode", "full") == "recall-only":
         if store.delete():
+            out["result"] = "deleted"
             return "recall-only sitting — transcript deleted (graceful stop)"
+        out["result"] = "nothing-to-delete"
         return "recall-only sitting — no transcript to delete"
     if not store.path.exists() and not _persistable_messages(messages):
+        out["result"] = "empty"
         return "empty sitting — nothing to save"
     store.snapshot(messages)
+    out["result"] = "saved"
     return f"session saved → {store.path.name}"
 
 

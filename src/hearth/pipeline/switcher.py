@@ -557,16 +557,30 @@ class LiveSwitcher:
 
     # ── shutdown hygiene ─────────────────────────────────────────────────────
 
-    async def drain(self, timeout_s: float = 30.0) -> None:
+    async def drain(self, timeout_s: float = 30.0) -> str:
         """Await an in-flight old-side finalize (shutdown calls this before the
-        current session's own finalize so the two never interleave)."""
+        current session's own finalize so the two never interleave).
+
+        Returns the outcome for the close row (session/close_row.py): ``none``
+        (nothing in flight) · ``ok`` · ``timeout`` · ``failed``. This is **§4's
+        D4** — a drain that timed out leaves an old-session finalize still
+        running past the close, and it used to leave only a log warning behind.
+        Callers that do not care may keep ignoring the return.
+        """
         task = self._finalize_task
-        if task is not None and not task.done():
-            try:
-                await asyncio.wait_for(asyncio.shield(task), timeout_s)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("[switch] old-session finalize still running at shutdown ({})",
-                               type(exc).__name__)
+        if task is None or task.done():
+            return "none"
+        try:
+            await asyncio.wait_for(asyncio.shield(task), timeout_s)
+            return "ok"
+        except asyncio.TimeoutError:
+            logger.warning("[switch] old-session finalize still running at shutdown "
+                           "(timeout after {:.0f}s)", timeout_s)
+            return "timeout"
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[switch] old-session finalize still running at shutdown ({})",
+                           type(exc).__name__)
+            return "failed"
 
     def close_pending(self) -> None:
         """Release an armed-but-never-applied intent's prepared seam."""
