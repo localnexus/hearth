@@ -1,11 +1,10 @@
 """test_start_door.py — characterization of the bot start/stop door.
 
 Pins what /admin/bot/start and /admin/bot/stop (routes/lifecycle.py's
-_bot_start / _bot_stop) DO today, not what they should do — including the
-current blindness of the start-door guard (it consults only a compaction
-maintenance lock, nothing else). A later, deliberate widening of that guard
-is expected to flip test_start_door_consults_only_compact_locks_today; every
-other test here should keep passing.
+_bot_start / _bot_stop) DO today: the start-door guard refuses while ANY
+maintenance lock is held (a compaction, a leg, …), with one exemption — a
+live bot's own op="session" lock is ownership, not maintenance, and never
+refuses the door.
 
 Uses a fake bot_child (async start/stop that record kwargs and return what
 the test dictates) and patches maintenance_lock in the lifecycle module's own
@@ -66,19 +65,43 @@ class StartDoor(AioHTTPTestCase):
         self.assertFalse(data["ok"])
         self.assertIn("testchar", data["error"])
         self.assertEqual(data["maintenance"], held)
-        held_locks.assert_called_once_with(op="compact")
+        held_locks.assert_called_once_with()
         self.assertEqual(self.child.start_calls, [])
 
-    async def test_start_door_consults_only_compact_locks_today(self):
-        """The one row that exists to be broken on purpose later: today the
-        start door asks maintenance_lock.held_locks exactly once, with
-        op="compact", and nothing else — no port probe, no other lock op —
-        before handing off to bot_child.start."""
+    async def test_start_door_consults_every_held_maintenance_lock(self):
+        """The start door asks maintenance_lock.held_locks exactly once, with
+        no op filter — it now considers every held maintenance lock, not only
+        a compaction — before handing off to bot_child.start."""
         with mock.patch.object(lifecycle.maintenance_lock, "held_locks",
                                return_value=[]) as held_locks:
             resp = await self.client.post("/admin/bot/start", json={})
         self.assertEqual(resp.status, 200)
-        held_locks.assert_called_once_with(op="compact")
+        held_locks.assert_called_once_with()
+        self.assertEqual(self.child.start_calls, [{"mode": "new", "name": None, "memory": None}])
+
+    async def test_start_door_refuses_while_a_leg_lock_is_held(self):
+        held = [{"character": "demo", "op": "leg", "session": "s-1",
+                 "started": "2026-09-01T00:00:00"}]
+        with mock.patch.object(lifecycle.maintenance_lock, "held_locks",
+                               return_value=held) as held_locks:
+            resp = await self.client.post("/admin/bot/start", json={})
+        self.assertEqual(resp.status, 409)
+        data = await resp.json()
+        self.assertFalse(data["ok"])
+        self.assertIn("leg", data["error"])
+        self.assertIn("demo", data["error"])
+        self.assertEqual(data["maintenance"], held)
+        held_locks.assert_called_once_with()
+        self.assertEqual(self.child.start_calls, [])
+
+    async def test_start_door_ignores_a_live_bots_own_session_lock(self):
+        held = [{"character": "demo", "op": "session", "session": None,
+                 "started": "2026-09-01T00:00:00"}]
+        with mock.patch.object(lifecycle.maintenance_lock, "held_locks",
+                               return_value=held) as held_locks:
+            resp = await self.client.post("/admin/bot/start", json={})
+        self.assertEqual(resp.status, 200)
+        held_locks.assert_called_once_with()
         self.assertEqual(self.child.start_calls, [{"mode": "new", "name": None, "memory": None}])
 
     async def test_start_door_defaults_on_an_empty_body(self):

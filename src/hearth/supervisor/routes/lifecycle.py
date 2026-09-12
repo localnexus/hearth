@@ -39,9 +39,13 @@ async def _bot_start(request: web.Request) -> web.Response:
     except Exception:  # empty body = defaults
         body = {}
     # Start-door guard (design: auto-compaction-on-close): while any
-    # compaction holds a maintenance lock, refuse with the holder's info.
-    # Advisory UX — the bot's own lock acquire at startup is the arbiter.
-    busy = maintenance_lock.held_locks(op="compact")
+    # maintenance lock is held (a compaction, a leg, …) refuse with the
+    # holder's info; a live bot's own op="session" lock is ownership, not
+    # maintenance, and never refuses here — the child's double-start refusal
+    # and the bot's own acquire govern that; the guard is advisory UX and the
+    # bot's own lock acquire at startup is the arbiter.
+    busy = [lock for lock in maintenance_lock.held_locks()
+            if lock.get("op") != "session"]
     if busy:
         return web.json_response({
             "ok": False,
