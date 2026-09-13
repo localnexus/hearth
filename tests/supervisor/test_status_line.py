@@ -73,6 +73,19 @@ class StatusLineStatic(unittest.TestCase):
             if "maintenance on " in line:
                 self.assertNotIn("~2 min", line)
 
+    def test_deferred_message_uses_character_not_session(self):
+        match = re.search(r"function deferredMessage\(\) \{.*?\n\}", self.page, re.S)
+        self.assertIsNotNone(match, "deferredMessage not found in the launch page")
+        body = match.group(0)
+        self.assertIn("holder.character", body)
+        self.assertNotIn("holder.session", body)
+
+    def test_status_bits_use_character_not_session(self):
+        self.assertIn('"compacting " + m.character', self.page)
+        for line in self.page.splitlines():
+            if '"compacting "' in line:
+                self.assertNotIn("m.session", line)
+
     def test_no_storage_access_in_the_pages_own_script(self):
         # The shared shell (ui/admin_shell.js) is the only place allowed to
         # touch localStorage/sessionStorage. Prove the launch page's own
@@ -159,6 +172,9 @@ process.exit(0);
 
 CLEAR_ON_EDGE_RE = re.compile(r"function clearOnEdge\(wasUp, nowUp, armed\) \{.*?\n\}", re.S)
 
+DEFERRED_RE = re.compile(
+    r"function deferredMessage\(\) \{.*?\nfunction disarmDeferred\(\) \{.*?\n\}", re.S)
+
 
 @unittest.skipUnless(NODE, "node not installed — status-line node tests skipped")
 class StatusLineNode(unittest.TestCase):
@@ -207,6 +223,53 @@ class StatusLineNode(unittest.TestCase):
         for (wasUp, nowUp, armed, want), got in zip(cases, results):
             with self.subTest(wasUp=wasUp, nowUp=nowUp, armed=armed):
                 self.assertEqual(got, {"start": want["start"], "stop": want["stop"]})
+
+    def test_deferred_start_keeps_its_count_and_speaks_plainly(self):
+        page = routes_mod._LAUNCH_PAGE()
+        match = DEFERRED_RE.search(page)
+        self.assertIsNotNone(match, "deferred-start functions not found in the launch page")
+        script = self.dir / "deferred.js"
+        script.write_text(
+            "let deferred = null, deferredTimer = null;\n"
+            "const card = { say(){} };\n"
+            "let now = 0;\n"
+            "const Date = { now: () => now };\n"
+            "const setInterval = () => 1;\n"
+            "const clearInterval = () => {};\n" +
+            match.group(0) + "\n"
+            "const results = {};\n"
+            "now = 1000;\n"
+            "armDeferred({}, {character: \"demo\", op: \"compact\"});\n"
+            "results.first_since = deferred.since;\n"
+            "now = 6000;\n"
+            "armDeferred({}, {character: \"other\", op: \"compact\"});\n"
+            "results.rearm_since = deferred.since;\n"
+            "results.rearm_holder = deferred.holder.character;\n"
+            "disarmDeferred();\n"
+            "now = 9000;\n"
+            "armDeferred({}, {character: \"demo\", op: \"compact\"});\n"
+            "results.fresh_since = deferred.since;\n"
+            "deferred = {holder: {op: \"compact\", character: \"demo\", "
+            "session: \"session-2026-01-01T00-00-00\"}, since: 0};\n"
+            "now = 5000;\n"
+            "results.compact_msg = deferredMessage();\n"
+            "deferred = {holder: {op: \"leg\", character: \"demo\"}, since: 0};\n"
+            "results.maint_msg = deferredMessage();\n"
+            "console.log(JSON.stringify(results));\n",
+            encoding="utf-8")
+        r = subprocess.run([NODE, str(script)], capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 0, r.stderr.strip())
+        results = json.loads(r.stdout)
+        self.assertEqual(results["first_since"], 1000)
+        self.assertEqual(results["rearm_since"], 1000)
+        self.assertEqual(results["rearm_holder"], "other")
+        self.assertEqual(results["fresh_since"], 9000)
+        self.assertIn("demo", results["compact_msg"])
+        self.assertIn("~2 min", results["compact_msg"])
+        self.assertIn("waiting", results["compact_msg"])
+        self.assertNotIn("session-2026-01-01T00-00-00", results["compact_msg"])
+        self.assertIn("maintenance on demo", results["maint_msg"])
+        self.assertNotIn("~2 min", results["maint_msg"])
 
 
 if __name__ == "__main__":

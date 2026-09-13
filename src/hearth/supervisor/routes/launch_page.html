@@ -217,7 +217,7 @@ async function refresh() {
   const maint = (st.data && st.data.maintenance) || [];
   for (const m of maint) {
     if (m.op === "compact")
-      bits.push("compacting " + (m.session || "?") + " (" + m.character + ")" +
+      bits.push("compacting " + m.character +
                 (m.started ? " since " + m.started.slice(11, 16) : ""));
   }
   $("statusline").textContent = bits.join("  ·  ");
@@ -289,16 +289,16 @@ const card = window.HearthSwitchCard.mount($("switchmount"), {
 
 function deferredMessage() {
   const holder = deferred.holder;
-  const who = holder.session || holder.character;
+  const who = holder.character;
   const secs = Math.round((Date.now() - deferred.since) / 1000);
   const what = holder.op === "compact"
-    ? "compaction of " + who + " is running (~2 min)"
+    ? "a compaction of " + who + " is running (~2 min)"
     : "maintenance on " + who + " is running";
-  return what + " — your session will start when it finishes · " + secs + "s";
+  return what + " — your session starts when it finishes · waiting " + secs + " s";
 }
 
 function armDeferred(body, holder) {
-  deferred = { body, since: Date.now(), holder };
+  deferred = { body, since: (deferred && deferred.since) || Date.now(), holder };
   deferredTimer = setInterval(() => card.say(deferredMessage(), "warn"), 1000);
 }
 
