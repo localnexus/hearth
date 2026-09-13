@@ -14,7 +14,7 @@ ORIG_ARGS=("$@")
 # claim → success / .failed / defer / decline, and the JSON stamp under them.
 # Resolved from THIS file's directory so the pair travels together.
 HERE="$(cd "$(dirname "$0")" && pwd)"
-for lib in compact-queue-lib.sh compact-model-lib.sh compact-model-llama.sh; do
+for lib in compact-queue-lib.sh compact-model-llama.sh compact-model-door.sh; do
   [ -f "$HERE/$lib" ] || {
     printf '%s missing beside this script (%s) — half-installed\n' "$lib" "$HERE" >&2
     exit 1
@@ -40,12 +40,13 @@ warn(){ printf '  \033[33m!\033[0m %s\n' "$*"; }
 bad(){ LAST_ERR="$*"; printf '  \033[31m✗\033[0m %s\n' "$*" >&2; }
 die(){ bad "$*"; exit 1; }
 
-NAME="" LANE="v2" CHAR="" SDIR="" TAIL=12 BODY="" YES=0 NOTES="" REQUEST_FILE=""
+NAME="" LANE="hearth" CHAR="" SDIR="" TAIL=12 BODY="" YES=0 NOTES="" REQUEST_FILE=""
 MODEL_KEY="qwen3.5-122b-a10b-mlx"
-# Engine bracket: lms (default — auto lane unchanged) or llama (own server,
-# needs --gguf). Env defaults let the watch lane switch with no hearth change.
-ENGINE="${COMPACT_ENGINE:-lms}" GGUF="${COMPACT_GGUF:-}" PORT="${COMPACT_PORT:-65010}"
-RAM_FLOOR_GB="${RAM_FLOOR_GB:-200}"  # loading the model needs headroom; a resident lms model skips the gate
+# Engine bracket: door (default — the companion's own resident model server,
+# nothing to load) or llama (own server, needs --gguf). Env defaults let the
+# watch lane switch with no hearth change.
+ENGINE="${COMPACT_ENGINE:-door}" GGUF="${COMPACT_GGUF:-}" PORT="${COMPACT_PORT:-65010}"
+RAM_FLOOR_GB="${RAM_FLOOR_GB:-200}"  # loading a model needs headroom; the resident door skips the gate
 while [ $# -gt 0 ]; do
   case "$1" in
     --lane) LANE="$2"; shift 2;;
@@ -71,10 +72,9 @@ NAME="${NAME%.json}"
 
 if [ -z "$SDIR" ]; then
   case "$LANE" in
-    v2) SDIR="$V2/sessions";;
     hearth) [ -n "$CHAR" ] || die "--lane hearth requires --character"
             SDIR="$DATA/characters/$CHAR/sessions";;
-    *) die "--lane must be v2 or hearth";;
+    *) die "--lane must be hearth (the only shipped session store)";;
   esac
 fi
 SFILE="$SDIR/$NAME.json"
@@ -93,7 +93,7 @@ fi
 # another compaction) → exit 3 with a human line. The lock is the in-progress
 # truth the start doors check — no false negatives, no stale state.
 if [ -z "${COMPACT_LOCK_HELD:-}" ]; then
-  [ -x "$LIVEPY" ] || die "python that imports hearth not found (the maintenance lock needs it; set HEARTH_PYTHON): $LIVEPY"
+  command -v "$LIVEPY" >/dev/null 2>&1 || die "python that imports hearth not found (the maintenance lock needs it; set HEARTH_PYTHON): $LIVEPY"
   exec /usr/bin/env COMPACT_LOCK_HELD=1 HEARTH_DATA="$DATA" \
     "$LIVEPY" -m hearth.session.maintenance_lock run "$CHAR" --op compact --session "$NAME" \
     -- "$0" "${ORIG_ARGS[@]}"
@@ -137,7 +137,7 @@ ok "no bot process — safe window"
 
 # ── 2. stats gate ─────────────────────────────────────────────────────────────
 say "2. stats gate"
-STATS="$("python3" "$TOOL" --sessions-dir "$SDIR" stats "$NAME")" || die "stats failed"
+STATS="$("$LIVEPY" "$TOOL" --sessions-dir "$SDIR" stats "$NAME")" || die "stats failed"
 read -r S_BYTES S_MSGS S_HELD <<EOF
 $(printf '%s' "$STATS" | python3 -c 'import json,sys;d=json.load(sys.stdin);print(d["bytes"],d["msg_count"],d.get("held"))')
 EOF
@@ -180,11 +180,18 @@ open(os.environ["PROMPT"], "w").write(out)
 PY
   ok "prompt assembled ($(wc -c < "$PROMPT" | tr -d ' ') bytes) — goes to the model on stdin"
 
-  # model bracket, engine-dispatched. lms: resident-or-load-and-unload (only
-  # what WE loaded). llama: our own loopback server — nothing shared.
+  # model bracket, engine-dispatched. door: the companion's own resident
+  # server — nothing to load, nothing to restore. llama: our own loopback
+  # server — nothing shared.
   say "5. model bracket ($ENGINE) + summarize (this can take a few minutes)"
-  NOTE_BASE="" WE_LOADED=0 BEFORE=""
+  NOTE_BASE=""
   case "$ENGINE" in
+  door)
+    NOTE_BASE="$(door_base)"
+    door_up "$NOTE_BASE" || die "the model server is not up at $NOTE_BASE — start Hearth's door first (or --engine llama --gguf PATH)"
+    IDENT="auto"
+    ok "resident door at $NOTE_BASE — the companion's own model writes the note; nothing to load"
+    ;;
   llama)
     [ -n "$GGUF" ] || die "--engine llama needs --gguf PATH (or COMPACT_GGUF)"
     llama_cli || die "llama-server not found (PATH or a brew prefix)"
@@ -196,21 +203,8 @@ PY
     IDENT="hearth-compactor" NOTE_BASE="http://127.0.0.1:$PORT/v1"
     ok "our llama-server is healthy on :$PORT ($(basename "$GGUF"))"
     ;;
-  lms)
-    model_cli || die "lms CLI not found (PATH, ~/.lmstudio/bin, or a brew prefix)"
-    BEFORE="$(model_ps)"
-    if model_is_resident "$BEFORE" "$MODEL_KEY"; then
-      IDENT="$MODEL_KEY"
-      ok "$MODEL_KEY already resident — using it, will NOT unload (RAM gate moot)"
-    else
-      ram_gate
-      IDENT="hearth-compactor"
-      model_load "$MODEL_KEY" "$IDENT" || die "lms load $MODEL_KEY failed"
-      WE_LOADED=1
-      ok "loaded $MODEL_KEY as '$IDENT'"
-    fi
-    ;;
-  *) die "--engine must be lms or llama (got '$ENGINE')";;
+  lms) die "--engine lms is the operator lane and does not ship — use door (default) or llama";;
+  *) die "--engine must be door or llama (got '$ENGINE')";;
   esac
 
   BODY="$BODIES/$NAME.$(date +%Y.%m.%d).md"
@@ -236,7 +230,6 @@ PY
   set -e
   cat "$NOTE_ERR" >&2 || true
   if [ "$RC" -ne 0 ]; then
-    [ "$WE_LOADED" = 1 ] && { model_unload "$IDENT" || true; }
     llama_stop
     rm -f "$BODY"
     die "note generation failed (rc=$RC): $(tail -n 1 "$NOTE_ERR" 2>/dev/null | cut -c1-160)"
@@ -246,13 +239,9 @@ PY
   if [ "$ENGINE" = "llama" ]; then
     llama_stop
     ok "bracket closed — our server is down"
-  elif [ "$WE_LOADED" = 1 ]; then
-    model_unload "$IDENT"
-    model_restore_evicted "$BEFORE"
-    ok "bracket closed — resident set restored"
   fi
 
-  # Telemetry summary (timings under llama-server, counts-only under lms)
+  # Telemetry summary (timings under llama-server, counts-only under the door)
   # rides into compaction.notes.
   if [ -f "$SCRATCH/telemetry.json" ]; then
     TSUM="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("summary",""))' \
@@ -289,13 +278,13 @@ fi
 
 # ── 8. compact + report ───────────────────────────────────────────────────────
 say "8. compact (tool baks first, verifies after)"
-METHOD="local-122b-scripted"
+METHOD="local-door-scripted"
 [ "$ENGINE" = "llama" ] && METHOD="local-llamaserver-scripted"
-RESULT="$(python3 "$TOOL" --sessions-dir "$SDIR" compact "$NAME" \
+RESULT="$("$LIVEPY" "$TOOL" --sessions-dir "$SDIR" compact "$NAME" \
   --from "$BODY" --tail "$TAIL" \
   --method "$METHOD" --notes "${NOTES:-scripted continuity-note compact}")" \
   || die "compact failed — live file untouched or restorable (restore-from-bak)"
 printf '%s' "$RESULT" | python3 -c 'import json,sys;d=json.load(sys.stdin);print("  \033[32m✓\033[0m %s → %s messages, live %s bytes (bak %s)" % (d["pre_message_count"], d["post_message_count"], d.get("live_bytes","?"), d.get("bak_bytes","?")))'
 say ""
 say "COMPACT OK — $NAME now carries the continuity note + last $TAIL verbatim turns."
-say "  undo anytime: python3 '$TOOL' --sessions-dir '$SDIR' restore-from-bak '$NAME'"
+say "  undo anytime: '$LIVEPY' '$TOOL' --sessions-dir '$SDIR' restore-from-bak '$NAME'"
