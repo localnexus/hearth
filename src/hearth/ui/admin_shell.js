@@ -78,8 +78,23 @@ function wireToken(refresh) {
 }
 
 // Render now, then on a cadence. Omit `ms` for a page that only renders once
-// (a form page has nothing that changes underneath it).
+// (a form page has nothing that changes underneath it). A hidden tab does not
+// poll, and a tick never overlaps a still-running refresh.
 function poll(refresh, ms) {
   refresh();
-  if (ms) setInterval(refresh, ms);
+  if (!ms) return;
+  let inFlight = false;
+  async function tick() {
+    if (document.hidden || inFlight) return;
+    inFlight = true;
+    try {
+      await refresh();
+    } finally {
+      inFlight = false;
+    }
+  }
+  setInterval(tick, Math.max(ms, 2000));
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) tick();
+  });
 }

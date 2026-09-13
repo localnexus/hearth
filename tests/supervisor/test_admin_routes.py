@@ -113,6 +113,34 @@ class AdminRoutes(AioHTTPTestCase):
         self.assertIn("close", data)
         self.assertIsNone(data["close"])
 
+    async def test_state_hits_are_counted(self):
+        for _ in range(3):
+            resp = await self.client.get("/admin/state", headers=self.BEARER)
+            self.assertEqual(resp.status, 200)
+        self.assertEqual(self.app["state_hits"]["n"], 3)
+
+    async def test_state_hits_are_reported_once_a_minute(self):
+        import time
+        from unittest import mock
+
+        from hearth.supervisor.routes import state as state_module
+
+        # Warm the counter so the reset math has something to reset.
+        resp = await self.client.get("/admin/state", headers=self.BEARER)
+        self.assertEqual(resp.status, 200)
+        self.app["state_hits"]["since"] = time.monotonic() - 61
+        before = self.app["state_hits"]["n"]
+        with mock.patch.object(state_module, "logger") as mock_logger:
+            resp = await self.client.get("/admin/state", headers=self.BEARER)
+            self.assertEqual(resp.status, 200)
+            mock_logger.info.assert_called_once()
+            args = mock_logger.info.call_args.args
+            self.assertIn("/admin/state:", args[0])
+            # The request that pushes the window past 60s is counted in the
+            # number that window reports (n += 1 happens before the check).
+            self.assertEqual(args[1], before + 1)
+        self.assertEqual(self.app["state_hits"]["n"], 0)
+
     async def test_state_surfaces_the_close_breadcrumb_of_the_current_child_only(self):
         from unittest import mock
 

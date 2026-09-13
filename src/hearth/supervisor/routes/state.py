@@ -23,10 +23,12 @@ whole, mounts the routes, and re-exports every name defined here.
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Optional
 
 import aiohttp
 from aiohttp import web
+from loguru import logger
 
 from hearth.session import close_phase, maintenance_lock
 
@@ -50,6 +52,15 @@ async def _http_alive(session, url: str, headers: Optional[dict] = None):
 
 async def _state(request: web.Request) -> web.Response:
     app = request.app
+    # One access-count line per minute for this route: names and numbers
+    # only, never the client address or a header.
+    hits = app.setdefault("state_hits", {"n": 0, "since": time.monotonic()})
+    hits["n"] += 1
+    if time.monotonic() - hits["since"] >= 60.0:
+        logger.info("[supervisor] /admin/state: {} requests in the last {} s",
+                    hits["n"], int(time.monotonic() - hits["since"]))
+        hits["n"] = 0
+        hits["since"] = time.monotonic()
     deps = app["deps"]
     # Watched, never owned: the built-ins plus every declared
     # [serve.supervisor.watch.<name>] URL, probed concurrently. A declared
