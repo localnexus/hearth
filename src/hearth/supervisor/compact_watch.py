@@ -176,9 +176,10 @@ async def tick(app) -> Optional[str]:
 
     log_path = Path(config_loader.DATA_DIR) / "logs" / "compact-auto.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    source = info.get("source") or "auto"
     try:
         with open(log_path, "ab") as logf:
-            logf.write(f"\n── {time.strftime('%Y-%m-%dT%H:%M:%S')} auto-compact "
+            logf.write(f"\n── {time.strftime('%Y-%m-%dT%H:%M:%S')} {source}-compact "
                        f"{info['character']}/{info['session']}\n".encode())
             proc = await asyncio.create_subprocess_exec(
                 str(script), str(info["session"]),

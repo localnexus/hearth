@@ -149,6 +149,12 @@ def held_locks(op: Optional[str] = None) -> list[dict]:
     return out
 
 
+def busy_locks() -> list:
+    """Every held lock that should refuse a bot START: all of held_locks()
+    except a live bot's own op="session" lock (ownership, not maintenance)."""
+    return [lock for lock in held_locks() if lock.get("op") != "session"]
+
+
 def describe(info: dict) -> str:
     """One human clause for refusal messages: 'compaction of X, since T'."""
     op = info.get("op") or "maintenance"

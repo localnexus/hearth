@@ -111,11 +111,13 @@ class CompactWatchTick(unittest.IsolatedAsyncioTestCase):
     def _app(self, bot_state="stopped"):
         return {"bot_child": SimpleNamespace(status=lambda: {"state": bot_state})}
 
-    def _request(self, char="example", session="long-run"):
+    def _request(self, char="example", session="long-run", source=None):
         self.qdir.mkdir(parents=True, exist_ok=True)
         req = self.qdir / f"{char}.{session}.request"
-        req.write_text(json.dumps({"character": char, "session": session,
-                                   "est_tokens": 50_000}))
+        payload = {"character": char, "session": session, "est_tokens": 50_000}
+        if source is not None:
+            payload["source"] = source
+        req.write_text(json.dumps(payload))
         return req
 
     def _script(self, parts=("compaction", "compact-companion-session.sh")):
@@ -177,6 +179,21 @@ class CompactWatchTick(unittest.IsolatedAsyncioTestCase):
         self.assertIn("--request-file", argv)
         # a fresh young claim (lock free, just claimed) is left alone
         self.assertIsNone(await compact_watch.tick(app))
+
+    async def test_the_log_header_names_the_request_source(self):
+        from hearth.supervisor import compact_watch
+        self._request(char="zz-manual", session="s1", source="manual")
+        self._script()
+        await compact_watch.tick(self._app())
+        log_path = self.root / "logs" / "compact-auto.log"
+        self.assertIn("manual-compact", log_path.read_text())
+        # the claim completed (mirrors the compactor removing it) — the next
+        # request can fire without the young-claim guard holding it back
+        (self.qdir / "zz-manual.s1.running").unlink()
+
+        self._request(char="zz-auto", session="s2")
+        await compact_watch.tick(self._app())
+        self.assertIn("auto-compact", log_path.read_text())
 
     async def test_manual_compaction_lock_blocks_firing(self):
         from hearth.session import maintenance_lock

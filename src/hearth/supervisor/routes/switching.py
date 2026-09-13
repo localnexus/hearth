@@ -29,6 +29,8 @@ import aiohttp
 from aiohttp import web
 from loguru import logger
 
+from hearth.session import maintenance_lock
+
 from ..child import _MEMORY_MODES, _now_iso
 from .. import switch as switch_mod
 
@@ -175,6 +177,18 @@ async def _switch_post(request: web.Request) -> web.Response:
                  "hint": 'the selection IS written — repost with "apply": "auto" '
                          "for the restart path"}, status=409)
     restart = running or bool(body.get("start"))
+    if restart:
+        busy = maintenance_lock.busy_locks()
+        if busy:
+            return web.json_response(
+                {"ok": False,
+                 "errors": [f"{maintenance_lock.describe(busy[0])} "
+                            f"({busy[0].get('character', '?')}) — "
+                            "try again in a few minutes"],
+                 "maintenance": busy, "wrote": merged,
+                 "hint": "the selection IS written — the start was refused, "
+                         "not scheduled; repost when the maintenance finishes"},
+                status=409)
     if restart:
         state["last"] = {"phase": "restarting", "to": merged,
                          "at": _now_iso(), "error": None}

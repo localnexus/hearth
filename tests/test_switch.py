@@ -45,6 +45,7 @@ from aiohttp.test_utils import AioHTTPTestCase
 
 from hearth import supervisor
 from hearth.config import config_loader
+from hearth.supervisor.routes import switching
 from hearth.supervisor import switch as switch_mod
 
 
@@ -357,6 +358,59 @@ class SwitchRoutes(_SwitchHarness):
         resp = await self.client.post("/admin/switch", headers=self.BEARER,
                                       json={**GOOD, "start": True})
         self.assertTrue((await resp.json())["ok"])
+        await self.app["switch_state"]["task"]
+        self.assertEqual(self.child.calls, [("stop", False, None), ("start", "new", None)])
+
+    async def test_post_start_is_refused_while_a_maintenance_lock_is_held(self):
+        self.child.state = "down"
+        self.child.managed = False
+        held = [{"character": "demo", "op": "leg", "session": "s-1",
+                 "started": "2026-09-01T00:00:00"}]
+        with mock.patch.object(switching.maintenance_lock, "held_locks",
+                               return_value=held):
+            resp = await self.client.post("/admin/switch", headers=self.BEARER,
+                                          json={**GOOD, "start": True})
+        self.assertEqual(resp.status, 409)
+        data = await resp.json()
+        self.assertFalse(data["ok"])
+        self.assertIn("leg", data["errors"][0])
+        self.assertIn("demo", data["errors"][0])
+        self.assertEqual(data["maintenance"], held)
+        self.assertEqual(data["wrote"], GOOD)
+        self.assertTrue(self.active.is_file(), "the selection IS written")
+        self.assertEqual(self.child.calls, [], "nothing started")
+
+    async def test_a_restart_switch_never_stops_the_bot_for_a_start_that_would_be_refused(self):
+        held = [{"character": "demo", "op": "leg", "session": "s-1",
+                 "started": "2026-09-01T00:00:00"}]
+        with mock.patch.object(switching.maintenance_lock, "held_locks",
+                               return_value=held):
+            resp = await self.client.post("/admin/switch", headers=self.BEARER,
+                                          json={**GOOD, "memory": "recall-only"})
+        self.assertEqual(resp.status, 409)
+        self.assertEqual(self.child.calls, [], "stop was NOT called")
+
+    async def test_a_live_bots_own_session_lock_never_refuses_a_start(self):
+        self.child.state = "down"
+        self.child.managed = False
+        held = [{"character": "demo", "op": "session", "session": None,
+                 "started": "2026-09-01T00:00:00"}]
+        with mock.patch.object(switching.maintenance_lock, "held_locks",
+                               return_value=held):
+            resp = await self.client.post("/admin/switch", headers=self.BEARER,
+                                          json={**GOOD, "start": True})
+        self.assertEqual(resp.status, 200, await resp.text())
+        await self.app["switch_state"]["task"]
+        self.assertEqual(self.child.calls[-1][0], "start")
+
+    async def test_a_start_with_no_lock_held_is_unchanged(self):
+        self.child.state = "down"
+        self.child.managed = False
+        with mock.patch.object(switching.maintenance_lock, "held_locks",
+                               return_value=[]):
+            resp = await self.client.post("/admin/switch", headers=self.BEARER,
+                                          json={**GOOD, "start": True})
+        self.assertEqual(resp.status, 200, await resp.text())
         await self.app["switch_state"]["task"]
         self.assertEqual(self.child.calls, [("stop", False, None), ("start", "new", None)])
 

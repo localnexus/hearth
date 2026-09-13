@@ -44,8 +44,7 @@ async def _bot_start(request: web.Request) -> web.Response:
     # maintenance, and never refuses here — the child's double-start refusal
     # and the bot's own acquire govern that; the guard is advisory UX and the
     # bot's own lock acquire at startup is the arbiter.
-    busy = [lock for lock in maintenance_lock.held_locks()
-            if lock.get("op") != "session"]
+    busy = maintenance_lock.busy_locks()
     if busy:
         return web.json_response({
             "ok": False,
