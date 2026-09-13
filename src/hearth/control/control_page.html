@@ -149,7 +149,7 @@
 // Everything self-gating (status meters, hot knobs, manual pane) is spliced in
 // below from ui/panel_*.js.
 const $ = id => document.getElementById(id);
-const status = msg => $('status').textContent = msg;
+const status = (msg, tone) => { const s = $('status'); s.textContent = msg; s.className = tone || ''; };
 let muted = false;      // latched baseline (the Mute toggle)
 let pttActive = false;
 
@@ -168,7 +168,7 @@ async function post(path, body) {
     const j = await r.json();
     return j;
   } catch(e) {
-    status('error: ' + e);
+    status('error: ' + e, 'err');
   }
 }
 
@@ -179,7 +179,7 @@ async function sendText() {
   $('txt').value = '';
   status('sending...');
   const j = await post('/say', {text: txt});
-  if (j) status(j.ok ? 'sent' : 'error: ' + j.error);
+  if (j) status(j.ok ? 'sent' : 'error: ' + j.error, j.ok ? 'ok' : 'err');
 }
 $('send').addEventListener('click', sendText);
 // Enter sends; Shift+Enter inserts a newline (textarea is multi-line + resizable).
@@ -248,7 +248,7 @@ document.addEventListener('keyup',   e => { if (e.key === 'm') pttUp(); });
 // bot's /switch/live slot, or a restart. On a restart THIS page dies with the
 // bot, so we wait for the down→up edge before reloading (selfDies).
 const switchCard = window.HearthSwitchCard.mount($('switchmount'), {
-  cls: {head: 'khead', legend: 'klegend', row: 'krow', name: 'kname', btns: 'kbtns'},
+  cls: {head: 'khead', legend: 'klegend', row: 'krow', name: 'kname', btns: 'kbtns', state: 'state'},
   selfDies: true,
   state: async () => {
     const r = await fetch('/companion');

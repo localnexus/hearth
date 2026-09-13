@@ -30,6 +30,10 @@
   #micstate.ptt{color:#4ae}
   #hint{margin-top:4px;font-size:0.75em;color:#666}
   #status{margin-top:8px;font-size:0.85em;color:#888;min-height:1.2em}
+  .state{font-size:0.85em;opacity:0.85}
+  .warn{color:#e8b04b}
+  .ok{color:#4c8}
+  .err{color:#f66}
   #statusblock{margin-top:12px;font-size:0.9em;color:var(--ember);line-height:1.5}
   #statusblock div{white-space:pre-wrap}
   #leak{margin-top:4px;font-weight:bold;color:#f66}
