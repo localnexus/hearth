@@ -121,10 +121,13 @@ class SharedAdminShell(unittest.TestCase):
 
     def test_the_status_line_has_one_name(self):
         """`say()` on one page and `report()` on three was the drift; the shell
-        resolves #report or #msg, so the four pages call one function."""
+        resolves #report or #msg, so the four pages call one function. A call
+        INTO the switcher's returned hook (`card.say(...)` — the launch page's
+        deferred start speaking beside the Start button) is not the page
+        re-declaring a status line of its own, so it is stripped first."""
         for name, page in SHELLED.items():
             with self.subTest(page=name):
-                body = self._own_code(page)
+                body = self._own_code(page).replace("card.say(", "")
                 self.assertNotIn("say(", body)
 
     def test_splice_refuses_a_page_without_the_placeholder(self):
