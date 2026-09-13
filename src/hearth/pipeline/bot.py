@@ -549,6 +549,11 @@ async def main(
         LM_PROVIDER, LM_BASE_URL, LM_API_TOKEN, LM_MODEL,
         log_dir=config_loader.DATA_DIR / "logs")
 
+    # Under every provider (including llama-server, which ensure_resident skips):
+    # does the door actually serve the model this session is configured for?
+    # Warn, never refuse — a mismatch prints one loud line and the door proceeds.
+    identity = await model_residency.check_identity(LM_PROVIDER, LM_BASE_URL, LM_API_TOKEN, LM_MODEL)
+
     (pipeline, transport, context, mute_gate, speaking_tap, measure_observer,
      recorder, memory_seam, live_switcher, system_instruction,
      memory_prefetch_proc) = await build_pipeline(
@@ -615,6 +620,10 @@ async def main(
     # Gauge the panel against the MEASURED reliable-context line, not the advertised
     # window. None → the panel falls back to `allotted` (advertised) — see control.py.
     engine_info["reliable"] = _CFG.reliable_context
+    # Startup identity facts — the re-poll below only .update()s the probe's own
+    # keys, so these ride untouched for the life of the session.
+    engine_info["served_model"] = (identity.get("served") or [None])[0]
+    engine_info["model_match"] = identity.get("match")
 
     # Hand the switcher its late-bound deps and expose it on
     # the panel — features/live_switch.py routes answer 503 until this attach.

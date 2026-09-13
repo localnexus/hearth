@@ -9,8 +9,9 @@ observed 2026-09-05 on LM Studio 0.4.19).
 
 Scope: LM Studio only. Under llama-server the model IS the process — Hearth
 starts it or the operator did — so there is nothing to load and this module
-steps aside. The check uses the same residency probe the live model switch
-trusts (switcher.fetch_resident_ids); the load is the same `lms load` the
+steps aside; the identity check below still runs under every provider. The
+check uses the same residency probe the live model switch trusts
+(switcher.fetch_resident_ids); the load is the same `lms load` the
 compaction lane uses to bring an evicted model back, bounded and logged to
 DATA/logs/model-load.log (0600) — a CLI may print what a route must not.
 
@@ -114,6 +115,30 @@ async def ensure_resident(
     say(f"[model] load of {model_id} did not take (exit {rc}) — "
         "the first turn will retry it; see logs/model-load.log")
     return {"action": "failed", "ok": False, "seconds": secs}
+
+
+async def check_identity(
+    provider: Optional[str], base_url: str, token: str, model_id: str, *,
+    probe: Callable = fetch_resident_ids,
+    say: Callable[[str], None] = lambda s: print(s, flush=True),
+) -> dict:
+    """Warn, never refuse: a door serving the wrong model still answers turns,
+    and a scratch server under the live alias is a legitimate bench shape.
+    Runs under every provider — the one check ensure_resident skips."""
+    try:
+        ids = await probe(provider, base_url, token)
+    except Exception:  # noqa: BLE001 — a probe must never break start-up
+        ids = None
+    if ids is None:
+        say("[model] the model server did not answer the identity check — "
+            "nothing known about what it serves")
+        return {"action": "unreachable", "served": None, "match": None}
+    if model_id in ids:
+        return {"action": "match", "served": ids, "match": True}
+    say(f"[model] WARNING the model server at {base_url} serves "
+        f"{', '.join(ids) or 'nothing'} — this session was configured for "
+        f"{model_id}; continuing (the door is not refused)")
+    return {"action": "mismatch", "served": ids, "match": False}
 
 
 async def _run_load(lms: str, model_id: str, log_dir: Optional[Path],

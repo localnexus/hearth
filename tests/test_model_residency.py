@@ -125,6 +125,40 @@ class Residency(unittest.IsolatedAsyncioTestCase):
         for other in ("lmstudio", "LM Studio", "", None, "something-else"):
             self.assertTrue(mr.is_lmstudio(other), other)
 
+    async def test_identity_match_is_silent(self):
+        probe = _probe([["model-one", "served-other"]])
+        said = []
+        rec = await mr.check_identity("llama-server", "http://x/v1", "t", "model-one",
+                                      probe=probe, say=said.append)
+        self.assertEqual(rec["action"], "match")
+        self.assertEqual(said, [])
+
+    async def test_identity_mismatch_warns_once(self):
+        probe = _probe([["served-other"]])
+        said = []
+        rec = await mr.check_identity("llama-server", "http://x/v1", "t", "model-one",
+                                      probe=probe, say=said.append)
+        self.assertEqual(rec["action"], "mismatch")
+        self.assertEqual(len(said), 1)
+        self.assertIn("WARNING", said[0])
+        self.assertIn("served-other", said[0])
+        self.assertIn("model-one", said[0])
+
+    async def test_identity_unreachable_is_a_note_not_a_crash(self):
+        probe = _probe([None])
+        said = []
+        rec = await mr.check_identity("llama-server", "http://x/v1", "t", "model-one",
+                                      probe=probe, say=said.append)
+        self.assertEqual(rec["action"], "unreachable")
+        self.assertIsNone(rec["match"])
+        self.assertEqual(len(said), 1)
+
+    async def test_identity_runs_under_llama_server_too(self):
+        probe = _probe([["model-one"]])
+        await mr.check_identity("llama-server", "http://x/v1", "t", "model-one",
+                                probe=probe, say=lambda s: None)
+        self.assertEqual(probe.calls, ["llama-server"])
+
     def test_find_lms_honours_the_env_override(self):
         import os
         with tempfile.TemporaryDirectory() as tmp:
