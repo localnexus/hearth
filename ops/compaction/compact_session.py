@@ -11,10 +11,10 @@ durable form so the logic no longer depends on chat history.
 
 Usage (from anywhere; paths resolve via --sessions-dir):
 
-    python3 tools/compaction/compact_session.py backup <name>
-    python3 tools/compaction/compact_session.py compact <name> --from <body.md|json>
-    python3 tools/compaction/compact_session.py restore-from-bak <name> [--day YYYY.MM.DD]
-    python3 tools/compaction/compact_session.py stats <name>
+    python3 tools/compaction/compact_session.py --sessions-dir <dir> backup <name>
+    python3 tools/compaction/compact_session.py --sessions-dir <dir> compact <name> --from <body.md|json>
+    python3 tools/compaction/compact_session.py --sessions-dir <dir> restore-from-bak <name> [--day YYYY.MM.DD]
+    python3 tools/compaction/compact_session.py --sessions-dir <dir> stats <name>
 
 Privacy: same class as sessions/*.json — plaintext, local-only, never sync bak
 under portable/. Do not compact a session the bot currently has open mid-turn.
@@ -32,14 +32,12 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
-# repo root (…/ops/compaction/ → …/ops → …/)
-_ROOT = Path(__file__).resolve().parents[2]
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
+try:
+    from hearth.session import session_store as ss
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
+    from hearth.session import session_store as ss
 
-import session_store as ss  # noqa: E402
-
-SESSIONS_DIR = ss.SESSIONS_DIR
 BAK_ROOT_NAME = "pre-compaction-bak"
 DIR_MODE = ss.DIR_MODE
 FILE_MODE = ss.FILE_MODE
@@ -78,14 +76,14 @@ def _now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime())
 
 
-def _session_path(name: str, sessions_dir: Path = SESSIONS_DIR) -> Path:
+def _session_path(name: str, sessions_dir: Path) -> Path:
     """Resolve <name> or <name>.json under sessions/."""
     name = name.removesuffix(".json")
     path = Path(sessions_dir) / f"{name}.json"
     return path
 
 
-def _bak_root(sessions_dir: Path = SESSIONS_DIR) -> Path:
+def _bak_root(sessions_dir: Path) -> Path:
     return Path(sessions_dir) / BAK_ROOT_NAME
 
 
@@ -113,7 +111,7 @@ def _load_session(path: Path) -> dict:
 def backup_session(
     name: str,
     *,
-    sessions_dir: Path = SESSIONS_DIR,
+    sessions_dir: Path,
     day: Optional[str] = None,
 ) -> Path:
     """Copy sessions/<name>.json → pre-compaction-bak/<day>/<name>.json.
@@ -194,7 +192,7 @@ def compact_session(
     name: str,
     *,
     from_path: Path,
-    sessions_dir: Path = SESSIONS_DIR,
+    sessions_dir: Path,
     tail: int = 12,
     trim_leading_assistant: bool = True,
     meta_user: bool = True,
@@ -317,7 +315,7 @@ def compact_session(
 def restore_from_bak(
     name: str,
     *,
-    sessions_dir: Path = SESSIONS_DIR,
+    sessions_dir: Path,
     day: Optional[str] = None,
     dry_run: bool = False,
 ) -> dict[str, Any]:
@@ -384,7 +382,7 @@ def restore_from_bak(
 
 # ── stats ────────────────────────────────────────────────────────────────────
 
-def session_stats(name: str, *, sessions_dir: Path = SESSIONS_DIR) -> dict[str, Any]:
+def session_stats(name: str, *, sessions_dir: Path) -> dict[str, Any]:
     src = _session_path(name, sessions_dir)
     data = _load_session(src)
     msgs = data["messages"]
@@ -470,8 +468,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--sessions-dir",
-        default=str(SESSIONS_DIR),
-        help=f"sessions directory (default: {SESSIONS_DIR})",
+        required=True,
+        help="sessions directory, e.g. <data root>/characters/<character>/sessions",
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 

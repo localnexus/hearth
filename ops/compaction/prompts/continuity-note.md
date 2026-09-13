@@ -3,7 +3,7 @@ continuity-note.md — the FROZEN compaction prompt (first used live 2026-09-02,
 first live run; this file makes it durable so the procedure no
 longer depends on a chat transcript — same lesson as compact_session.py itself).
 
-Placeholders (replaced by hearth-data/ops/compact-companion-session.sh):
+Placeholders (replaced by compact-companion-session.sh beside this file):
   {{CHARACTER}}   display name of the companion whose session is compacting
   {{TRANSCRIPT}}  rendered plaintext transcript (PARTNER: / <NAME>: turns)
 

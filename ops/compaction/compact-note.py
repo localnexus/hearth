@@ -3,7 +3,8 @@
 
 Prompt on stdin, note on stdout, diagnostics on stderr. Nothing else: no
 tools, no session, no state on disk. Written 2026-09-04 to replace the the earlier agent runtime
-Agent invocation the compactor had been using for this one call.
+Agent invocation the compactor had been using for this one call. `--model auto`
+asks the server which model it currently serves instead of being told.
 
 Why the replacement. the earlier agent runtime brought a 834 MB runtime and a 303 MB stateful
 profile (a 100 MB state.db, a 64 KB skills prompt, `toolsets: [agent-cli]`,
@@ -82,6 +83,17 @@ def endpoint(config: Path | None) -> tuple[str, str]:
     return (base or DEFAULT_BASE_URL), token
 
 
+def list_models(base: str, token: str, timeout: float = 20) -> list[str]:
+    """Model ids the server currently lists, via GET <base>/models."""
+    headers = {}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    req = urllib.request.Request(base.rstrip("/") + "/models", headers=headers)
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = json.load(resp)
+    return [entry["id"] for entry in data.get("data", [])]
+
+
 def generate(prompt: str, model: str, base: str, token: str, *,
              temperature: float | None, reasoning: str | None,
              max_tokens: int | None, timeout: float) -> tuple[str, dict, dict]:
@@ -115,7 +127,9 @@ def generate(prompt: str, model: str, base: str, token: str, *,
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="one prompt in, one note out")
-    ap.add_argument("--model", required=True, help="model id/identifier to route to")
+    ap.add_argument("--model", required=True,
+                    help="model id/identifier to route to, "
+                         "or `auto` = the first model the server lists")
     ap.add_argument("--config", type=Path, help="serve.toml (endpoint + token path)")
     ap.add_argument("--temperature", type=float, default=None,
                     help="omitted by default — the server's default applies, "
@@ -138,11 +152,26 @@ def main() -> int:
         return 2
 
     base, token = endpoint(args.config)
-    print(f"note: {len(prompt)} byte prompt → {base} as '{args.model}'"
+    model = args.model
+    if model == "auto":
+        models_url = base.rstrip("/") + "/models"
+        try:
+            models = list_models(base, token)
+        except (urllib.error.URLError, TimeoutError, ValueError, KeyError) as exc:
+            print(f"no model resolved from {models_url} ({exc})", file=sys.stderr)
+            return 1
+        if not models:
+            print(f"no model resolved from {models_url} (empty model list)",
+                  file=sys.stderr)
+            return 1
+        model = models[0]
+        print(f"note: resolved model '{model}' from the server", file=sys.stderr)
+
+    print(f"note: {len(prompt)} byte prompt → {base} as '{model}'"
           f"{' (no token)' if not token else ''}", file=sys.stderr)
     started = time.time()
     try:
-        text, usage, timings = generate(prompt, args.model, base, token,
+        text, usage, timings = generate(prompt, model, base, token,
                                         temperature=args.temperature,
                                         reasoning=args.reasoning or None,
                                         max_tokens=args.max_tokens,
