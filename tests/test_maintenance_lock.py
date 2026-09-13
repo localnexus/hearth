@@ -22,21 +22,15 @@ sys.path.insert(0, str(_SRC))
 
 from hearth.config import config_loader  # noqa: E402
 from hearth.session import compact_trigger, maintenance_lock  # noqa: E402
+from scratch_root import patch_data_root  # noqa: E402
 
 
 class LockBase(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = Path(self._tmp.name)
-        self._patch = mock.patch.object(config_loader, "DATA_DIR", self.root)
-        self._patch.start()
-        maintenance_lock._HELD.clear()
-
-    def tearDown(self):
-        for char in list(maintenance_lock._HELD):
-            maintenance_lock.drop(char)
-        self._patch.stop()
-        self._tmp.cleanup()
+        self.addCleanup(self._tmp.cleanup)
+        patch_data_root(self, self.root)
 
 
 class LockCore(LockBase):

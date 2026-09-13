@@ -117,11 +117,9 @@ class CurationForget(AioHTTPTestCase):
         self.app["bot_child"].close()
         self.app["bot_child"] = _fake(GRACEFUL)
         # Scratch DATA tree with one known character + two ended-session records.
-        from unittest import mock
-
-        from hearth.config import config_loader
         from hearth.memory import records as records_mod
         from hearth.memory.backend import SessionRecord
+        from scratch_root import patch_data_root
 
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
@@ -138,9 +136,7 @@ class CurationForget(AioHTTPTestCase):
                 messages=[{"role": "user", "content": f"SECRET-USER-LINE {sid}"},
                           {"role": "assistant", "content": f"a reply in {sid}"}],
             ), self.records_dir)
-        self._patch = mock.patch.object(config_loader, "_DATA", root)
-        self._patch.start()
-        self.addCleanup(self._patch.stop)
+        patch_data_root(self, root)
 
     async def asyncTearDown(self):
         await self.app["bot_child"].stop()

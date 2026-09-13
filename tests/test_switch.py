@@ -44,9 +44,9 @@ from aiohttp import web
 from aiohttp.test_utils import AioHTTPTestCase
 
 from hearth import supervisor
-from hearth.config import config_loader
 from hearth.supervisor.routes import switching
 from hearth.supervisor import switch as switch_mod
+from scratch_root import patch_data_root
 
 
 def _build_install(root: Path) -> None:
@@ -74,9 +74,7 @@ class _FixtureBase(unittest.TestCase):
         self.root = Path(self._tmp.name)
         _build_install(self.root)
         # _DATA is read at CALL time by _lookup/list_voices/choices — patchable.
-        self._p = mock.patch.object(config_loader, "_DATA", self.root)
-        self._p.start()
-        self.addCleanup(self._p.stop)
+        patch_data_root(self, self.root)
         self.active = self.root / "config" / "active.toml"
 
 
@@ -253,8 +251,8 @@ class _SwitchHarness(AioHTTPTestCase):
         self.root = Path(self._tmp.name)
         _build_install(self.root)
         self.active = self.root / "config" / "active.toml"
+        patch_data_root(self, self.root)
         self._patches = [
-            mock.patch.object(config_loader, "_DATA", self.root),
             mock.patch.object(switch_mod, "active_path", lambda: self.active),
         ]
         for p in self._patches:

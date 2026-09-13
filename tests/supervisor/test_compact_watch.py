@@ -29,14 +29,11 @@ class QueueStatus(unittest.TestCase):
     """
 
     def setUp(self):
-        from unittest import mock
-        from hearth.config import config_loader
+        from scratch_root import patch_data_root
         self._tmp = tempfile.TemporaryDirectory()
         self.root = Path(self._tmp.name)
         self.addCleanup(self._tmp.cleanup)
-        patch = mock.patch.object(config_loader, "DATA_DIR", self.root)
-        patch.start()
-        self.addCleanup(patch.stop)
+        patch_data_root(self, self.root)
         self.qdir = self.root / "ops" / "compact-queue"
 
     def _write(self, name, **info):
@@ -96,15 +93,12 @@ class CompactWatchTick(unittest.IsolatedAsyncioTestCase):
 
     def setUp(self):
         from unittest import mock
-        from hearth.config import config_loader
-        from hearth.session import maintenance_lock
         from hearth.supervisor import compact_watch
+        from scratch_root import patch_data_root
         self._tmp = tempfile.TemporaryDirectory()
         self.root = Path(self._tmp.name)
         self.addCleanup(self._tmp.cleanup)
-        patch = mock.patch.object(config_loader, "DATA_DIR", self.root)
-        patch.start()
-        self.addCleanup(patch.stop)
+        patch_data_root(self, self.root)
         # No shipped copy in this scratch tree by default — the "nothing
         # installed" cases below exercise the data-root candidates only;
         # test_shipped_copy_is_found_when_the_data_root_has_none overrides this.
@@ -113,9 +107,6 @@ class CompactWatchTick(unittest.IsolatedAsyncioTestCase):
             return_value=self.root / "no-shipped-copy" / "compact-companion-session.sh")
         no_shipped.start()
         self.addCleanup(no_shipped.stop)
-        maintenance_lock._HELD.clear()
-        self.addCleanup(lambda: [maintenance_lock.drop(c)
-                                 for c in list(maintenance_lock._HELD)])
         self.qdir = self.root / "ops" / "compact-queue"
 
     def _app(self, bot_state="stopped"):

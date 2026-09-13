@@ -80,6 +80,7 @@ class RosterAddVoice(AioHTTPTestCase):
         from unittest import mock
 
         from hearth.config import config_loader
+        from scratch_root import patch_data_root
 
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
@@ -90,9 +91,7 @@ class RosterAddVoice(AioHTTPTestCase):
             "[memory]\nenabled = true\nbackend = \"floor\"\n\n"
             "[memory.companions]\n# a comment inside the table\n",
             encoding="utf-8")
-        self._patch = mock.patch.object(config_loader, "_DATA", self.root)
-        self._patch.start()
-        self.addCleanup(self._patch.stop)
+        patch_data_root(self, self.root)
         # MEMORY_TOML is import-bound (unlike the call-time _DATA lookups), so
         # point it at the scratch copy too — every consumer reads one path.
         self._mem_patch = mock.patch.object(

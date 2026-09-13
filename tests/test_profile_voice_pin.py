@@ -35,6 +35,7 @@ from hearth.config import settings_registry as sr
 from hearth.control.features import config_knobs as ck
 from hearth.control.features import config_profiles as cp
 from hearth.supervisor import switch as switch_mod
+from scratch_root import patch_data_root
 
 
 def _build_install(root: Path) -> None:
@@ -56,9 +57,7 @@ class _Fixture(unittest.TestCase):
         self.root = Path(self._tmp.name)
         _build_install(self.root)
         # _DATA is read at CALL time by _lookup/list_voices/preferred_voice.
-        patch = mock.patch.object(config_loader, "_DATA", self.root)
-        patch.start()
-        self.addCleanup(patch.stop)
+        patch_data_root(self, self.root)
         self.profile = self.root / "characters" / "zz-keeper" / "profile.toml"
 
     def pin(self, text: str) -> None:

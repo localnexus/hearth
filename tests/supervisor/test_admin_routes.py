@@ -168,10 +168,8 @@ class AdminRoutes(AioHTTPTestCase):
         await self.client.post("/admin/bot/stop", headers=self.BEARER, json={})
 
     async def test_sessions_listing_metadata_only(self):
-        from unittest import mock
-
-        from hearth.config import config_loader
         from hearth.session import session_store
+        from scratch_root import patch_data_root
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -183,23 +181,23 @@ class AdminRoutes(AioHTTPTestCase):
                 prompt_sha256="d", sessions_dir=char_dir / "sessions",
                 character="zz-sup-test", memory_mode="recall-only")
             store.snapshot([{"role": "user", "content": "SENSITIVE-CONTENT"}])
-            with mock.patch.object(config_loader, "_DATA", root):
-                resp = await self.client.get("/admin/sessions?character=zz-sup-test",
-                                             headers=self.BEARER)
-                self.assertEqual(resp.status, 200, await resp.text())
-                data = await resp.json()
-                self.assertEqual(data["character"], "zz-sup-test")
-                self.assertEqual(len(data["sessions"]), 1)
-                meta = data["sessions"][0]
-                self.assertEqual(meta["session_id"], "session-x")
-                self.assertEqual(meta["turns"], 1)
-                self.assertEqual(meta["memory_mode"], "recall-only")
-                self.assertNotIn("SENSITIVE",
-                                 json.dumps(data), "listing must never carry content")
-                self.assertNotIn("path", meta, "file paths are not exposed")
-                resp = await self.client.get("/admin/sessions?character=zz-nope",
-                                             headers=self.BEARER)
-                self.assertEqual(resp.status, 404)
+            patch_data_root(self, root)
+            resp = await self.client.get("/admin/sessions?character=zz-sup-test",
+                                         headers=self.BEARER)
+            self.assertEqual(resp.status, 200, await resp.text())
+            data = await resp.json()
+            self.assertEqual(data["character"], "zz-sup-test")
+            self.assertEqual(len(data["sessions"]), 1)
+            meta = data["sessions"][0]
+            self.assertEqual(meta["session_id"], "session-x")
+            self.assertEqual(meta["turns"], 1)
+            self.assertEqual(meta["memory_mode"], "recall-only")
+            self.assertNotIn("SENSITIVE",
+                             json.dumps(data), "listing must never carry content")
+            self.assertNotIn("path", meta, "file paths are not exposed")
+            resp = await self.client.get("/admin/sessions?character=zz-nope",
+                                         headers=self.BEARER)
+            self.assertEqual(resp.status, 404)
 
     async def test_offline_root_page(self):
         resp = await self.client.get("/", headers=self.BEARER)

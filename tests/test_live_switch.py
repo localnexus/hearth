@@ -33,6 +33,7 @@ from hearth.config import config_loader
 from hearth.pipeline import switcher as switcher_mod
 from hearth.session import session_store
 from hearth.supervisor import switch as switch_mod
+from scratch_root import patch_data_root
 
 
 def _build_install(root: Path) -> None:
@@ -114,9 +115,7 @@ class _Base(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(self._tmp.cleanup)
         self.root = Path(self._tmp.name)
         _build_install(self.root)
-        self._p = mock.patch.object(config_loader, "_DATA", self.root)
-        self._p.start()
-        self.addCleanup(self._p.stop)
+        patch_data_root(self, self.root)
         self.active = self.root / "config" / "active.toml"
         self._pa = mock.patch.object(switch_mod, "active_path", lambda: self.active)
         self._pa.start()

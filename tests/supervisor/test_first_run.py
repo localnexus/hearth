@@ -37,6 +37,7 @@ from hearth import supervisor
 from hearth.config import config_loader
 from hearth.supervisor import switch as switch_mod
 from hearth.supervisor.child import BotChild
+from scratch_root import patch_data_root
 
 _PY = sys.executable
 _NOMATCH = "zz-hearth-test-nomatch-zz"
@@ -110,11 +111,10 @@ class FirstRun(AioHTTPTestCase):
         shutil.copyfile(shipped / "config" / "active.toml.example", self.active)
         shutil.copyfile(shipped / "config" / "models" / "example" / "model.toml.example",
                         self.model)
-        for target, attr, value in ((config_loader, "_DATA", self.root),
-                                    (switch_mod, "active_path", lambda: self.active)):
-            patch = mock.patch.object(target, attr, value)
-            patch.start()
-            self.addCleanup(patch.stop)
+        patch_data_root(self, self.root)
+        patch = mock.patch.object(switch_mod, "active_path", lambda: self.active)
+        patch.start()
+        self.addCleanup(patch.stop)
 
     async def asyncTearDown(self):
         await self.app["bot_child"].stop()

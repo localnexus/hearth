@@ -61,15 +61,15 @@ class CompactRoute(AioHTTPTestCase):
     async def asyncSetUp(self):
         await super().asyncSetUp()
         from unittest import mock
-        from hearth.config import config_loader
         from hearth.session import session_store
         from hearth.supervisor import switch as switch_mod
         from hearth.supervisor import compact_watch
+        from scratch_root import patch_data_root
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.root = Path(self._tmp.name)
-        for p in (mock.patch.object(config_loader, "DATA_DIR", self.root),
-                  mock.patch.object(switch_mod, "choices",
+        patch_data_root(self, self.root)
+        for p in (mock.patch.object(switch_mod, "choices",
                                     lambda: {"characters": [{"name": "example"}]}),
                   mock.patch.object(session_store, "companion_sessions_dir",
                                     lambda c=None: self.root / "sessions"),
@@ -135,23 +135,14 @@ class MaintenanceStartGuard(AioHTTPTestCase):
 
     async def asyncSetUp(self):
         await super().asyncSetUp()
-        from unittest import mock
-        from hearth.config import config_loader
-        from hearth.session import maintenance_lock
+        from scratch_root import patch_data_root
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
-        patch = mock.patch.object(config_loader, "DATA_DIR",
-                                  Path(self._tmp.name))
-        patch.start()
-        self.addCleanup(patch.stop)
-        maintenance_lock._HELD.clear()
+        patch_data_root(self, Path(self._tmp.name))
         self.app["bot_child"].close()
         self.app["bot_child"] = _fake(GRACEFUL)
 
     async def asyncTearDown(self):
-        from hearth.session import maintenance_lock
-        for c in list(maintenance_lock._HELD):
-            maintenance_lock.drop(c)
         await self.app["bot_child"].stop()
         self.app["bot_child"].close()
         await super().asyncTearDown()
