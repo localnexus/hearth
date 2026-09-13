@@ -21,8 +21,8 @@ Voice cloning carries real responsibility, and it sits with you, the operator:
 
 - **One clean 10–15 second clip.** The cloning model conditions on only the first ~10–15
   seconds; anything past that is ignored, so trim to your best segment.
-- **24 kHz, mono.** Resample if your source is a different rate. (The dataset most people
-  start from records at 22,050 Hz — resample it to 24 kHz.)
+- **Any sample rate.** You do not need to resample: Hearth converts the file to what the voice
+  engine needs when it loads it. A mono recording is best.
 - **Clean and steady.** No background music, no other speakers, minimal noise and reverb, even
   delivery. Loudness is normalized automatically, so don't worry about matching levels — worry
   about clarity and consistent tone.

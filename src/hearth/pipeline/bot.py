@@ -393,8 +393,9 @@ async def build_pipeline(
     presence_tap = hearth.control.features.presence.PresenceTap()
     hearth.control.features.presence.attach(presence_tap)
     # LevelTap after transport.output() (S2, the desk-figure mouth): the played voice's
-    # RMS at playback time — the transport pushes each chunk downstream only
-    # after writing it to the device. Levels only; no audio kept.
+    # RMS at HANDOFF to the output device — the transport pushes each chunk downstream
+    # only after its blocking write into the device's buffer returns, so the reading runs
+    # ahead of the speaker by whatever that buffer holds. Levels only; no audio kept.
     level_tap = LevelTap()
     hearth.control.features.presence.attach_level(level_tap)
 
