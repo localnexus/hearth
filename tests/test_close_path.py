@@ -73,6 +73,46 @@ class TestClosePath(unittest.TestCase):
                                               emit=lambda _l: None, record=None), [])
 
 
+class _RecordingPhase:
+    def __init__(self):
+        self.stages = []
+
+    def __call__(self, stage, **kw):
+        self.stages.append(stage)
+
+
+class TestClosePhaseWiring(unittest.TestCase):
+    def test_the_ladder_advances_the_phase_in_order(self):
+        log = []
+        seam = _Seam(log)
+        phase = _RecordingPhase()
+        close_path.run_close(
+            _Store(), seam, [{"role": "user", "content": "x"}], live_tokens=45000,
+            finalize=lambda st, m, outcome=None: log.append("finalize") or "held session kept",
+            request=lambda st, live_tokens=None, outcome=None:
+            log.append(f"request:{live_tokens}") or "auto-compaction requested",
+            emit=lambda _l: None, record=None, phase=phase)
+        self.assertEqual(phase.stages, ["session-finalized", "compaction-queued",
+                                        "memory-tail", "sidecar-stopped", "done"])
+
+    def test_a_raising_phase_never_breaks_the_close(self):
+        log = []
+        seam = _Seam(log)
+
+        def boom(stage, **kw):
+            raise RuntimeError("phase boom")
+
+        lines = close_path.run_close(
+            _Store(), seam, [{"role": "user", "content": "x"}],
+            finalize=lambda st, m, outcome=None: log.append("finalize") or "held session kept",
+            request=lambda st, live_tokens=None, outcome=None:
+            log.append("request") or "auto-compaction requested",
+            emit=lambda _l: None, record=None, phase=boom)
+        self.assertEqual(log, ["finalize", "request", "seam"])
+        self.assertTrue(seam.closed)
+        self.assertEqual([l.split("]")[0] for l in lines], ["[session", "[session", "[memory"])
+
+
 if __name__ == "__main__":
     unittest.main()
 

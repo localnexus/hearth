@@ -107,6 +107,11 @@ class TestBands(unittest.TestCase):
         self.assertIn("capture-failed", row["reasons"])
         self.assertIn("drain-timeout", row["reasons"])
 
+    def test_an_unclosed_input_transport_is_unsafe(self):
+        row = _run(facts={"mic": {"closed": False}})
+        self.assertEqual(row["band"], close_row.UNSAFE)
+        self.assertEqual(row["reasons"], ["mic-not-confirmed-closed"])
+
     def test_unbanded_rows_are_noted_rather_than_silently_placed(self):
         """§5 places neither D7 nor a failed record write. They are banded
         conservatively AND named, so the gap is visible in the artifact."""
@@ -124,6 +129,11 @@ class TestTheRowItself(unittest.TestCase):
     def test_an_undetectable_mic_is_stated_not_implied(self):
         """§4 C1/C2 have no signal. A later reader must not read silence as clean."""
         self.assertTrue(any("mic-closed" in u for u in _run()["undetected"]))
+
+    def test_a_confirmed_closed_mic_clears_the_undetected_list(self):
+        row = _run(facts={"mic": {"closed": True}})
+        self.assertEqual(row["undetected"], [])
+        self.assertEqual(row["band"], close_row.SAFE)
 
     def test_the_row_is_written_even_when_the_memory_tail_raises(self):
         rows, seam = [], _Seam(boom=RuntimeError("index down"))
