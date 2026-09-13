@@ -24,6 +24,13 @@ A line carrying `manual-lint: allow` is never flagged; a file carrying
 Warning-level by default (exit 0). `--strict` exits 1 on findings so the
 check can become a gate once its false-positive rate has been read.
 
+A second, separate warning covers reading grade on the front page —
+README.md and docs/quick/*.md — using the textstat library's
+Flesch-Kincaid grade, above 10.0 (the page is written for 9th-10th
+grade). textstat is optional: when it is not installed, the check
+prints one skip line instead. Either way, the grade never changes the
+exit code, not even under --strict.
+
 Run:  python -m hearth.tools.manual_lint [PATHS…] [--strict] [--words]
 """
 
@@ -57,6 +64,9 @@ _MD_FILES = ("README.md",)
 _PY_DIRS = ("src/hearth/init", "src/hearth/supervisor", "src/hearth/serve")
 _JS_DIRS = ("src/hearth/ui",)
 _HTML_ROOT = "src/hearth"
+_GRADE_DIRS = ("docs/quick",)
+_GRADE_FILES = ("README.md",)
+_GRADE_MAX = 10.0  # the front page is written for 9th–10th grade
 
 # a word glued (no space) to punctuation that only names carry
 _IDENT_GLUE = set("._/-:={}@#$%\\")
@@ -116,6 +126,26 @@ def scan_prose(text: str, path: Path, line_no: int) -> list[Finding]:
 
 
 # ── Markdown ──────────────────────────────────────────────────────────────────
+
+def _markdown_prose(text: str) -> str:
+    """The prose lines of a Markdown text, stripped the way scan_markdown strips them."""
+    lines: list[str] = []
+    fenced = False
+    for raw in text.splitlines():
+        stripped = raw.lstrip().lstrip("> ")  # a fence inside a blockquote is still a fence
+        if stripped.startswith(("```", "~~~")):
+            fenced = not fenced
+            continue
+        if fenced or raw.startswith("    "):
+            continue  # fenced or indented code
+        line = _INLINE_CODE.sub(" ", raw)
+        line = _LINK_TARGET.sub("]", line)
+        heading = line.lstrip()
+        if heading.startswith("#"):
+            line = heading.lstrip("#").lstrip()
+        lines.append(line)
+    return "\n".join(lines)
+
 
 def scan_markdown(text: str, path: Path) -> list[Finding]:
     out: list[Finding] = []
@@ -221,6 +251,37 @@ def corpus(root: Path) -> list[Path]:
     return [f for f in files if f.is_file()]
 
 
+def grade_corpus(root: Path) -> list[Path]:
+    files: list[Path] = [root / f for f in _GRADE_FILES if (root / f).is_file()]
+    for d in _GRADE_DIRS:
+        files += sorted((root / d).glob("*.md"))
+    return [f for f in files if f.is_file()]
+
+
+def grade_of(text: str) -> float | None:
+    try:
+        import textstat
+    except ImportError:
+        return None
+    prose = _markdown_prose(text)
+    if not prose.strip():
+        return None
+    return float(textstat.flesch_kincaid_grade(prose))
+
+
+def check_grades(root: Path) -> tuple[list[tuple[Path, float]], bool]:
+    try:
+        import textstat  # noqa: F401
+    except ImportError:
+        return [], False
+    over: list[tuple[Path, float]] = []
+    for path in grade_corpus(root):
+        g = grade_of(path.read_text(encoding="utf-8", errors="replace"))
+        if g is not None and g > _GRADE_MAX:
+            over.append((path.relative_to(root), g))
+    return over, True
+
+
 def scan_file(path: Path, root: Path | None = None) -> list[Finding]:
     text = path.read_text(encoding="utf-8", errors="replace")
     if ALLOW_FILE_MARK in text:
@@ -268,6 +329,15 @@ def main(argv: list[str] | None = None) -> int:
     else:
         for f in findings:
             print(f)
+    if not a.paths:
+        over, available = check_grades(root)
+        if not available:
+            print("manual-lint: grade check skipped — textstat is not installed "
+                  "(add it to the venv to enable the reading-grade warning)")
+        else:
+            for path, g in over:
+                print(f"{path}: grade level {g:.1f} — above {_GRADE_MAX:.1f} "
+                      f"(the front page is written for 9th–10th grade)")
     n_files = len({f.path for f in findings})
     verdict = "CLEAN" if not findings else ("DIRTY" if a.strict else "WARN")
     print(f"manual-lint: {verdict} — {len(findings)} finding(s) in {n_files} file(s), {len(files)} scanned")

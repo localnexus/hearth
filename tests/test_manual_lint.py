@@ -18,10 +18,13 @@ Run:  .venv/bin/python -m unittest tests.test_manual_lint
 from __future__ import annotations
 
 import io
+import sys
 import tempfile
+import types
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 from hearth.tools import manual_lint as ml
 
@@ -144,6 +147,117 @@ class Walk(unittest.TestCase):
             self.assertEqual(ml.main(["--words"]), 0)
         for w in ml.WORDS:
             self.assertIn(w, out.getvalue())
+
+
+class Grade(unittest.TestCase):
+    def test_markdown_prose_strips_code_and_link_targets(self):
+        text = "\n".join([
+            "# Heading Here",
+            "This is `code` and a [link](http://example.com/x).",
+            "```",
+            "fenced code line",
+            "```",
+            "    indented code line",
+            "Prose survives.",
+        ])
+        prose = ml._markdown_prose(text)
+        self.assertNotIn("```", prose)
+        self.assertNotIn("fenced", prose)
+        self.assertNotIn("indented", prose)
+        self.assertNotIn("code", prose)
+        self.assertNotIn("example.com", prose)
+        self.assertNotIn("#", prose)
+        self.assertIn("Heading Here", prose)
+        self.assertIn("Prose survives.", prose)
+
+    def test_grade_corpus_is_the_front_page_only(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            for rel in ("README.md", "docs/quick/a.md", "docs/quick/b.md",
+                        "docs/other.md", "src/hearth/x.md"):
+                p = root / rel
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_text("text\n")
+            files = [str(p.relative_to(root)) for p in ml.grade_corpus(root)]
+            self.assertEqual(files, ["README.md", "docs/quick/a.md", "docs/quick/b.md"])
+
+    def test_grade_of_is_none_without_textstat(self):
+        with patch.dict(sys.modules, {"textstat": None}):
+            self.assertIsNone(ml.grade_of("the sky is blue."))
+
+    def test_grade_of_is_none_for_empty_prose(self):
+        fake = types.ModuleType("textstat")
+        fake.flesch_kincaid_grade = lambda text: 5.0
+        with patch.dict(sys.modules, {"textstat": fake}):
+            self.assertIsNone(ml.grade_of("```\ncode only\n```"))
+
+    def test_grade_above_threshold_warns_and_never_flips_exit(self):
+        fake = types.ModuleType("textstat")
+        fake.flesch_kincaid_grade = lambda text: 12.3
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "docs" / "quick").mkdir(parents=True)
+            (root / "README.md").write_text("the sky is blue.\n")
+            (root / "docs" / "quick" / "a.md").write_text("the sun is warm.\n")
+            out = io.StringIO()
+            with patch.dict(sys.modules, {"textstat": fake}):
+                with redirect_stdout(out):
+                    warn = ml.main(["--root", td])
+                    strict = ml.main(["--root", td, "--strict"])
+            self.assertEqual((warn, strict), (0, 0))
+            text = out.getvalue()
+            self.assertIn("README.md: grade level 12.3 — above 10.0", text)
+            self.assertIn("docs/quick/a.md: grade level 12.3", text)
+            self.assertIn("CLEAN — 0 finding(s)", text)
+
+    def test_grade_below_threshold_is_silent(self):
+        fake = types.ModuleType("textstat")
+        fake.flesch_kincaid_grade = lambda text: 6.0
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "README.md").write_text("the sky is blue.\n")
+            out = io.StringIO()
+            with patch.dict(sys.modules, {"textstat": fake}):
+                with redirect_stdout(out):
+                    ml.main(["--root", td])
+            self.assertNotIn("grade level", out.getvalue())
+
+    def test_grade_absent_prints_one_skip_line(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "README.md").write_text("the sky is blue.\n")
+            out = io.StringIO()
+            with patch.dict(sys.modules, {"textstat": None}):
+                with redirect_stdout(out):
+                    rc = ml.main(["--root", td])
+            self.assertEqual(rc, 0)
+            lines = [l for l in out.getvalue().splitlines() if "grade check skipped" in l]
+            self.assertEqual(len(lines), 1)
+
+    def test_explicit_paths_skip_the_grade_check(self):
+        fake = types.ModuleType("textstat")
+        fake.flesch_kincaid_grade = lambda text: 12.3
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "README.md").write_text("the sky is blue.\n")
+            out = io.StringIO()
+            with patch.dict(sys.modules, {"textstat": fake}):
+                with redirect_stdout(out):
+                    ml.main(["--root", td, str(root / "README.md")])
+            self.assertNotIn("grade", out.getvalue())
+
+    def test_grade_never_changes_a_dirty_verdict(self):
+        fake = types.ModuleType("textstat")
+        fake.flesch_kincaid_grade = lambda text: 12.3
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "README.md").write_text("the bot is here.\n")
+            out = io.StringIO()
+            with patch.dict(sys.modules, {"textstat": fake}):
+                with redirect_stdout(out):
+                    rc = ml.main(["--root", td, "--strict"])
+            self.assertEqual(rc, 1)
+            self.assertIn("DIRTY — 1 finding(s)", out.getvalue())
 
 
 if __name__ == "__main__":
