@@ -108,7 +108,10 @@ window.HearthSwitchCard = (function () {
     mountEl.appendChild(holdRow);
     mountEl.appendChild(btns);
 
-    function say(msg) { state.textContent = msg; }
+    function say(msg, tone) {
+      state.textContent = msg || "";
+      state.className = [cls.state, tone].filter(Boolean).join(" ");
+    }
 
     // ── population (ONCE per load / per host-driven refresh) ────────────────
     // Never call this from a poll: a select that re-populates under the
@@ -188,14 +191,15 @@ window.HearthSwitchCard = (function () {
       const wasUp = isUp(choices);
       busy = true;
       go.disabled = true;
-      say(wasUp ? "switching…" : "starting…");
+      say(wasUp ? "switching…" : "starting…", "warn");
       let data = null;
       try {
         const r = await adapters.submit(body);
         data = r && r.data;
         if (!data || !data.ok) {
           const why = (data && (data.errors || [data.error])) || [r && r.status];
-          say("refused: " + why.join(" · "));
+          if (data && data.say) say(data.say, data.tone || "warn");
+          else say("refused: " + why.join(" · "), "err");
           go.disabled = false;
           busy = false;
           return;
@@ -204,7 +208,7 @@ window.HearthSwitchCard = (function () {
         // On the panel a restart can cut the reply off mid-flight; that is the
         // restart itself answering, not a failure.
         if (!adapters.selfDies) {
-          say("switch failed: " + e.message);
+          say("switch failed: " + e.message, "err");
           go.disabled = false;
           busy = false;
           return;
@@ -217,7 +221,7 @@ window.HearthSwitchCard = (function () {
     // The handoff is ARMED on POST and lands at the next turn boundary — so the
     // honest report is "armed", and only the bot can say when it applied.
     function watchLive() {
-      say("armed — applies the moment you next speak…");
+      say("armed — applies the moment you next speak…", "warn");
       const t0 = Date.now();
       const poll = setInterval(async () => {
         let info = null;
@@ -225,20 +229,20 @@ window.HearthSwitchCard = (function () {
         if (info && info.ok && !info.armed && info.last &&
             info.last.phase === "applied") {
           clearInterval(poll);
-          say("switched ✓");
+          say("switched ✓", "ok");
           done();
           return;
         }
         if (info && info.ok && info.last && info.last.phase === "failed") {
           clearInterval(poll);
-          say("live apply failed — check the terminal / logs");
+          say("live apply failed — check the terminal / logs", "err");
           go.disabled = false;
           busy = false;
           return;
         }
         if (Date.now() - t0 > 600000) {   // 10 min: it is armed, not stuck
           clearInterval(poll);
-          say("still armed — it applies whenever you next speak");
+          say("still armed — it applies whenever you next speak", "warn");
           go.disabled = false;
           busy = false;
         }
@@ -251,13 +255,13 @@ window.HearthSwitchCard = (function () {
     function watchRestart(wasUp) {
       if (!adapters.selfDies) {
         say(wasUp ? "restarting the companion — watch the state line"
-                  : "start requested — watch the state line");
+                  : "start requested — watch the state line", "warn");
         go.disabled = false;
         busy = false;
         done();
         return;
       }
-      say("restarting — this page comes back on its own (≈10–30 s)…");
+      say("restarting — this page comes back on its own (≈10–30 s)…", "warn");
       const t0 = Date.now();
       let wentDown = false;
       const poll = setInterval(async () => {
@@ -267,7 +271,7 @@ window.HearthSwitchCard = (function () {
         } catch (e) { wentDown = true; }
         if (Date.now() - t0 > 120000) {
           clearInterval(poll);
-          say("still down after 120 s — check the terminal / logs/bot.log");
+          say("still down after 120 s — check the terminal / logs/bot.log", "err");
           go.disabled = false;
           busy = false;
         }
@@ -279,6 +283,7 @@ window.HearthSwitchCard = (function () {
     return {
       load: load,
       busy: () => busy,
+      say: say,
       character: () => selects.character.value,
       // The host hangs its own character-dependent extras off this (the launch
       // page's session list), rather than reaching into the card's selects.
