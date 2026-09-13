@@ -87,6 +87,7 @@ class PresenceRouteTests(unittest.TestCase):
     def setUp(self):
         presence.attach(None)
         presence.attach_level(None)
+        presence.attach_lead(None)
 
     def _get(self, ctx) -> dict:
         async def go():
@@ -109,9 +110,10 @@ class PresenceRouteTests(unittest.TestCase):
 
     def test_shape_before_attach(self):
         body = self._get(_ctx())
-        self.assertEqual(set(body), {"bot_speaking", "user_speaking", "muted", "level", "level_ts", "ts"})
+        self.assertEqual(set(body), {"bot_speaking", "user_speaking", "muted", "level", "level_ts", "lead_s", "ts"})
         self.assertFalse(body["user_speaking"])
         self.assertEqual((body["level"], body["level_ts"]), (0.0, 0.0))  # before attach_level: shape, zeros
+        self.assertIsNone(body["lead_s"])  # before attach_lead: shape, unknown
         self.assertIsInstance(body["ts"], float)
 
     def test_composes_the_three_flags(self):
@@ -130,6 +132,23 @@ class PresenceRouteTests(unittest.TestCase):
         body = self._get(_ctx())
         self.assertAlmostEqual(body["level"], 0.42)
         self.assertEqual(body["level_ts"], 12.5)
+
+    def test_lead_rides_the_object(self):
+        """The output-buffer lead joins the object from the attached LeadProbe."""
+        class _Stream:
+            def __init__(self, free):
+                self.free = free
+
+            def get_write_available(self):
+                return self.free
+
+        out = types.SimpleNamespace(_out_stream=_Stream(4800), _sample_rate=24000)
+        probe = presence.LeadProbe(out)
+        probe.lead_s()  # calibrate
+        out._out_stream.free = 2400
+        presence.attach_lead(probe)
+        body = self._get(_ctx())
+        self.assertAlmostEqual(body["lead_s"], 0.1)
 
     def test_muted_mic_never_reads_as_speaking(self):
         tap = PresenceTap(); tap._user_speaking = True  # the stuck-true case

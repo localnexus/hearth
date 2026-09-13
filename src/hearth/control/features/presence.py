@@ -38,12 +38,16 @@ on its own once the audio stops, never a held value; before attach_level the
 field is 0.0 so a reader always sees the shape.
 
 API:
-    GET /presence → {bot_speaking, user_speaking, muted, level, level_ts, ts}
+    GET /presence → {bot_speaking, user_speaking, muted, level, level_ts, lead_s, ts}
         Sent with ``Access-Control-Allow-Origin: *`` — the reader is another
         app's webview, not this panel's page (see the route for why that is
         safe on this route and would not be on the POSTs).
         ts — this process's wall clock (time.time()) when the answer was
              composed; a reader that sees it stop advancing knows the bot is gone.
+
+``lead_s`` — seconds queued in the output device but not yet played, read from
+the stream on each poll; null until the stream is open or when it cannot be
+read; a consumer delays its mouth by exactly this.
 """
 
 from __future__ import annotations
@@ -91,8 +95,38 @@ class PresenceTap(FrameProcessor):
         await self.push_frame(frame, direction)
 
 
+class LeadProbe:
+    """Seconds of voice handed to the output device but not yet played, read
+    from the open stream's free space on demand: capacity = the largest free
+    space ever seen (an empty ring shows all of it), queued = capacity minus
+    free now. Seconds, not frames; no clock or latency figure folded in — the
+    path past the device is the consumer's per-route constant. None when
+    nothing honest can be said: no stream yet, a stream that raises, a sample
+    rate of 0. Never negative."""
+
+    def __init__(self, output_transport) -> None:
+        self._out = output_transport
+        self._capacity = 0
+
+    def lead_s(self):
+        stream = getattr(self._out, "_out_stream", None)
+        rate = int(getattr(self._out, "_sample_rate", 0) or 0)
+        if stream is None or rate <= 0:
+            return None
+        try:
+            free = int(stream.get_write_available())
+        except Exception:
+            return None
+        if free < 0:
+            return None
+        if free > self._capacity:
+            self._capacity = free
+        return (self._capacity - free) / rate
+
+
 _TAP: PresenceTap | None = None
 _LEVEL = None   # LevelTap (control_taps) after transport.output(); None until attach_level
+_LEAD = None   # LeadProbe bound to the output transport; None until attach_lead
 
 
 def attach(tap: PresenceTap) -> None:
@@ -107,18 +141,26 @@ def attach_level(tap) -> None:
     _LEVEL = tap
 
 
+def attach_lead(probe) -> None:
+    """bot.py hands over the probe. None detaches."""
+    global _LEAD
+    _LEAD = probe
+
+
 def snapshot(mute_gate, speaking_tap) -> dict:
     """The presence object — pure, so it is testable without a server."""
     muted = bool(mute_gate.is_muted)
     heard = bool(_TAP.user_speaking) if _TAP is not None else False
     level = float(_LEVEL.level()) if _LEVEL is not None else 0.0
     level_ts = float(_LEVEL.level_ts) if _LEVEL is not None else 0.0
+    lead_s = _LEAD.lead_s() if _LEAD is not None else None
     return {
         "bot_speaking": bool(speaking_tap.is_speaking),
         "user_speaking": heard and not muted,
         "muted": muted,
         "level": level,
         "level_ts": level_ts,
+        "lead_s": lead_s,
         "ts": time.time(),
     }
 
