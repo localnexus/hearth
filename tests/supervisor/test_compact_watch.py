@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -97,12 +98,21 @@ class CompactWatchTick(unittest.IsolatedAsyncioTestCase):
         from unittest import mock
         from hearth.config import config_loader
         from hearth.session import maintenance_lock
+        from hearth.supervisor import compact_watch
         self._tmp = tempfile.TemporaryDirectory()
         self.root = Path(self._tmp.name)
         self.addCleanup(self._tmp.cleanup)
         patch = mock.patch.object(config_loader, "DATA_DIR", self.root)
         patch.start()
         self.addCleanup(patch.stop)
+        # No shipped copy in this scratch tree by default — the "nothing
+        # installed" cases below exercise the data-root candidates only;
+        # test_shipped_copy_is_found_when_the_data_root_has_none overrides this.
+        no_shipped = mock.patch.object(
+            compact_watch, "_shipped_compactor",
+            return_value=self.root / "no-shipped-copy" / "compact-companion-session.sh")
+        no_shipped.start()
+        self.addCleanup(no_shipped.stop)
         maintenance_lock._HELD.clear()
         self.addCleanup(lambda: [maintenance_lock.drop(c)
                                  for c in list(maintenance_lock._HELD)])
@@ -124,7 +134,8 @@ class CompactWatchTick(unittest.IsolatedAsyncioTestCase):
         script = self.root.joinpath("ops", *parts)
         script.parent.mkdir(parents=True, exist_ok=True)
         script.write_text("#!/bin/sh\n"
-                          f"printf '%s\\n' \"$@\" > '{self.root}/spawn-args.txt'\n")
+                          f"printf '%s\\n' \"$@\" > '{self.root}/spawn-args.txt'\n"
+                          f"printf '%s' \"$HEARTH_PYTHON\" > '{self.root}/env-python.txt'\n")
         script.chmod(0o755)
         return script
 
@@ -156,6 +167,29 @@ class CompactWatchTick(unittest.IsolatedAsyncioTestCase):
         self._script()  # both present → the new layout wins
         self.assertEqual(compact_watch.compactor_path(), want)
 
+    async def test_shipped_copy_is_found_when_the_data_root_has_none(self):
+        """The tree's own copy is the last candidate: found when the data root
+        has none, but a data-root install still wins when one is present."""
+        from unittest import mock
+        from hearth.supervisor import compact_watch
+        shipped = self.root / "shipped" / "compact-companion-session.sh"
+        shipped.parent.mkdir(parents=True, exist_ok=True)
+        shipped.write_text("#!/bin/sh\n")
+        with mock.patch.object(compact_watch, "_shipped_compactor",
+                               return_value=shipped):
+            self.assertEqual(compact_watch.compactor_path(), shipped)
+            want = self.root / "ops" / "compaction" / "compact-companion-session.sh"
+            data_root_copy = self._script()  # a data-root copy now exists — it wins
+            self.assertEqual(compact_watch.compactor_path(), want)
+        data_root_copy.unlink()
+
+        missing = self.root / "nowhere" / "compact-companion-session.sh"
+        with mock.patch.object(compact_watch, "_shipped_compactor",
+                               return_value=missing):
+            # no data-root copy, and the shipped path itself is missing — the
+            # log line still names the preferred data-root path
+            self.assertEqual(compact_watch.compactor_path(), want)
+
     async def test_fires_and_claims(self):
         from hearth.supervisor import compact_watch
         self._request()
@@ -177,6 +211,12 @@ class CompactWatchTick(unittest.IsolatedAsyncioTestCase):
         self.assertIn("example", argv)
         self.assertIn("--yes", argv)
         self.assertIn("--request-file", argv)
+        env_python_file = self.root / "env-python.txt"
+        for _ in range(40):  # detached child — give it a beat
+            if env_python_file.exists():
+                break
+            await asyncio.sleep(0.05)
+        self.assertEqual(env_python_file.read_text(), sys.executable)
         # a fresh young claim (lock free, just claimed) is left alone
         self.assertIsNone(await compact_watch.tick(app))
 

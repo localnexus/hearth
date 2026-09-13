@@ -44,6 +44,8 @@ Look up your Mac's memory (Apple menu → About This Mac → *Memory*):
 
 **Which model.** Every row above describes [Unsloth's build of Qwen3.6-35B-A3B](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF), the set of files this project recommends and measured. The author's own companion runs the Q8_0 of [a derivative build of the same model](https://huggingface.co/llmfan46/Qwen3.6-35B-A3B-uncensored-heretic-Native-MTP-Preserved-GGUF), which was tested the same way a day earlier and has the same footprint and speed.
 
+**Compaction runs on the same model.** When a long talk closes, Hearth writes a short continuity note from it and folds the note back into the session, so the next talk starts from what matters rather than from the whole log. That note is written by the companion's own model on the same server: it adds nothing to the memory table above and needs no second download. This is a provisional choice, made on function — the note comes back well-formed, quickly, at no extra memory — and it will be revisited when a fuller measurement exists.
+
 That is the whole decision for most readers. Three words explain where it comes from:
 
 - **Quant.** The model comes as one set of files on Hugging Face, and each file is the same model at a different level of compression. The name of each file's compression level is its *quant*: **Q8_0** is the least compressed (biggest, best), **UD-Q3_K_M** the most (smallest, some quality lost). You download one of them, not all.

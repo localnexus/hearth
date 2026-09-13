@@ -30,12 +30,14 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import sys
 import time
 from pathlib import Path
 from typing import Optional
 
 from loguru import logger
 
+import hearth
 from hearth.config import config_loader
 from hearth.session import maintenance_lock
 
@@ -56,8 +58,14 @@ def queue_dir() -> Path:
 #: ``ops/compaction/`` on 2026-09-04 when its queue-lifecycle half was split
 #: out to a sourced lib beside it; the flat path stays readable so an install
 #: that has not moved yet keeps working rather than silently parking requests.
+#: The tree's own shipped copy (``_shipped_compactor``) is the last candidate,
+#: so an operator's data-root copy always wins when one is present.
 _COMPACTOR_PATHS = (("compaction", "compact-companion-session.sh"),
                     ("compact-companion-session.sh",))
+
+
+def _shipped_compactor() -> Path:
+    return Path(hearth.__file__).resolve().parents[2] / "ops" / "compaction" / "compact-companion-session.sh"
 
 
 def compactor_path() -> Path:
@@ -65,6 +73,7 @@ def compactor_path() -> Path:
     installed' log line names where to put it)."""
     root = Path(config_loader.DATA_DIR) / "ops"
     candidates = [root.joinpath(*parts) for parts in _COMPACTOR_PATHS]
+    candidates.append(_shipped_compactor())
     for path in candidates:
         if path.is_file():
             return path
@@ -187,7 +196,8 @@ async def tick(app) -> Optional[str]:
                 "--yes", "--request-file", str(running),
                 stdout=logf, stderr=asyncio.subprocess.STDOUT,
                 start_new_session=True,
-                env={**os.environ, "HEARTH_DATA": str(config_loader.DATA_DIR)},
+                env={**os.environ, "HEARTH_DATA": str(config_loader.DATA_DIR),
+                     "HEARTH_PYTHON": sys.executable},
             )
     except OSError as exc:
         failed = running.with_name(running.name[:-len(".running")] + ".failed")
