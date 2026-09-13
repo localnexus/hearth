@@ -78,6 +78,7 @@
         <option value="recall-only">recall-only — the companion remembers, this session leaves no record</option>
         <option value="off">off — a fresh meeting</option>
       </select></div>
+    <div class="row"><label title="the session comes up warm with the mic closed — open it from the panel when you are ready; you can type in the meantime"><input type="checkbox" id="pick-muted"> start with the mic off</label></div>
     <div class="row">
       <button id="compactbtn" title="Compact the selected conversation with the local model before starting — pick a session first — while it runs (~2 min) a Start is held and fires when it finishes">Compact selected session</button></div>
     <div id="compactqueue" class="hidden"></div>
@@ -258,6 +259,7 @@ const card = window.HearthSwitchCard.mount($("switchmount"), {
     if (sessionId) { body.mode = "resume"; body.name = sessionId; }
     else body.mode = "new";
     if (memory) body.memory = memory;
+    if ($("pick-muted").checked) body.muted = true;
     return body;
   },
   onApplied: () => refresh(),
@@ -342,6 +344,7 @@ async function checkDeferredStart(st) {
 
 async function loadStartForm() {
   if (!(await card.load())) return;
+  $("pick-muted").checked = false;
   await loadSessions();
   loadSessionsCard();   // the guard changes with the bot state, so does the card
 }
