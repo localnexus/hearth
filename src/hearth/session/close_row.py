@@ -79,9 +79,9 @@ def ledger_dir() -> Path:
 def band(outcomes: dict) -> tuple:
     """§5's band for a set of outcomes, plus the reasons that drove it.
 
-    UNSAFE — the conversation itself may not be written (§4 D5). That is the
-    only thing this side can prove; a live mic (C1/C2) has no signal at all
-    today and must never be inferred from silence.
+    UNSAFE — the conversation itself may not be written (§4 D5), or the input
+    transport was not confirmed closed when the ladder ran (§4 C1) — the one
+    alarming case now that the mic is asserted rather than inferred.
     DEGRADED — conversation on disk, an auxiliary step failed or deferred.
     SAFE — every step ran.
     """
@@ -91,9 +91,14 @@ def band(outcomes: dict) -> tuple:
     compaction = (outcomes.get("compaction") or {})
     capture = (outcomes.get("capture") or {})
     drain = (outcomes.get("drain") or {})
+    mic = (outcomes.get("mic") or {})
 
     if session.get("result") == "failed":
         reasons.append("session-finalize-failed")  # D5
+        return UNSAFE, reasons
+
+    if mic.get("closed") is False:
+        reasons.append("mic-not-confirmed-closed")  # §4 C1
         return UNSAFE, reasons
 
     for key, flag in (
@@ -143,10 +148,13 @@ def build(store, outcomes: dict, lines: list) -> dict:
     unbanded = [UNBANDED[r] for r in reasons if r in UNBANDED]
     if unbanded:
         row["note"] = unbanded
-    # §4's mic rows (C1/C2) and its disk-full row have NO signal today. Say so
+    # §4's mic rows (C1/C2) are asserted, not inferred, once the caller's
+    # facts carry a mic fact — either value IS detected. Absent a fact, say so
     # in the artifact rather than let a later reader mistake silence for a
     # clean mic.
-    row["undetected"] = ["mic-closed (C1/C2 — no signal until the bot asserts it)"]
+    mic_closed = (outcomes.get("mic") or {}).get("closed")
+    row["undetected"] = [] if mic_closed in (True, False) else (
+        ["mic-closed (C1/C2 — no signal until the bot asserts it)"])
     return row
 
 

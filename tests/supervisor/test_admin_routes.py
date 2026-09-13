@@ -110,6 +110,37 @@ class AdminRoutes(AioHTTPTestCase):
         self.assertIn("llm", data["externals"])
         self.assertIn("audio", data["externals"])
         self.assertIs(data["panel"]["reachable"], False)  # dead test port
+        self.assertIn("close", data)
+        self.assertIsNone(data["close"])
+
+    async def test_state_surfaces_the_close_breadcrumb_of_the_current_child_only(self):
+        from unittest import mock
+
+        from hearth.session import close_phase
+
+        with tempfile.TemporaryDirectory() as tmp:
+            phase_file = Path(tmp) / "current.json"
+            with mock.patch.object(close_phase, "phase_path", return_value=phase_file):
+                resp = await self.client.post("/admin/bot/start", headers=self.BEARER, json={})
+                self.assertEqual(resp.status, 200, await resp.text())
+                pid = self.app["bot_child"].pid
+
+                close_phase.ClosePhase(
+                    pid=pid, character="zz-close-test", session_id=None,
+                ).advance("memory-tail")
+                resp = await self.client.get("/admin/state", headers=self.BEARER)
+                data = await resp.json()
+                self.assertEqual(data["close"]["stage"], "memory-tail")
+
+                close_phase.ClosePhase(
+                    pid=pid + 1, character="zz-close-test", session_id=None,
+                ).advance("memory-tail")
+                resp = await self.client.get("/admin/state", headers=self.BEARER)
+                data = await resp.json()
+                self.assertIsNone(data["close"])
+
+                resp = await self.client.post("/admin/bot/stop", headers=self.BEARER, json={})
+                self.assertEqual(resp.status, 200)
 
     async def test_start_stop_roundtrip(self):
         resp = await self.client.post("/admin/bot/start", headers=self.BEARER, json={})

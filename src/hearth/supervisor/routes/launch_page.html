@@ -32,6 +32,7 @@
   .state { font-family: ui-monospace, monospace; font-size: 0.85em; opacity: 0.85; }
   .err { color: #c33; }
   .warn { color: #c80; }
+  .ok { color: #3a3; }
   .hidden { display: none; }
   table.sess { width: 100%; border-collapse: collapse; font-size: 0.9em; }
   table.sess th { text-align: left; font-weight: 600; opacity: 0.7; }
@@ -48,6 +49,7 @@
 <body class="brand-adaptive">
 <!--BRANDHEAD:launch-->
 <div id="statusline">connecting…</div>
+<div id="msg"></div>
 
 <div id="tokencard" class="card hidden">
   <p>This page needs your access key — the one <code>hearth.init</code> printed
@@ -78,8 +80,9 @@
         <option value="recall-only">recall-only — the companion remembers, this session leaves no record</option>
         <option value="off">off — a fresh meeting</option>
       </select></div>
+    <div class="row"><label title="the session comes up warm with the mic closed — open it from the panel when you are ready; you can type in the meantime"><input type="checkbox" id="pick-muted"> start with the mic off</label></div>
     <div class="row">
-      <button id="compactbtn" title="Compact the selected conversation with the local model before starting — pick a session first — while it runs (~2 min) a Start is held and fires when it finishes">Compact selected session</button></div>
+      <button id="compactbtn" title="Compact the selected conversation with the local model before starting — pick a session first — while it runs (~2 min) a Start is held and fires when it finishes">Compact selected session</button> <span id="compactstate" class="state"></span></div>
     <div id="compactqueue" class="hidden"></div>
   </div>
 </div>
@@ -103,7 +106,7 @@
   <div class="row">
     <input type="text" id="stopname" autocomplete="off"
            placeholder="name this conversation (optional — it saves either way)">
-    <button id="stopbtn">Stop</button>
+    <button id="stopbtn">Stop</button> <span id="stopstate" class="state"></span>
   </div>
 </div>
 
@@ -126,8 +129,6 @@
 
 <div id="hearthcard" class="card hidden"></div>
 
-<div id="msg"></div>
-
 <p><small><a href="/admin/roster">Manage the roster</a> — onboard a new companion ·
   <a href="/admin/memory/ui">Memory records</a> — review &amp; prune ·
   <a href="/admin/settings/ui">Settings</a> — every config file</small></p>
@@ -148,6 +149,7 @@
 let choices = null;      // /admin/switch payload (current + choices)
 let botUp = false;       // start-only riders ride a cold start, never a warm switch
 let lastBotState = null; // collapse repeated renders
+let lastUp = null;      // the previous poll's up/down, for clearOnEdge
 let busy = false;        // a start/stop is in flight — freeze the cards
 let tick = 0;            // poll counter — actuators refresh on a slower cadence
 let cookieMinted = false;  // the browser carrier for plain navigation
@@ -155,7 +157,20 @@ let deferred = null;       // an armed start, held behind someone else's mainten
 let deferredTimer = null;  // the 1s ticker that keeps the amber line counting
 let reissuing = false;     // a re-issue POST is in flight — polls must not double-fire it
 
-function warn(text) { report(text); $("msg").className = "warn"; }
+// Each action speaks beside its own button, in one of three tones:
+// "warn" (working or waiting, amber), "err" (failed, red), "ok" (done, green).
+function sayAt(id, text, tone) {
+  const out = $(id);
+  out.textContent = text || "";
+  out.className = ["state", tone].filter(Boolean).join(" ");
+}
+// Which finished messages go stale when the bot's state moves: a new session
+// makes an old "stopped" stale; any edge makes a finished Start line stale —
+// unless a deferred start is still armed and counting.
+function clearOnEdge(wasUp, nowUp, armed) {
+  if (wasUp === nowUp) return { start: false, stop: false };
+  return { start: !armed, stop: nowUp };
+}
 
 function needToken(prompt) {
   show("tokencard", true); show("switchcard", false); show("stopcard", false);
@@ -219,6 +234,10 @@ async function refresh() {
   if (busy || card.busy()) return;
   const up = bot.state === "running" || bot.state === "starting";
   botUp = up;
+  const stale = clearOnEdge(lastUp, up, !!deferred);
+  if (stale.start) card.say("");
+  if (stale.stop) sayAt("stopstate", "");
+  lastUp = up;
   show("switchcard", !parked);   // the companion card serves BOTH states
   show("startextras", !up);   // session + memory are start-only
   show("stopcard", up);
@@ -258,6 +277,7 @@ const card = window.HearthSwitchCard.mount($("switchmount"), {
     if (sessionId) { body.mode = "resume"; body.name = sessionId; }
     else body.mode = "new";
     if (memory) body.memory = memory;
+    if ($("pick-muted").checked) body.muted = true;
     return body;
   },
   onApplied: () => refresh(),
@@ -269,16 +289,17 @@ const card = window.HearthSwitchCard.mount($("switchmount"), {
 
 function deferredMessage() {
   const holder = deferred.holder;
-  const word = holder.op === "compact" ? "compaction" : holder.op;
   const who = holder.session || holder.character;
   const secs = Math.round((Date.now() - deferred.since) / 1000);
-  return word + " of " + who + " is running (~2 min) — your session will " +
-         "start when it finishes · " + secs + "s";
+  const what = holder.op === "compact"
+    ? "compaction of " + who + " is running (~2 min)"
+    : "maintenance on " + who + " is running";
+  return what + " — your session will start when it finishes · " + secs + "s";
 }
 
 function armDeferred(body, holder) {
   deferred = { body, since: Date.now(), holder };
-  deferredTimer = setInterval(() => warn(deferredMessage()), 1000);
+  deferredTimer = setInterval(() => card.say(deferredMessage(), "warn"), 1000);
 }
 
 function disarmDeferred() {
@@ -292,11 +313,15 @@ function disarmDeferred() {
 async function deferredSubmit(body) {
   if (deferred) {
     disarmDeferred();
-    report("deferred start cancelled");
-    return { status: 409, data: { ok: false, errors: ["deferred start cancelled"] } };
+    return { status: 409, data: { ok: false, errors: ["deferred start cancelled"],
+                                   say: "deferred start cancelled", tone: "" } };
   }
   const r = await api("/admin/switch", { json: body });
-  if (r.status === 409 && r.data && r.data.maintenance) armDeferred(body, r.data.maintenance[0]);
+  if (r.status === 409 && r.data && r.data.maintenance) {
+    armDeferred(body, r.data.maintenance[0]);
+    r.data.say = deferredMessage();
+    r.data.tone = "warn";
+  }
   return r;
 }
 
@@ -310,7 +335,7 @@ async function checkDeferredStart(st) {
                                  (!holder.session || e.session === holder.session));
   if (failed) {
     disarmDeferred();
-    report("compaction failed — the session was not started; press Start to try again", true);
+    card.say("compaction failed — the session was not started; press Start to try again", "err");
     return;
   }
   const maint = (st.data && st.data.maintenance) || [];
@@ -324,17 +349,17 @@ async function checkDeferredStart(st) {
     const r = await api("/admin/switch", { json: body });
     if (r.data && r.data.ok) {
       deferred = null;
-      report("session starting");
+      card.say("session starting", "ok");
       refresh();
     } else if (r.status === 409 && r.data && r.data.maintenance) {
       armDeferred(body, r.data.maintenance[0]);
     } else {
       deferred = null;
-      report("start failed: " + ((r.data && r.data.errors && r.data.errors.join(" · ")) || r.status), true);
+      card.say("start failed: " + ((r.data && r.data.errors && r.data.errors.join(" · ")) || r.status), "err");
     }
   } catch (e) {
     deferred = null;
-    report("start failed: " + e.message, true);
+    card.say("start failed: " + e.message, "err");
   } finally {
     reissuing = false;
   }
@@ -342,6 +367,7 @@ async function checkDeferredStart(st) {
 
 async function loadStartForm() {
   if (!(await card.load())) return;
+  $("pick-muted").checked = false;
   await loadSessions();
   loadSessionsCard();   // the guard changes with the bot state, so does the card
 }
@@ -386,14 +412,14 @@ async function loadSessions() {
 async function doCompact() {
   const character = card.character();
   const sessionId = $("pick-session").value;
-  if (!sessionId) { report("pick a conversation above first — compaction needs a target", true); return; }
-  busy = true; report("requesting compaction…");
+  if (!sessionId) { sayAt("compactstate", "pick a conversation above first — compaction needs a target", "err"); return; }
+  busy = true; sayAt("compactstate", "requesting compaction…", "warn");
   try {
     const r = await api("/admin/compact", { json: { character, session: sessionId } });
-    if (r.data && r.data.ok) report(r.data.note || "compaction requested");
-    else report("refused: " + ((r.data && (r.data.note || r.data.error)) || r.status), true);
+    if (r.data && r.data.ok) sayAt("compactstate", r.data.note || "compaction requested", "ok");
+    else sayAt("compactstate", "refused: " + ((r.data && (r.data.note || r.data.error)) || r.status), "err");
   } catch (e) {
-    report(e.message === "401" ? "key refused" : "compact failed: " + e.message, true);
+    sayAt("compactstate", e.message === "401" ? "key refused" : "compact failed: " + e.message, "err");
   } finally { busy = false; refresh(); }
 }
 
@@ -410,18 +436,18 @@ async function doStop() {
   busy = true;
   $("stopbtn").disabled = true;
   const t0 = Date.now();
-  const elapsed = () => report("stopping… " + Math.round((Date.now() - t0) / 1000) +
-                               "s · the memory close runs first (up to ~2 min)");
+  const elapsed = () => sayAt("stopstate", "stopping… " + Math.round((Date.now() - t0) / 1000) +
+                               "s · the memory close runs first (up to ~2 min)", "warn");
   elapsed();
   const tick = setInterval(elapsed, 1000);
   try {
     const r = await api("/admin/bot/stop", { json: body });
     clearInterval(tick);
-    if (r.data && r.data.ok) { report("stopped" + (name ? " — conversation named " + name : "")); $("stopname").value = ""; }
-    else report("stop failed: " + JSON.stringify((r.data && r.data.error) || r.status), true);
+    if (r.data && r.data.ok) { sayAt("stopstate", "stopped" + (name ? " — conversation named " + name : ""), "ok"); $("stopname").value = ""; }
+    else sayAt("stopstate", "stop failed: " + JSON.stringify((r.data && r.data.error) || r.status), "err");
   } catch (e) {
     clearInterval(tick);
-    report(e.message === "401" ? "key refused" : "stop failed: " + e.message, true);
+    sayAt("stopstate", e.message === "401" ? "key refused" : "stop failed: " + e.message, "err");
   } finally { clearInterval(tick); $("stopbtn").disabled = false; busy = false; refresh(); }
 }
 

@@ -33,7 +33,8 @@ def run_close(store, seam, messages, *, live_tokens: Optional[int] = None,
               finalize: Callable, request: Callable,
               emit: Callable[[str], None] = print,
               record: Optional[Callable] = close_row.record,
-              facts: Optional[dict] = None) -> list:
+              facts: Optional[dict] = None,
+              phase: Optional[Callable] = None) -> list:
     """Run the three steps in order; every step is contained. Returns the
     status lines in the order they were emitted (tests assert on this).
 
@@ -78,6 +79,7 @@ def run_close(store, seam, messages, *, live_tokens: Optional[int] = None,
                 session_out["errno"] = errno
             logger.warning("[session] finalize failed: {}", type(exc).__name__)
         else:
+            _phase(phase, "session-finalized", outcome=session_out)
             compaction_out: dict = {}
             outcomes["compaction"] = compaction_out
             try:
@@ -90,9 +92,11 @@ def run_close(store, seam, messages, *, live_tokens: Optional[int] = None,
                 note = None
             if note:
                 say(f"[session] {note}")
+            _phase(phase, "compaction-queued", outcome=compaction_out)
     if seam is not None:
         memory_out: dict = {}
         outcomes["memory"] = memory_out
+        _phase(phase, "memory-tail", deadline_s=getattr(seam, "close_budget_s", None))
         try:
             mem_status = seam.on_session_end(messages, store, outcome=memory_out)
             if mem_status:
@@ -103,9 +107,12 @@ def run_close(store, seam, messages, *, live_tokens: Optional[int] = None,
             raise
         finally:
             seam.close()
+            _phase(phase, "sidecar-stopped")
             _record(record, store, outcomes, lines)
+        _phase(phase, "done")
         return lines
     _record(record, store, outcomes, lines)
+    _phase(phase, "done")
     return lines
 
 
@@ -117,4 +124,16 @@ def _record(record: Optional[Callable], store, outcomes: dict, lines: list) -> N
         record(store, outcomes, lines)
     except Exception as exc:  # noqa: BLE001
         logger.warning("[session] close row failed ({}) — close unaffected",
+                       type(exc).__name__)
+
+
+def _phase(phase: Optional[Callable], stage: str, **kw) -> None:
+    """Advance the close-phase breadcrumb, contained. A breadcrumb is never
+    worth a close."""
+    if phase is None:
+        return
+    try:
+        phase(stage, **kw)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[session] close phase callback failed ({}) — close unaffected",
                        type(exc).__name__)

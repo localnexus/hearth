@@ -119,6 +119,7 @@ async def _switch_post(request: web.Request) -> web.Response:
             {"ok": False,
              "errors": [f"unknown memory mode {memory!r} (full | recall-only | off)"]},
             status=400)
+    muted = bool(body.get("muted"))
     current, cur_err = switch_mod.read_selection()
     if cur_err:
         return web.json_response({"ok": False, "errors": [cur_err]}, status=409)
@@ -141,13 +142,19 @@ async def _switch_post(request: web.Request) -> web.Response:
     # A memory-mode rider forces the restart path: the mode is the SITTING's
     # posture (set at boot, rides a live switch unchanged) — only a fresh spawn
     # can honor a different one.
-    live_eligible = bool(changed) and memory is None and all(
+    live_eligible = bool(changed) and memory is None and not muted and all(
         k in switch_mod.live_capable_fields() for k in changed)
     live_result = None
     if apply_mode == "live" and memory is not None:
         return web.json_response(
             {"ok": False,
              "errors": ["a memory-mode change cannot ride a live switch — "
+                        'it needs a restart (repost with "apply": "auto")'],
+             "wrote": merged}, status=409)
+    if apply_mode == "live" and muted:
+        return web.json_response(
+            {"ok": False,
+             "errors": ["a mic-closed start cannot ride a live switch — "
                         'it needs a restart (repost with "apply": "auto")'],
              "wrote": merged}, status=409)
     if apply_mode == "live" and not running:
@@ -199,6 +206,7 @@ async def _switch_post(request: web.Request) -> web.Response:
             mode=str(body.get("mode") or "new"),
             name=(str(body["name"]) if body.get("name") else None),
             memory=memory,
+            muted=muted,
         ))
     logger.info("[supervisor] switch → {} (restart: {})",
                 {k: merged[k] for k in switch_mod.SELECTION_KEYS}, restart)
@@ -247,7 +255,7 @@ async def _try_live(app: web.Application, merged: dict, body: dict) -> dict:
 
 
 async def _do_restart(app: web.Application, *, hold, hold_name, mode, name,
-                      memory=None) -> None:
+                      memory=None, muted=False) -> None:
     """stop (graceful ladder — the bot's own finalize/hold path runs) → start."""
     child = app["bot_child"]
     status = app["switch_state"]["last"]
@@ -256,7 +264,7 @@ async def _do_restart(app: web.Application, *, hold, hold_name, mode, name,
         status.update(phase="failed", error=stopped.get("error") or "stop failed",
                       at=_now_iso())
         return
-    started = await child.start(mode=mode, name=name, memory=memory)
+    started = await child.start(mode=mode, name=name, memory=memory, muted=muted)
     if started.get("ok"):
         status.update(phase="done", error=None, at=_now_iso(), pid=started.get("pid"))
     else:

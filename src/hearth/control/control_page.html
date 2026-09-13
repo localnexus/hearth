@@ -276,6 +276,8 @@ async function initSwitcher() {
 initSwitcher();
 
 renderMic();  // show baseline on load
+
+fetch('/presence').then(r => r.json()).then(j => { muted = !!j.muted; $('mute').textContent = muted ? 'Unmute mic' : 'Mute mic'; $('mute').classList.toggle('active', muted); renderMic(); }).catch(() => {});
 </script>
 </body>
 </html>

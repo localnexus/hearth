@@ -14,6 +14,7 @@ import os
 import subprocess
 import sys
 import unittest
+from unittest import mock
 from hearth.supervisor.child import BotChild
 
 
@@ -211,6 +212,44 @@ class ChildLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res["memory"], "recall-only")
         self.assertTrue((await c.stop())["ok"])
         c.close()
+
+    async def test_muted_is_forwarded_as_a_bare_flag(self):
+        async def _start_and_capture_argv(**start_kwargs):
+            c = _fake(GRACEFUL)
+            captured = []
+
+            class _FakeProbeProc:
+                async def communicate(self):
+                    return b"", b""  # pgrep: no match
+
+            class _FakeSpawnProc:
+                pid = 999999
+                returncode = None
+
+                async def wait(self):
+                    await asyncio.sleep(3600)
+
+            async def _record(*args, **kwargs):
+                if args and args[0] == "pgrep":
+                    return _FakeProbeProc()
+                captured.append(args)
+                return _FakeSpawnProc()
+
+            with mock.patch("hearth.supervisor.child.asyncio.create_subprocess_exec",
+                            side_effect=_record):
+                res = await c.start(**start_kwargs)
+            c.close()
+            return res, captured[0]
+
+        res, argv = await _start_and_capture_argv(muted=True)
+        self.assertTrue(res["ok"], res)
+        self.assertIs(res["muted"], True)
+        self.assertEqual(argv.count("--muted"), 1)
+
+        res, argv = await _start_and_capture_argv()
+        self.assertTrue(res["ok"], res)
+        self.assertNotIn("muted", res)
+        self.assertNotIn("--muted", argv)
 
     async def test_stop_when_nothing_runs(self):
         c = _fake(GRACEFUL)

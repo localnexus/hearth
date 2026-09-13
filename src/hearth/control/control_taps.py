@@ -35,11 +35,13 @@ class MuteGate(FrameProcessor):
     Wire immediately after transport.input() and before VADProcessor:
         [transport.input(), mute_gate, vad, stt, ...]
     Muted → VAD sees no audio → no VAD frames → no segmentation, no barge-in.
+    The gate can start closed (``muted=True``) — a session that comes up
+    already muted, opened later from the panel.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, muted: bool = False, **kwargs):
         super().__init__(**kwargs)
-        self._muted: bool = False
+        self._muted: bool = bool(muted)
         self._ptt_prev: bool | None = None  # latched baseline saved during a PTT hold
 
     def set_muted(self, muted: bool) -> None:

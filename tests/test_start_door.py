@@ -33,8 +33,8 @@ class _FakeBotChild:
         self.start_result: dict = {"ok": True, "pid": 1}
         self.stop_result: dict = {"ok": True}
 
-    async def start(self, mode="new", name=None, memory=None):
-        self.start_calls.append({"mode": mode, "name": name, "memory": memory})
+    async def start(self, mode="new", name=None, memory=None, muted=False):
+        self.start_calls.append({"mode": mode, "name": name, "memory": memory, "muted": muted})
         return self.start_result
 
     async def stop(self, hold=False, name=None):
@@ -77,7 +77,8 @@ class StartDoor(AioHTTPTestCase):
             resp = await self.client.post("/admin/bot/start", json={})
         self.assertEqual(resp.status, 200)
         held_locks.assert_called_once_with()
-        self.assertEqual(self.child.start_calls, [{"mode": "new", "name": None, "memory": None}])
+        self.assertEqual(self.child.start_calls,
+                         [{"mode": "new", "name": None, "memory": None, "muted": False}])
 
     async def test_start_door_refuses_while_a_leg_lock_is_held(self):
         held = [{"character": "demo", "op": "leg", "session": "s-1",
@@ -102,29 +103,39 @@ class StartDoor(AioHTTPTestCase):
             resp = await self.client.post("/admin/bot/start", json={})
         self.assertEqual(resp.status, 200)
         held_locks.assert_called_once_with()
-        self.assertEqual(self.child.start_calls, [{"mode": "new", "name": None, "memory": None}])
+        self.assertEqual(self.child.start_calls,
+                         [{"mode": "new", "name": None, "memory": None, "muted": False}])
 
     async def test_start_door_defaults_on_an_empty_body(self):
         with mock.patch.object(lifecycle.maintenance_lock, "held_locks", return_value=[]):
             resp = await self.client.post("/admin/bot/start", json={})
         self.assertEqual(resp.status, 200)
-        self.assertEqual(self.child.start_calls, [{"mode": "new", "name": None, "memory": None}])
+        self.assertEqual(self.child.start_calls,
+                         [{"mode": "new", "name": None, "memory": None, "muted": False}])
 
     async def test_start_door_defaults_on_a_non_json_body(self):
         with mock.patch.object(lifecycle.maintenance_lock, "held_locks", return_value=[]):
             resp = await self.client.post("/admin/bot/start", data=b"not json",
                                           headers={"Content-Type": "application/json"})
         self.assertEqual(resp.status, 200)
-        self.assertEqual(self.child.start_calls, [{"mode": "new", "name": None, "memory": None}])
+        self.assertEqual(self.child.start_calls,
+                         [{"mode": "new", "name": None, "memory": None, "muted": False}])
 
-    async def test_start_door_passes_the_three_fields_through_as_strings(self):
+    async def test_start_door_passes_the_four_fields_through_as_strings(self):
         with mock.patch.object(lifecycle.maintenance_lock, "held_locks", return_value=[]):
             resp = await self.client.post(
                 "/admin/bot/start",
                 json={"mode": "resume", "name": "x", "memory": "recall-only"})
         self.assertEqual(resp.status, 200)
         self.assertEqual(self.child.start_calls,
-                         [{"mode": "resume", "name": "x", "memory": "recall-only"}])
+                         [{"mode": "resume", "name": "x", "memory": "recall-only", "muted": False}])
+
+    async def test_start_door_passes_muted_through_as_a_bool(self):
+        with mock.patch.object(lifecycle.maintenance_lock, "held_locks", return_value=[]):
+            resp = await self.client.post("/admin/bot/start", json={"muted": True})
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(self.child.start_calls,
+                         [{"mode": "new", "name": None, "memory": None, "muted": True}])
 
     async def test_start_door_status_follows_the_childs_ok_true(self):
         self.child.start_result = {"ok": True, "pid": 99}
