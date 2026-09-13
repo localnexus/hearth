@@ -221,6 +221,7 @@ async def build_pipeline(
     resume_messages: Optional[list] = None,
     store: Optional["session_store.SessionStore"] = None,
     memory_mode: str = "full",
+    start_muted: bool = False,
 ):
     """
     Construct the fully-local v2 voice pipeline.
@@ -382,7 +383,9 @@ async def build_pipeline(
 
     # Step 3: MuteGate before VAD (drops InputAudioRawFrame when muted so VAD
     # sees nothing → no barge-in, no half-open turns while muted).
-    mute_gate = MuteGate()
+    mute_gate = MuteGate(muted=start_muted)
+    if start_muted:
+        print("[control] mic starts closed (--muted) — open it from the panel", flush=True)
 
     # Step 3: SpeakingTap after TTS output (watches BotStarted/StoppedSpeaking
     # so /say can decide whether to prepend an InterruptionFrame).
@@ -519,6 +522,7 @@ async def main(
     resume_messages: Optional[list] = None,
     session_descriptor: Optional[str] = None,
     memory_mode: str = "full",
+    start_muted: bool = False,
 ):
     """Entry point for the live-mic voice loop."""
     # Heal any LEAKED output mirror BEFORE the pipeline is constructed.
@@ -541,7 +545,7 @@ async def main(
      recorder, memory_seam, live_switcher, system_instruction,
      memory_prefetch_proc) = await build_pipeline(
         dump_dir, resume_messages=resume_messages, store=store,
-        memory_mode=memory_mode,
+        memory_mode=memory_mode, start_muted=start_muted,
     )
 
     # TokenMeter captures LM Studio's own per-turn usage block (ground truth).
@@ -762,6 +766,14 @@ if __name__ == "__main__":
         "only; the session transcript keeps its own lifecycle (--hold). "
         "Flag absent, a resumed session keeps the mode it was saved under.",
     )
+    parser.add_argument(
+        "--muted",
+        action="store_true",
+        help="start with the mic closed: the session comes up warm, audio is "
+        "dropped before recording and before speech detection until the mic "
+        "is opened from the panel (POST /mute); text turns (POST /say) work "
+        "meanwhile. Not sticky; the next start is live unless asked again.",
+    )
     args = parser.parse_args()
 
     # Session-store maintenance lock (design: auto-compaction-on-close). The
@@ -795,4 +807,5 @@ if __name__ == "__main__":
         resume_messages=_resume_messages,
         session_descriptor=_session_desc,
         memory_mode=_memory_mode,
+        start_muted=args.muted,
     ))

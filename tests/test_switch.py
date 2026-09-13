@@ -197,15 +197,22 @@ class _FakeChild:
         self.pid = None
         return {"ok": True, "escalated": False, "held": bool(hold)}
 
-    async def start(self, mode="new", name=None, memory=None):
-        # 3-tuple when no memory rider (keeps existing assertions), 4-tuple with.
-        self.calls.append(("start", mode, name) if memory is None
-                          else ("start", mode, name, memory))
+    async def start(self, mode="new", name=None, memory=None, muted=False):
+        # 3-tuple when no memory rider (keeps existing assertions), 4-tuple
+        # with; a 5th element (muted) only when muted.
+        if muted:
+            self.calls.append(("start", mode, name, memory, muted))
+        elif memory is not None:
+            self.calls.append(("start", mode, name, memory))
+        else:
+            self.calls.append(("start", mode, name))
         self.state = "running"
         self.pid = 4243
         result = {"ok": True, "pid": self.pid, "mode": mode}
         if memory is not None:
             result["memory"] = memory
+        if muted:
+            result["muted"] = True
         return result
 
     def close(self):
@@ -344,6 +351,22 @@ class SwitchRoutes(_SwitchHarness):
         self.assertEqual(resp.status, 409)
         self.assertIn("restart", (await resp.json())["errors"][0])
         self.assertEqual(self.child.calls, [], "no stop/start on a refused live+memory")
+
+    async def test_post_muted_rider_forces_restart_and_forwards(self):
+        resp = await self.client.post("/admin/switch", headers=self.BEARER,
+                                      json={**GOOD, "muted": True})
+        self.assertEqual(resp.status, 200, await resp.text())
+        self.assertEqual((await resp.json())["applied"], "restart")
+        await self.app["switch_state"]["task"]
+        self.assertEqual(self.child.calls,
+                         [("stop", False, None), ("start", "new", None, None, True)])
+
+    async def test_post_apply_live_with_muted_refused(self):
+        resp = await self.client.post("/admin/switch", headers=self.BEARER,
+                                      json={**GOOD, "apply": "live", "muted": True})
+        self.assertEqual(resp.status, 409)
+        self.assertIn("restart", (await resp.json())["errors"][0])
+        self.assertEqual(self.child.calls, [], "no stop/start on a refused live+muted")
 
     async def test_post_bot_down_writes_without_restart(self):
         self.child.state = "down"

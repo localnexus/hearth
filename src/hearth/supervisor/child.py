@@ -36,7 +36,7 @@ from hearth.serve import SUPERVISED_ENV
 # stop.sh parity: matches python / python3 / python3.12 running the bot module.
 _PATTERN = r"python[0-9.]* -m hearth\.pipeline\.bot"
 
-# The bot's own --memory choices (kept in lockstep with bot.py's argparse).
+# The bot's own --memory choices and --muted flag (kept in lockstep with bot.py's argparse).
 _MEMORY_MODES = ("full", "recall-only", "off")
 
 # SIGINT → escalate wait. stop.sh waits ~6 s; the daemon is deliberately more
@@ -132,7 +132,7 @@ class BotChild:
     # ── lifecycle ─────────────────────────────────────────────────────────────
 
     async def start(self, mode: str = "new", name: Optional[str] = None,
-                    memory: Optional[str] = None) -> dict:
+                    memory: Optional[str] = None, muted: bool = False) -> dict:
         if self.state in ("starting", "running", "stopping"):
             return {"ok": False, "error": f"the companion is {self.state} — wait a moment", "pid": self.pid}
         if await self.adopt():
@@ -151,6 +151,8 @@ class BotChild:
                 return {"ok": False,
                         "error": f"unknown memory mode {memory!r} (full | recall-only | off)"}
             args += ["--memory", memory]
+        if muted:
+            args += ["--muted"]
 
         env = dict(os.environ)
         env.update(self._env_overlay)  # values never logged
@@ -179,11 +181,13 @@ class BotChild:
         self.started_at = time.time()
         self.state = "running"
         self._reaper = asyncio.create_task(self._reap(self._proc))
-        logger.info("[supervisor] bot started (pid {}, mode {}{})", self.pid, mode,
-                    f", memory {memory}" if memory else "")
+        logger.info("[supervisor] bot started (pid {}, mode {}{}{})", self.pid, mode,
+                    f", memory {memory}" if memory else "", ", muted" if muted else "")
         result = {"ok": True, "pid": self.pid, "mode": mode}
         if memory is not None:
             result["memory"] = memory
+        if muted:
+            result["muted"] = True
         return result
 
     async def stop(self, hold: bool = False, name: Optional[str] = None) -> dict:

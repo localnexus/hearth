@@ -57,6 +57,7 @@ async def _bot_start(request: web.Request) -> web.Response:
         mode=str(body.get("mode") or "new"),
         name=(str(body["name"]) if body.get("name") else None),
         memory=(str(body["memory"]) if body.get("memory") else None),
+        muted=bool(body.get("muted")),
     )
     return web.json_response(result, status=200 if result.get("ok") else 409)
 
