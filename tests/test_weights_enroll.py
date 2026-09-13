@@ -28,7 +28,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.test_weights_scan import tiny_gguf
+from test_weights_scan import tiny_gguf
 
 _PY = sys.executable
 _ROOT = Path(__file__).resolve().parents[1]

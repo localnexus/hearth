@@ -59,8 +59,8 @@ render_mod = import_module("hearth.weights.render")
 roots_mod = import_module("hearth.weights.roots")
 scan_mod = import_module("hearth.weights.scan")
 
-from tests.test_weights_render import live_plist
-from tests.test_weights_scan import tiny_gguf
+from test_weights_render import live_plist
+from test_weights_scan import tiny_gguf
 
 #: A door binary that is not on this machine — named, never run. The renderer
 #: only writes the name into the unit, and the budget falls back to sysctl.
