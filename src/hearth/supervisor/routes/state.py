@@ -28,7 +28,7 @@ from typing import Optional
 import aiohttp
 from aiohttp import web
 
-from hearth.session import maintenance_lock
+from hearth.session import close_phase, maintenance_lock
 
 from .. import actuators as actuators_mod
 from .. import compact_watch
@@ -71,12 +71,17 @@ async def _state(request: web.Request) -> web.Response:
     # Process truth, not cached truth: a desk-started bot appears (adopted) and
     # a desk-stopped adopted bot disappears within one poll of the launch page.
     await app["bot_child"].reconcile()
+    # The close ladder's breadcrumb, pid-matched so a stale file from an
+    # earlier close is never mistaken for the current one; null unless the
+    # current child wrote one.
+    close = await asyncio.to_thread(close_phase.read, pid=app["bot_child"].pid)
     return web.json_response({
         "supervisor": True,
         # What would relaunch the facade after /admin/daemon/restart; None on a
         # terminal run — the launch page draws its Restart button from this.
         "keeper": app.get("keeper"),
         "bot": app["bot_child"].status(),
+        "close": close,
         "panel": {"url": app["panel_url"], "reachable": panel},
         "externals": results,
         "switch": app["switch_state"]["last"],

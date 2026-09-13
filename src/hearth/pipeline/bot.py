@@ -90,7 +90,7 @@ from hearth.measurement.measurement_taps import (
     TurnState,
 )
 from hearth.session.token_meter import TokenMeter
-from hearth.session import close_path, compact_trigger, maintenance_lock, session_store
+from hearth.session import close_path, close_phase, compact_trigger, maintenance_lock, session_store
 from hearth.config import config_loader
 from hearth.config import config_reload
 from hearth.bridges import openclaw_bridge
@@ -659,12 +659,17 @@ async def main(
     try:
         await runner.run()
     finally:
+        mic_closed = close_phase.input_closed(transport.input())
+        phase = close_phase.ClosePhase(
+            pid=os.getpid(), character=_CFG.character,
+            session_id=getattr(live_switcher.current_store, "session_id", None))
+        phase.advance("pipeline-down", mic_closed=mic_closed)
+        close_facts: dict = {"capture": {"result": "not-armed"}, "mic": {"closed": mic_closed}}
         meter.print_summary()
         # M7: never lose an in-flight capture — a Ctrl-C mid-recording finalizes
         # (stems closed, mixdown rendered) exactly as if Record had been pressed off.
         # close_facts: what only THIS frame can see. close_path records them on
         # the close row (§4 D8 capture, D4 drain) — they happen here, before it runs.
-        close_facts: dict = {"capture": {"result": "not-armed"}}
         if recorder.armed:
             try:
                 res = await recorder.stop()
@@ -674,10 +679,12 @@ async def main(
             except Exception as exc:  # noqa: BLE001
                 close_facts["capture"] = {"result": "failed", "error": type(exc).__name__}
                 logger.warning("[record] shutdown finalize failed ({})", type(exc).__name__)
+        phase.advance("capture-finalized", outcome=close_facts["capture"])
         engine_repoll_task.cancel()
         await web_runner.cleanup()
         if serve_runner is not None:
             await serve_runner.cleanup()
+        phase.advance("panel-down")
         # Graceful-stop order (session/close_path.py): finalize → compaction
         # request → the memory tail. The cheap file-only steps run FIRST so a
         # long memory close (bounded by [memory] close_budget_s) can never cost
@@ -688,7 +695,11 @@ async def main(
         # A live companion switch may have replaced the store/seam mid-run —
         # the switcher owns the CURRENT pair. Drain its background old-session
         # finalize first so the two never interleave.
+        # The phase file is the ladder's breadcrumb (session/close_phase.py); a
+        # missing "done" after the process is gone is the force-close signal's
+        # other half.
         close_facts["drain"] = {"result": await live_switcher.drain(30.0)}
+        phase.advance("drain", outcome=close_facts["drain"])
         seam_now = live_switcher.current_seam
         store_now = live_switcher.current_store
         close_path.run_close(
@@ -698,6 +709,7 @@ async def main(
             request=compact_trigger.maybe_request,
             emit=lambda line: print(line, flush=True),
             facts=close_facts,
+            phase=phase.advance,
         )
         live_switcher.close_pending()
 
