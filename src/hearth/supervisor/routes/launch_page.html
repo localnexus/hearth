@@ -31,6 +31,7 @@
   .note { opacity: 0.75; font-size: 0.9em; }
   .state { font-family: ui-monospace, monospace; font-size: 0.85em; opacity: 0.85; }
   .err { color: #c33; }
+  .warn { color: #c80; }
   .hidden { display: none; }
   table.sess { width: 100%; border-collapse: collapse; font-size: 0.9em; }
   table.sess th { text-align: left; font-weight: 600; opacity: 0.7; }
@@ -78,7 +79,7 @@
         <option value="off">off — a fresh meeting</option>
       </select></div>
     <div class="row">
-      <button id="compactbtn" title="Compact the selected conversation with the local model before starting — pick a session first">Compact selected session</button></div>
+      <button id="compactbtn" title="Compact the selected conversation with the local model before starting — pick a session first — while it runs (~2 min) a Start is held and fires when it finishes">Compact selected session</button></div>
     <div id="compactqueue" class="hidden"></div>
   </div>
 </div>
@@ -150,6 +151,11 @@ let lastBotState = null; // collapse repeated renders
 let busy = false;        // a start/stop is in flight — freeze the cards
 let tick = 0;            // poll counter — actuators refresh on a slower cadence
 let cookieMinted = false;  // the browser carrier for plain navigation
+let deferred = null;       // an armed start, held behind someone else's maintenance lock
+let deferredTimer = null;  // the 1s ticker that keeps the amber line counting
+let reissuing = false;     // a re-issue POST is in flight — polls must not double-fire it
+
+function warn(text) { report(text); $("msg").className = "warn"; }
 
 function needToken(prompt) {
   show("tokencard", true); show("switchcard", false); show("stopcard", false);
@@ -206,6 +212,8 @@ async function refresh() {
   hearthRestart.render(st.data);
   const parked = firstRun.render(st.data);  // Start parked on the placeholder id
 
+  await checkDeferredStart(st);
+
   // Never flip cards or re-fill a select under an in-flight action — the card
   // owns a selection the operator may be part-way through making.
   if (busy || card.busy()) return;
@@ -239,7 +247,7 @@ const card = window.HearthSwitchCard.mount($("switchmount"), {
     return sw.data;
   },
   live: async () => (await api("/admin/switch/live")).data,
-  submit: (body) => api("/admin/switch", { json: body }),
+  submit: deferredSubmit,
   extraBody: () => {
     // Start-only riders: on a warm switch neither applies, and sending memory
     // would force the restart path (the daemon 409s it on a live handoff).
@@ -254,6 +262,83 @@ const card = window.HearthSwitchCard.mount($("switchmount"), {
   },
   onApplied: () => refresh(),
 });
+
+// ── deferred start: a Start refused by someone else's maintenance lock is
+// held page-side and re-issued once the lock frees, rather than making the
+// operator watch the clock and press again themselves. ──────────────────────
+
+function deferredMessage() {
+  const holder = deferred.holder;
+  const word = holder.op === "compact" ? "compaction" : holder.op;
+  const who = holder.session || holder.character;
+  const secs = Math.round((Date.now() - deferred.since) / 1000);
+  return word + " of " + who + " is running (~2 min) — your session will " +
+         "start when it finishes · " + secs + "s";
+}
+
+function armDeferred(body, holder) {
+  deferred = { body, since: Date.now(), holder };
+  deferredTimer = setInterval(() => warn(deferredMessage()), 1000);
+}
+
+function disarmDeferred() {
+  if (deferredTimer) clearInterval(deferredTimer);
+  deferredTimer = null;
+  deferred = null;
+}
+
+// The card's own `submit` adapter — the only place the page sees Start's
+// answer. A second press while armed is a cancel, never a second session.
+async function deferredSubmit(body) {
+  if (deferred) {
+    disarmDeferred();
+    report("deferred start cancelled");
+    return { status: 409, data: { ok: false, errors: ["deferred start cancelled"] } };
+  }
+  const r = await api("/admin/switch", { json: body });
+  if (r.status === 409 && r.data && r.data.maintenance) armDeferred(body, r.data.maintenance[0]);
+  return r;
+}
+
+// Called every poll. Re-issues the held Start once the lock that refused it
+// frees, unless the compaction it was waiting on failed outright.
+async function checkDeferredStart(st) {
+  if (!deferred) return;
+  const holder = deferred.holder;
+  const cq = (st.data && st.data.compact_queue) || [];
+  const failed = cq.some((e) => e.state === "failed" && e.character === holder.character &&
+                                 (!holder.session || e.session === holder.session));
+  if (failed) {
+    disarmDeferred();
+    report("compaction failed — the session was not started; press Start to try again", true);
+    return;
+  }
+  const maint = (st.data && st.data.maintenance) || [];
+  if (maint.some((m) => m.op !== "session")) return;
+  if (reissuing) return;
+  reissuing = true;
+  if (deferredTimer) clearInterval(deferredTimer);
+  deferredTimer = null;
+  const body = deferred.body;
+  try {
+    const r = await api("/admin/switch", { json: body });
+    if (r.data && r.data.ok) {
+      deferred = null;
+      report("session starting");
+      refresh();
+    } else if (r.status === 409 && r.data && r.data.maintenance) {
+      armDeferred(body, r.data.maintenance[0]);
+    } else {
+      deferred = null;
+      report("start failed: " + ((r.data && r.data.errors && r.data.errors.join(" · ")) || r.status), true);
+    }
+  } catch (e) {
+    deferred = null;
+    report("start failed: " + e.message, true);
+  } finally {
+    reissuing = false;
+  }
+}
 
 async function loadStartForm() {
   if (!(await card.load())) return;
