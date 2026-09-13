@@ -398,6 +398,13 @@ async def build_pipeline(
     level_tap = LevelTap()
     hearth.control.features.presence.attach_level(level_tap)
 
+    # LeadProbe (the lead beside the level): seconds of voice queued in the output
+    # device's buffer but not yet played, read from the open stream on each
+    # /presence poll — the transport's write returns when the bytes are in that
+    # buffer, not when they are heard.
+    hearth.control.features.presence.attach_lead(
+        hearth.control.features.presence.LeadProbe(transport.output()))
+
     # Session recording. Two passive taps + a Recorder driven by the panel's Record
     # button. Disarmed →
     # byte-identical pass-throughs (the measure-tap contract). Captures land in the
