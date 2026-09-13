@@ -35,7 +35,7 @@ Voice cloning carries real responsibility, and it sits with you, the operator:
    characters/yourname/voices/myvoice/
    ```
 
-2. Put your trimmed, resampled clip in it as `sample.wav`.
+2. Put your trimmed clip in it as `sample.wav` — any sample rate, mono preferred; it is converted when the voice loads.
 
 3. Add a `voice.toml` descriptor pointing at it:
 
@@ -52,7 +52,7 @@ Voice cloning carries real responsibility, and it sits with you, the operator:
    license = "own-voice"          # or: consented / public-domain / cc-...
    source  = "my own recording, 2026"
 
-   # Optional engine facts (shown for completeness; these match the pipeline defaults).
+   # Optional engine facts, for the record only — the engine's output rate, not a requirement on your clip.
    model_repo         = "mlx-community/chatterbox-turbo-fp16"
    sample_rate        = 24000
    streaming_interval = 2.0
