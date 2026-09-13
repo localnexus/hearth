@@ -43,7 +43,7 @@ DIR_MODE = ss.DIR_MODE
 FILE_MODE = ss.FILE_MODE
 
 # Sidecar fields copied unchanged through compact (persona fingerprint included).
-# persona / character / memory_mode joined the store schema post-v2 (the persona-fingerprint rule (see SCHEMA)
+# persona / character / memory_mode joined the store schema later (the persona-fingerprint rule (see SCHEMA)
 # root + the per-session memory mode); the store writes character/name/memory_mode
 # only when set, so copying conditionally-absent keys stays a no-op on old files.
 SIDECAR_KEYS = (

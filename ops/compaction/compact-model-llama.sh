@@ -1,8 +1,8 @@
 # compact-model-llama.sh — the llama-server bracket, sourced by the compactor.
-# Built 2026-09-05 (design: v2 the design record, kept outside this tree).
+# Built 2026-09-05 (the design record is kept outside this tree).
 #
 # THIS FILE IS THE WHOLE llama-server DEPENDENCY, the same posture its sibling
-# compact-model-lib.sh holds for LM Studio. A batch job owns its own server
+# compact-model-door.sh holds for the resident door. A batch job owns its own server
 # process — nothing to evict, nothing to restore, no JIT identifier — so this
 # bracket is: spawn OUR server on loopback, wait until it is healthy, and take
 # it down again on ANY exit. The note generator (compact-note.py) is pointed at

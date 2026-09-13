@@ -64,6 +64,7 @@ class CompactRoute(AioHTTPTestCase):
         from hearth.config import config_loader
         from hearth.session import session_store
         from hearth.supervisor import switch as switch_mod
+        from hearth.supervisor import compact_watch
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.root = Path(self._tmp.name)
@@ -71,7 +72,12 @@ class CompactRoute(AioHTTPTestCase):
                   mock.patch.object(switch_mod, "choices",
                                     lambda: {"characters": [{"name": "example"}]}),
                   mock.patch.object(session_store, "companion_sessions_dir",
-                                    lambda c=None: self.root / "sessions")):
+                                    lambda c=None: self.root / "sessions"),
+                  # this test asserts the 'nothing installed' path; the tree's
+                  # shipped copy must not be found under a scratch root
+                  mock.patch.object(compact_watch, "_shipped_compactor",
+                                    return_value=self.root / "no-shipped-copy"
+                                    / "compact-companion-session.sh")):
             p.start()
             self.addCleanup(p.stop)
         (self.root / "sessions").mkdir(parents=True)
