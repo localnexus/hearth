@@ -135,6 +135,24 @@ class TestTheRowItself(unittest.TestCase):
         self.assertEqual(row["undetected"], [])
         self.assertEqual(row["band"], close_row.SAFE)
 
+    def test_timing_facts_ride_the_row_and_stay_numeric(self):
+        """An extra outcomes key (band() reads only its named keys) still
+        rides the row untouched, same as capture/drain (§4 D8/D4)."""
+        snapshot = {
+            "turns": 3, "untimed": 0,
+            "stt_s": {"median": 0.4, "p95": 0.6, "max": 0.7},
+            "first_token_s": {"median": 0.9, "p95": 1.1, "max": 1.2},
+            "first_audio_s": {"median": 2.0, "p95": 2.4, "max": 2.6},
+            "per_turn": [[0.4, 0.9, 2.0, 3.0], [0.5, 1.0, 2.2, 3.1], [0.3, 0.8, 1.9, 2.9]],
+        }
+        with TemporaryDirectory() as d:
+            row = _run(facts={"timing": snapshot})
+            self.assertEqual(row["band"], close_row.SAFE)
+            self.assertEqual(row["outcomes"]["timing"], snapshot)
+            path = close_row.write(row, directory=Path(d))
+            written = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
+            self.assertEqual(written["outcomes"]["timing"], snapshot)
+
     def test_the_row_is_written_even_when_the_memory_tail_raises(self):
         rows, seam = [], _Seam(boom=RuntimeError("index down"))
         with self.assertRaises(RuntimeError):

@@ -90,6 +90,7 @@ from hearth.measurement.measurement_taps import (
     TurnState,
 )
 from hearth.session.token_meter import TokenMeter
+from hearth.session.turn_timer import TurnTimer
 from hearth.session import close_path, close_phase, compact_trigger, maintenance_lock, session_store
 from hearth.config import config_loader
 from hearth.config import config_reload
@@ -569,6 +570,11 @@ async def main(
     # transcript) is real context the server won't report until the first turn.
     meter.prime_estimate(system_instruction, context.messages)
     live_switcher.attach_meter(meter)
+    # TurnTimer times each spoken turn (end-pointing -> transcript -> first
+    # token -> first sound) — the felt-latency chain the bench found lives
+    # around the model, not in it. Per-turn lines print only when verbose
+    # (T4_METRICS); the shutdown summary always prints.
+    timer = TurnTimer(verbose=T4_METRICS)
 
     worker = PipelineWorker(
         pipeline,
@@ -583,7 +589,7 @@ async def main(
             # instrumentation flag: TokenMeter needs usage metrics unconditionally.
             enable_usage_metrics=True,
         ),
-        observers=[meter] + ([measure_observer] if measure_observer else []),
+        observers=[meter, timer] + ([measure_observer] if measure_observer else []),
         # Appliance: don't self-terminate during a conversational pause. pipecat
         # cancels the worker after idle_timeout_secs (~5 min) of no speech frames
         # by default; for a live loop the user may simply be thinking. Keep the
@@ -687,6 +693,10 @@ async def main(
         phase.advance("pipeline-down", mic_closed=mic_closed)
         close_facts: dict = {"capture": {"result": "not-armed"}, "mic": {"closed": mic_closed}}
         meter.print_summary()
+        timer.print_summary()
+        # Numbers only (§"Nothing private") — the same shape close_row's
+        # outcomes already carry, ridden into the row like capture/drain.
+        close_facts["timing"] = timer.snapshot()
         # M7: never lose an in-flight capture — a Ctrl-C mid-recording finalizes
         # (stems closed, mixdown rendered) exactly as if Record had been pressed off.
         # close_facts: what only THIS frame can see. close_path records them on
