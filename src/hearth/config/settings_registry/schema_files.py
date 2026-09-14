@@ -18,7 +18,7 @@ from .knobs import TEMP_CEILING, _Cfg, _NAME, _live
 class _ActiveSession(_Cfg):
     dir: Optional[str] = Field(
         None, description="where this companion's sessions are saved and listed — "
-                          "absolute, or relative to the data root; absent = "
+                          "absolute, or relative to the data folder; absent = "
                           "characters/<character>/sessions")
 
 
