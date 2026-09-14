@@ -106,9 +106,16 @@ class TestDedupe(unittest.TestCase):
             _push(timer, BotStoppedSpeakingFrame())
             clock.now = 3.1
             _push(timer, opened)  # re-pushed open marker — must not open a second turn
+            clock.now = 3.5
+            # A fresh close after the re-pushed opener: with dedupe nothing is
+            # open, so nothing closes and nothing is counted. Without dedupe the
+            # re-pushed opener starts a phantom turn and this close lands it as
+            # a second turn — which is exactly what the assertion below catches.
+            _push(timer, BotStoppedSpeakingFrame())
 
         snap = timer.snapshot()
         self.assertEqual(snap["turns"], 1)
+        self.assertEqual(snap["untimed"], 0)
         self.assertEqual(snap["per_turn"][0][0], 0.5)
 
 
