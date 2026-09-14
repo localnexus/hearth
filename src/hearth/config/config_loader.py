@@ -301,6 +301,26 @@ def load_active_selection() -> dict:
     }
 
 
+def load_active_session_dir() -> Path | None:
+    """Read ``[session] dir`` from config/active.toml, tolerantly.
+
+    Absent or blank → None (the caller falls back to the built-in per-companion dir).
+    A relative value is resolved against DATA_DIR — the spec leaves "relative" to the
+    operator for a save-time CLI locator, but a config FILE has no "operator's own
+    folder" at read time, so the data root is the only sane anchor here."""
+    data = _read_toml(ACTIVE_TOML)
+    session = data.get("session")
+    if not isinstance(session, dict):
+        return None
+    value = session.get("dir")
+    if not value or not isinstance(value, str):
+        return None
+    p = Path(value).expanduser()
+    if not p.is_absolute():
+        p = DATA_DIR / p
+    return p
+
+
 def load_model(model_name: str) -> dict:
     """Read config/models/<model_name>/model.toml (DATA, else the shipped one). Requires 'id'."""
     path = model_dir(model_name) / "model.toml"

@@ -7,13 +7,14 @@
 # Session continuity (Tier 1):
 #   ./stop.sh                     stop; the session is SAVED by default (a recall-only sitting is
 #                                 the carve-out: its transcript is truly deleted unless held)
-#   ./stop.sh --hold [name]       stop and NAME this session (held class: sticky, purge-exempt,
+#   ./stop.sh --hold [name|path]  stop and NAME this session (held class: sticky, purge-exempt,
 #                                 resumable via `--resume <name>`; also the explicit keep for a
 #                                 recall-only sitting)
 #   ./stop.sh --discard-held <name>         true-delete ONE held session (targeted, immediate)
 #   ./stop.sh --discard-held [--all]         true-delete ALL held — irreversible; requires typing HEARTH
 set -uo pipefail
 
+CALLER_PWD="$PWD"   # the folder the operator ran this from — a path locator anchors here
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_PY="${VENV_PY:-$DIR/.venv/bin/python}"   # same override as start.sh
 # Matches the worker whatever the interpreter is named. The bot runs as
@@ -47,7 +48,7 @@ fi
 if ! pgrep -f "$PATTERN" >/dev/null 2>&1; then
   if [ "$MODE" = "hold" ]; then
     # No bot running: name/keep the newest not-yet-held session directly.
-    "$VENV_PY" -m hearth.session.session_store hold ${HOLD_NAME:+"$HOLD_NAME"}
+    "$VENV_PY" -m hearth.session.session_store hold ${HOLD_NAME:+"$HOLD_NAME"} --cwd "$CALLER_PWD"
     exit $?
   fi
   printf 'No bot running — nothing to stop.\n'
@@ -58,7 +59,7 @@ fi
 # shutdown `finally` sees the marker and keeps (promotes) its session instead of
 # deleting it. Then fall through to the normal graceful stop below.
 if [ "$MODE" = "hold" ]; then
-  "$VENV_PY" -m hearth.session.session_store request-hold ${HOLD_NAME:+"$HOLD_NAME"}
+  "$VENV_PY" -m hearth.session.session_store request-hold ${HOLD_NAME:+"$HOLD_NAME"} --cwd "$CALLER_PWD"
 fi
 
 printf 'Stopping the bot (SIGINT → graceful shutdown) …\n'

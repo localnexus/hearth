@@ -25,6 +25,8 @@ Your one deliberate lever for who is live. Read once at startup; the launch page
 | `model` | str | **required** |  | `switch intent (turn boundary; resident models only)` | model config — dir under config/models/ |
 | `voice` | str | **required** |  | `switch intent (turn boundary)` | voice bundle — dir under characters/<character>/voices/ |
 | `persona` | str | `default` |  | `switch intent (turn boundary)` | persona variant: "default" = persona.md, else persona.<name>.md |
+| `session` | table | — |  | — | optional [session] table |
+| `session.dir` | str | — |  | — | where this companion's sessions are saved and listed — absolute, or relative to the data root; absent = characters/<character>/sessions |
 
 ## `config/models/<model>/model.toml` — Model load facts
 

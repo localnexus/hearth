@@ -22,10 +22,14 @@ never exposed over the web ``/``.
 
 CLI (used by start.sh / stop.sh; keeps the bash thin and the logic unit-tested):
     python session_store.py list
-    python session_store.py request-hold [name]   # bot running: drop marker, bot honors in finally
-    python session_store.py hold [name]            # no bot: name/keep the newest unnamed session
+    python session_store.py request-hold [name|path] [--cwd folder]  # bot running: drop marker, bot honors in finally
+    python session_store.py hold [name|path] [--cwd folder]          # no bot: name/keep the newest unnamed session
     python session_store.py discard-ephemeral      # sweep recall-only leftovers (everything else is saved)
     python session_store.py discard-held [name|--all]
+
+Locator rule: a bare name (no separator, no leading "." or "~") saves under the sessions
+folder as today; anything else (an absolute path, "./x", "~/x", "a/b") is a path locator —
+"this location, literally" — anchored at the operator's own folder (--cwd) when relative.
 """
 
 from __future__ import annotations
@@ -73,8 +77,25 @@ def all_sessions_dirs() -> list:
     return sorted(p for p in root.glob("*/sessions") if p.is_dir())
 
 
+def default_sessions_dir(character: Optional[str] = None) -> Path:
+    """The dir a session for `character` saves/lists to when no explicit dir is given.
+
+    `[session] dir` (config/active.toml) is a lever for the ACTIVE companion only —
+    the pair changes together (re-anchoring, 2026-09-13): every OTHER companion keeps
+    its built-in per-companion dir regardless of the setting. `character=None` means
+    "the active one", same convention as `companion_sessions_dir`.
+    """
+    from hearth.config import config_loader
+    active = config_loader.load_active_selection()["character"]
+    if character is None or character == active:
+        configured = config_loader.load_active_session_dir()
+        if configured is not None:
+            return configured
+    return companion_sessions_dir(character)
+
+
 def _dir(sessions_dir) -> Path:
-    return Path(sessions_dir) if sessions_dir is not None else companion_sessions_dir()
+    return Path(sessions_dir) if sessions_dir is not None else default_sessions_dir()
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -91,6 +112,63 @@ def _now_iso() -> str:
 def new_session_id() -> str:
     """Session id = local session-start ISO timestamp (filesystem-safe ':' → '-')."""
     return "session-" + time.strftime("%Y-%m-%dT%H-%M-%S", time.localtime())
+
+
+def classify_locator(arg: str) -> str:
+    """"path" iff `arg` names a location outside the sessions folder — absolute,
+    or carrying a separator, or a leading "." / "~" — else "name". A trailing
+    ".json" alone does not make a bare name a path."""
+    if Path(arg).is_absolute() or os.sep in arg or arg.startswith((".", "~")):
+        return "path"
+    return "name"
+
+
+def resolve_save_locator(arg: str, sessions_dir: Optional[Path] = None, *,
+                         cwd: Optional[Path] = None) -> Path:
+    """A save-time locator → the file it names. "name" behaves as it always has
+    (under `sessions_dir`); "path" means "this location, literally" — anchored
+    at `cwd` (default the process cwd) when relative, `.json` appended when the
+    name part lacks it."""
+    if classify_locator(arg) == "name":
+        return _dir(sessions_dir) / (arg if arg.endswith(".json") else f"{arg}.json")
+    p = Path(arg).expanduser()
+    if not p.is_absolute():
+        p = (cwd or Path.cwd()) / p
+    p = p.resolve()
+    if not p.name.endswith(".json"):
+        p = p.with_name(p.name + ".json")
+    return p
+
+
+def out_of_tree_warning(target: Path, default_dir: Path) -> Optional[str]:
+    """None when `target` resolves under `default_dir`; else a one-line, never-blocking
+    warning (naming the enclosing git repo, when there is one) — writing outside the
+    sessions folder is allowed, it just isn't silent."""
+    target = Path(target).resolve()
+    default_dir = Path(default_dir).resolve()
+    try:
+        target.relative_to(default_dir)
+        return None
+    except ValueError:
+        pass
+    msg = (f"[session] warning: {target} is outside the sessions folder; "
+           "permissions travel with the file, the ignore rules do not")
+    for parent in target.parents:
+        if (parent / ".git").is_dir():
+            msg += f" — it is inside the git repository at {parent}"
+            break
+    return msg
+
+
+def ensure_parent(target: Path) -> None:
+    """mkdir the parent of a save-time target (0700, best effort) — perms travel to a
+    path locator's own directory even when it is nowhere near the sessions folder."""
+    target = Path(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(target.parent, DIR_MODE)
+    except OSError:
+        pass
 
 
 def ensure_dir(sessions_dir: Optional[Path] = None) -> Path:
@@ -132,6 +210,7 @@ def _atomic_write_json(path: Path, obj: dict) -> None:
     handle is closed before rename (no long-lived append handle to strand on delete).
     """
     path = Path(path)
+    ensure_parent(path)
     tmp = path.with_name(path.name + ".tmp")
     data = json.dumps(obj, ensure_ascii=False, indent=2)
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, FILE_MODE)
@@ -172,6 +251,9 @@ class SessionStore:
     memory_mode: str = "full"             # the sitting's memory posture (--memory); stamped into
                                           # snapshots when not "full" so a crash orphan resumed
                                           # later inherits it instead of getting banked by default
+    _path_override: Optional[Path] = field(default=None, repr=False, compare=False)
+    # set by rename() when a hold names the session with a PATH locator: the
+    # file then lives outside sessions_dir, so the id→path formula no longer applies.
 
     def __post_init__(self) -> None:
         if self.sessions_dir is None:
@@ -179,6 +261,8 @@ class SessionStore:
 
     @property
     def path(self) -> Path:
+        if self._path_override is not None:
+            return self._path_override
         return Path(self.sessions_dir) / f"{self.session_id}.json"
 
     def snapshot(self, messages) -> None:
@@ -206,11 +290,19 @@ class SessionStore:
         _atomic_write_json(self.path, payload)
 
     def rename(self, new_id: str) -> None:
-        """Move the file to ``<new_id>.json`` (used when a hold names the session)."""
+        """Move the file to the locator's target (used when a hold names the session).
+
+        ``new_id`` is routed through ``resolve_save_locator``: a bare name behaves as
+        before (moves within ``sessions_dir``); a path locator moves the file to that
+        location, literally, and ``self.path`` tracks it via ``_path_override``.
+        """
         old = self.path
-        self.session_id = new_id
+        target = resolve_save_locator(new_id, self.sessions_dir)
+        self.session_id = target.stem
+        self._path_override = target if target.parent != Path(self.sessions_dir) else None
         new = self.path
         if old.exists() and old != new:
+            ensure_parent(new)
             os.replace(old, new)
 
     def delete(self) -> bool:
@@ -349,12 +441,14 @@ def held_sessions(sessions_dir: Optional[Path] = None) -> list:
 
 
 def resolve_resume_arg(arg: str, sessions_dir: Optional[Path] = None):
-    """Resolve a ``--resume <arg>`` to a path: explicit file · <arg>.json ·
-    session-<arg>.json · a session whose ``name`` field == arg. None if no match."""
+    """Resolve a ``--resume <arg>`` to a path: a "path" locator is tried directly
+    (expanduser'ed, absolute or as given — retrieve-by-path); a "name" locator
+    follows the three-step search: <arg>.json · session-<arg>.json · a session
+    whose ``name`` field == arg. None if no match."""
     sessions_dir = _dir(sessions_dir)
-    p = Path(arg)
-    if p.is_file():
-        return p
+    if classify_locator(arg) == "path":
+        p = Path(arg).expanduser()
+        return p if p.is_file() else None
     for cand in (
         sessions_dir / (arg if arg.endswith(".json") else f"{arg}.json"),
         sessions_dir / f"session-{arg}.json",
@@ -404,13 +498,26 @@ def marker_path(sessions_dir: Optional[Path] = None) -> Path:
     return _dir(sessions_dir) / _HOLD_MARKER
 
 
-def write_hold_request(name: Optional[str] = None, sessions_dir: Optional[Path] = None) -> None:
-    """stop.sh --hold (bot running): mark hold intent; the bot consumes it in finally."""
+def write_hold_request(name: Optional[str] = None, sessions_dir: Optional[Path] = None, *,
+                       cwd: Optional[Path] = None) -> None:
+    """stop.sh --hold (bot running): mark hold intent; the bot consumes it in finally.
+
+    A path-locator name is stored as its FULLY RESOLVED ABSOLUTE target (so the bot's
+    finalize, which reads the marker from its own working state, doesn't need to
+    re-derive a relative anchor); a bare name is stored as given, same as today.
+    """
     ensure_dir(sessions_dir)
     m = marker_path(sessions_dir)
+    text = name or ""
+    if name and classify_locator(name) == "path":
+        target = resolve_save_locator(name, sessions_dir, cwd=cwd)
+        warning = out_of_tree_warning(target, _dir(sessions_dir))
+        if warning:
+            print(warning)
+        text = str(target)
     fd = os.open(m, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, FILE_MODE)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
-        f.write(name or "")
+        f.write(text)
 
 
 def read_hold_request(sessions_dir: Optional[Path] = None):
@@ -433,11 +540,14 @@ def clear_hold_request(sessions_dir: Optional[Path] = None) -> None:
         pass
 
 
-def hold_latest_orphan(name: Optional[str] = None, sessions_dir: Optional[Path] = None):
+def hold_latest_orphan(name: Optional[str] = None, sessions_dir: Optional[Path] = None, *,
+                       cwd: Optional[Path] = None):
     """stop.sh --hold with no bot running: mark the newest not-yet-held session as
-    held (optionally naming/renaming it). Under saved-by-default this is "name it
-    now" for the latest conversation — and the explicit keep for a recall-only
-    leftover. Returns its new id, or None if nothing qualifies."""
+    held (optionally naming/renaming it — a path locator is honored, and the
+    directory it needs travels with the write; see resolve_save_locator). Under
+    saved-by-default this is "name it now" for the latest conversation — and the
+    explicit keep for a recall-only leftover. Returns its new id, or None if
+    nothing qualifies."""
     orphans = [m for m in list_sessions(sessions_dir) if not m.held]
     if not orphans:
         return None
@@ -447,7 +557,10 @@ def hold_latest_orphan(name: Optional[str] = None, sessions_dir: Optional[Path] 
     target = m.path
     if name:
         data["name"] = name
-        target = _dir(sessions_dir) / f"{name}.json"
+        target = resolve_save_locator(name, sessions_dir, cwd=cwd)
+        warning = out_of_tree_warning(target, _dir(sessions_dir))
+        if warning:
+            print(warning)
     _atomic_write_json(target, data)
     if target != m.path:
         try:
@@ -531,12 +644,30 @@ def _fmt_meta(m: "SessionMeta") -> str:
     return f"{m.updated or m.started or '?'}  ·  {m.turns} turns  ·  {m.model}  ·  {m.voice}{pv}{nm}{tag}"
 
 
+def _parse_cwd(rest: list) -> tuple:
+    """Pull an optional ``--cwd <folder>`` pair out of the remaining argv tokens."""
+    cwd = None
+    out = []
+    it = iter(rest)
+    for token in it:
+        if token == "--cwd":
+            value = next(it, None)
+            if value is not None:
+                cwd = Path(value)
+        else:
+            out.append(token)
+    return out, cwd
+
+
 def _main(argv) -> int:
     if not argv:
-        print("usage: session_store.py {list|request-hold|hold|discard-ephemeral|discard-held} [name]",
-              file=sys.stderr)
+        print("usage: session_store.py {list|request-hold|hold|discard-ephemeral|discard-held} "
+              "[name|path] [--cwd folder]", file=sys.stderr)
         return 2
     cmd, rest = argv[0], argv[1:]
+    cwd = None
+    if cmd in ("request-hold", "hold"):
+        rest, cwd = _parse_cwd(rest)
     arg = rest[0] if rest else None
     if cmd == "list":
         dirs = all_sessions_dirs()
@@ -553,11 +684,11 @@ def _main(argv) -> int:
             print("(no sessions)")
         return 0
     if cmd == "request-hold":
-        write_hold_request(arg)
+        write_hold_request(arg, cwd=cwd)
         print(f"hold requested{f' (name={arg})' if arg else ''} — bot will keep its session on stop")
         return 0
     if cmd == "hold":
-        sid = hold_latest_orphan(arg)
+        sid = hold_latest_orphan(arg, cwd=cwd)
         print(f"held: {sid}" if sid else "no unnamed session to hold")
         return 0
     if cmd == "discard-ephemeral":

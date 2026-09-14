@@ -2,7 +2,7 @@
 # start.sh — bring the Hearth voice loop online (preflight + launch).
 #   ./start.sh          run preflight, then launch the bot in the FOREGROUND (Ctrl-C or ./stop.sh to stop)
 #   ./start.sh --check  run preflight ONLY and exit (are we ready to launch?) — does not touch the mic
-#   ./start.sh --resume [file|name] · --new · --memory <mode>    session flags (forwarded to the bot)
+#   ./start.sh --resume [file|name|path] · --new · --memory <mode>    session flags (forwarded to the bot)
 #                                              --memory: full | recall-only | off — this sitting's
 #                                              memory posture (bank only; see docs/memory.md)
 #
@@ -21,6 +21,7 @@
 # in the request, so a mismatch is a WARNING there; LM Studio needs an exact match.
 set -euo pipefail
 
+CALLER_PWD="$PWD"   # the folder the operator ran this from — a path locator anchors here
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_PY="${VENV_PY:-$DIR/.venv/bin/python}"
 BASE_URL="${LM_BASE_URL:-http://127.0.0.1:8080/v1}"
@@ -42,7 +43,17 @@ while [ $# -gt 0 ]; do
     --resume)
       BOT_ARGS+=("--resume")
       # optional value: a following token that is NOT itself a flag
-      if [ $# -ge 2 ] && [ "${2#-}" = "$2" ]; then BOT_ARGS+=("$2"); shift 2; else shift; fi
+      if [ $# -ge 2 ] && [ "${2#-}" = "$2" ]; then
+        val="$2"
+        case "$val" in
+          /*) ;;                                   # absolute — leave as given
+          .*|~*|*/*) val="$CALLER_PWD/$val" ;;      # relative path locator — anchor to the caller's own folder
+        esac
+        BOT_ARGS+=("$val")
+        shift 2
+      else
+        shift
+      fi
       ;;
     --memory)
       [ $# -ge 2 ] || fail "--memory needs a value: full | recall-only | off"

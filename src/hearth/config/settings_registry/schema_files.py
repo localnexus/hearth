@@ -15,6 +15,13 @@ from .knobs import TEMP_CEILING, _Cfg, _NAME, _live
 
 # ── config/active.toml ────────────────────────────────────────────────────────
 
+class _ActiveSession(_Cfg):
+    dir: Optional[str] = Field(
+        None, description="where this companion's sessions are saved and listed — "
+                          "absolute, or relative to the data root; absent = "
+                          "characters/<character>/sessions")
+
+
 class ActiveFile(_Cfg):
     character: str = Field(pattern=_NAME, description="who is live — dir under characters/",
                            json_schema_extra=_live("switch intent (turn boundary)", "GET /admin/switch"))
@@ -26,6 +33,7 @@ class ActiveFile(_Cfg):
     persona: str = Field("default", pattern=_NAME,
                          description='persona variant: "default" = persona.md, else persona.<name>.md',
                          json_schema_extra=_live("switch intent (turn boundary)", "GET /admin/switch"))
+    session: Optional[_ActiveSession] = Field(None, description="optional [session] table")
 
 
 # ── config/models/<model>/model.toml ─────────────────────────────────────────

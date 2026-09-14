@@ -258,6 +258,88 @@ def test_memory_mode_stamp(tmp):
           "fresh sitting defaults to full")
 
 
+def test_classify_locator():
+    print("\n[8] classify_locator: bare name vs a locator naming a location")
+    check(ss.classify_locator("foo") == "name", "'foo' -> name")
+    check(ss.classify_locator("foo.json") == "name",
+          "'foo.json' -> name (a trailing .json alone is not a path trigger)")
+    check(ss.classify_locator("./foo") == "path", "'./foo' -> path")
+    check(ss.classify_locator("~/foo") == "path", "'~/foo' -> path")
+    check(ss.classify_locator("/abs/foo") == "path", "'/abs/foo' -> path")
+    check(ss.classify_locator("a/b") == "path", "'a/b' -> path")
+
+
+def test_resolve_save_locator_name(tmp):
+    print("\n[9] resolve_save_locator: a name locator is unchanged (regression lock)")
+    d = Path(tmp) / "namelock"
+    check(ss.resolve_save_locator("plain-name", d) == d / "plain-name.json",
+          "bare name resolves under the given sessions dir")
+    check(ss.resolve_save_locator("already.json", d) == d / "already.json",
+          "a name already ending .json is not doubled")
+
+
+def test_resolve_save_locator_relative_path(tmp):
+    print("\n[10] resolve_save_locator: a relative path anchors at the given cwd; perms travel")
+    cwd = Path(tmp) / "cwd-here"
+    cwd.mkdir()
+    target = ss.resolve_save_locator("./somewhere/mine", None, cwd=cwd)
+    check(target == (cwd / "somewhere" / "mine.json").resolve(),
+          "relative path anchored at cwd, .json appended")
+    ss._atomic_write_json(target, {"schema": 2, "messages": []})
+    check(target.exists(), "file written at the anchored path")
+    dmode = stat.S_IMODE(os.stat(target.parent).st_mode)
+    fmode = stat.S_IMODE(os.stat(target).st_mode)
+    check(dmode == 0o700, f"created parent is 0700 (got {oct(dmode)})")
+    check(fmode == 0o600, f"file is 0600 (got {oct(fmode)})")
+
+
+def test_resolve_save_locator_absolute_path(tmp):
+    print("\n[11] resolve_save_locator: an absolute path is honored as given")
+    target_dir = Path(tmp) / "abs-elsewhere"
+    target = ss.resolve_save_locator(str(target_dir / "x"), None)
+    check(target == (target_dir / "x.json").resolve(), "absolute path honored, .json appended")
+    ss._atomic_write_json(target, {"schema": 2, "messages": []})
+    check(target.exists(), "file written at the absolute path")
+    fmode = stat.S_IMODE(os.stat(target).st_mode)
+    check(fmode == 0o600, f"file is 0600 (got {oct(fmode)})")
+
+
+def test_out_of_tree_warning(tmp):
+    print("\n[12] out-of-tree save WARNS, never blocks; names the git repo when found")
+    default_dir = Path(tmp) / "default-tree"
+    ss.ensure_dir(default_dir)
+    inside = default_dir / "s.json"
+    check(ss.out_of_tree_warning(inside, default_dir) is None, "inside the default tree -> no warning")
+    outside = Path(tmp) / "elsewhere" / "s.json"
+    warn = ss.out_of_tree_warning(outside, default_dir)
+    check(warn is not None and "outside the sessions folder" in warn, f"outside the tree -> warned ({warn!r})")
+    ss._atomic_write_json(outside, {"schema": 2, "messages": []})
+    check(outside.exists(), "the write still succeeds despite the warning")
+    repo = Path(tmp) / "repo-parent"
+    (repo / ".git").mkdir(parents=True)
+    nested = repo / "sub" / "s.json"
+    warn2 = ss.out_of_tree_warning(nested, default_dir)
+    check(warn2 is not None and str(repo) in warn2, f"names the git repo it is inside ({warn2!r})")
+
+
+def test_hold_request_round_trip_path(tmp):
+    print("\n[13] round trip: write_hold_request with a path locator; hold_latest_orphan writes there")
+    d = Path(tmp) / "rt-sessions"
+    ss.ensure_dir(d)
+    _store(d, sid="session-rt").snapshot([{"role": "user", "content": "hi"}])
+    cwd = Path(tmp) / "rt-cwd"
+    cwd.mkdir()
+    ss.write_hold_request("./x/y", sessions_dir=d, cwd=cwd)
+    expected = str((cwd / "x" / "y.json").resolve())
+    marker_text = ss.marker_path(d).read_text(encoding="utf-8")
+    check(marker_text == expected, f"marker text is the fully resolved absolute target ({marker_text!r})")
+    requested, name = ss.read_hold_request(d)
+    check(requested and name == expected, "read_hold_request returns it unchanged")
+    sid = ss.hold_latest_orphan(name, d)
+    check(Path(expected).exists(), "hold_latest_orphan wrote the file at the locator's target")
+    check(sid == "y", f"returns the target's stem ({sid!r})")
+
+
 def main():
     with tempfile.TemporaryDirectory() as tmp:
         test_round_trip(tmp)
@@ -271,6 +353,12 @@ def main():
         test_atomic_and_perms(tmp)
         test_malformed(tmp)
         test_memory_mode_stamp(tmp)
+        test_classify_locator()
+        test_resolve_save_locator_name(tmp)
+        test_resolve_save_locator_relative_path(tmp)
+        test_resolve_save_locator_absolute_path(tmp)
+        test_out_of_tree_warning(tmp)
+        test_hold_request_round_trip_path(tmp)
     print(f"\n{'='*52}\n  RESULT: {_PASS} passed, {_FAIL} failed\n{'='*52}")
     return 1 if _FAIL else 0
 
