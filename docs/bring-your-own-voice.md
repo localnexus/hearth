@@ -56,6 +56,10 @@ Voice cloning carries real responsibility, and it sits with you, the operator:
    model_repo         = "mlx-community/chatterbox-turbo-fp16"
    sample_rate        = 24000
    streaming_interval = 2.0
+
+   # Loudness: a linear multiplier on the synthesized samples (not dB), applied before the output is clipped. 1.0 = as synthesized.
+   # Keep one reference voice at 1.0 and set the others relative to it; a voice that needs more than about 2x is a finding about the clip, not a number to set.
+   loudness = 1.0
    ```
 
    Only `tag` and `ref_wav` are required; everything else is optional metadata.

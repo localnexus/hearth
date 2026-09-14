@@ -58,6 +58,7 @@ def _build_install(root: Path) -> None:
 class _FakeTTS:
     def __init__(self):
         self.refs = []
+        self.loudness_calls = []
 
     def set_ref_wav(self, path):
         import concurrent.futures as cf
@@ -65,6 +66,9 @@ class _FakeTTS:
         f = cf.Future()
         f.set_result(None)
         return f
+
+    def set_loudness(self, value):
+        self.loudness_calls.append(value)
 
 
 class _FakeContext:
@@ -266,6 +270,8 @@ class SwitcherApply(_Base):
         self.assertEqual(self.ctx.messages, [{"role": "user", "content": "u2"}])
         # voice re-cloned to beta's clip
         self.assertEqual(self.tts.refs, [self.beta_ref])
+        # beta's voice.toml carries no loudness key → default 1.0
+        self.assertEqual(self.tts.loudness_calls, [1.0])
         # reloader rebased onto the new companion's baselines
         rb = self.reloader.rebases[-1]
         self.assertEqual(rb["model_name"], "m1")

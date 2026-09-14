@@ -141,6 +141,20 @@ _STREAM_DONE = object()
 _STREAM_ERROR_TAG = object()
 
 
+def _to_pcm(arr: "np.ndarray", gain: float) -> tuple[bytes, int]:
+    """float32 [-1, 1] samples → int16 PCM bytes, applying `gain` before the clip.
+
+    Pure numpy — no model, no I/O — so it's driven directly from a unit test.
+    Returns (pcm_bytes, clipped) where `clipped` counts the samples whose
+    magnitude exceeds 1.0 after the gain multiply (before the clip).
+    """
+    if gain != 1.0:
+        arr = arr * gain
+    clipped = int(np.count_nonzero(np.abs(arr) > 1.0))
+    pcm = (np.clip(arr, -1.0, 1.0) * 32767.0).astype("<i2")
+    return pcm.tobytes(), clipped
+
+
 class MLXAudioTTSService(TTSService):
     """Chatterbox-Turbo TTS (mlx-audio) as a pipecat TTSService.
 
@@ -169,6 +183,7 @@ class MLXAudioTTSService(TTSService):
         ref_wav: str = DEFAULT_REF_WAV,
         dump_dir: Optional[str] = None,
         synth_params: Optional[dict] = None,
+        loudness: float = 1.0,
         **kwargs,
     ) -> None:
         """Load model and pre-compute the default voice's conditionals.
@@ -187,6 +202,8 @@ class MLXAudioTTSService(TTSService):
                         None (default) = no dump,
                         zero overhead.  Barge-in-truncated utterances are captured
                         too, tagged _TRUNC.
+            loudness:   Linear multiplier on the synthesized sample values,
+                        applied before the int16 clip. 1.0 (default) = unchanged.
             **kwargs:   Forwarded to TTSService (e.g. push_text_frames=False).
         """
         # sample_rate MUST be set before super().__init__ so that chunk_size
@@ -223,6 +240,10 @@ class MLXAudioTTSService(TTSService):
         self._synth: dict = dict(synth_params) if synth_params else {}
         # Current reference clip (for voice diff/reporting; swapped by set_ref_wav).
         self._ref_wav: str = ref_wav
+        # Linear gain applied to synthesized samples before the int16 clip
+        # (config_loader.ActiveConfig.loudness / voice.toml's loudness key).
+        # set_loudness() swaps this atomically; run_tts reads it ONCE per utterance.
+        self._loudness: float = float(loudness)
 
         # ── Optional utterance capture (in-the-wild prosody debugging) ────────
         self._dump_path: Optional[Path] = None
@@ -280,6 +301,14 @@ class MLXAudioTTSService(TTSService):
         NEW dict (never mutate in place) so read-once stays coherent.
         """
         self._synth = dict(params)
+
+    def set_loudness(self, value: float) -> None:
+        """Swap the loudness gain (FREE tier): a single atomic attribute rebind
+        (GIL) — no lock. run_tts reads self._loudness once at entry, so a swap
+        mid-utterance can't tear the in-flight synthesis; it takes effect on the
+        next utterance.
+        """
+        self._loudness = float(value)
 
     def set_ref_wav(self, path: str) -> "concurrent.futures.Future":
         """Re-clone the voice by recomputing conditionals from a new clip (HIDEABLE).
@@ -380,6 +409,10 @@ class MLXAudioTTSService(TTSService):
         # semantics). EMPTY dict ⇒ generate() gets no synth kwargs ⇒ byte-identical
         # to before live-config.
         synth = self._synth
+        # Read the live loudness gain ONCE per utterance — same read-once +
+        # GIL contract as `synth` above: a concurrent set_loudness() swap
+        # can't tear this utterance; worst case it takes effect on the next one.
+        gain = self._loudness
         # Paralinguistic tag envelope: a style tag in THIS
         # utterance overlays its calibrated knob deltas for this generate call
         # only — the envelope IS the call; the next utterance rides self._synth
@@ -400,6 +433,8 @@ class MLXAudioTTSService(TTSService):
             A sentinel is pushed at the end; exceptions are wrapped and pushed
             so they propagate back to the event loop.
             """
+            clipped_total = 0
+            sample_total = 0
             try:
                 for res in self._model.generate(
                     text=text,
@@ -414,12 +449,18 @@ class MLXAudioTTSService(TTSService):
                     audio_mx: mx.array = res.audio
                     mx.eval(audio_mx)
                     arr = np.array(audio_mx, dtype=np.float32).reshape(-1)
-                    pcm = (np.clip(arr, -1.0, 1.0) * 32767.0).astype("<i2")
-                    raw_bytes = pcm.tobytes()
+                    raw_bytes, clipped = _to_pcm(arr, gain)
+                    clipped_total += clipped
+                    sample_total += arr.size
                     loop.call_soon_threadsafe(queue.put_nowait, raw_bytes)
             except Exception as exc:
                 loop.call_soon_threadsafe(queue.put_nowait, (_STREAM_ERROR_TAG, exc))
             finally:
+                if gain != 1.0 and clipped_total > 0:
+                    logger.info(
+                        "MLXAudioTTSService: loudness %.2f clipped %d of %d samples",
+                        gain, clipped_total, sample_total,
+                    )
                 loop.call_soon_threadsafe(queue.put_nowait, _STREAM_DONE)
 
         # Submit to the single-worker executor (same thread as model load).

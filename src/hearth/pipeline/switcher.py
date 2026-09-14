@@ -362,6 +362,7 @@ class LiveSwitcher:
                 "reasoning_effort": str(model["reasoning_effort"]),
                 "reliable_context": model.get("reliable_context"),
                 "voice_tag": str(voice["tag"]), "ref_wav": str(voice["ref_wav"]),
+                "loudness": float(voice.get("loudness", 1.0)),
                 "persona_slot": persona_slot, "system_instruction": system_aug,
                 "system_raw": system,
                 "seam": seam, "store": new_store, "resume_messages": resume_messages,
@@ -425,6 +426,7 @@ class LiveSwitcher:
             try:
                 await asyncio.wrap_future(self._tts.set_ref_wav(p["ref_wav"]))
                 applied_ref = p["ref_wav"]
+                self._tts.set_loudness(p["loudness"])
                 voice_note = "applied"
             except Exception as exc:  # noqa: BLE001 — degraded, never fatal
                 voice_note = f"failed ({type(exc).__name__}) — previous voice kept"

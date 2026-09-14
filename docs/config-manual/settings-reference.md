@@ -80,6 +80,7 @@ A voice is a self-contained bundle: descriptor + reference clip in one directory
 | `model_repo` | str | — |  | — | synth model the clip is prepared for (doc) |
 | `sample_rate` | int | — | 1– | — | clip sample rate, Hz (doc) |
 | `streaming_interval` | float | — | 0.0– | — | synth chunk interval, s (doc) |
+| `loudness` | float | `1.0` | 0.0–4.0 | — | linear multiplier on the synthesized sample values, applied before the int16 clip (not LUFS or dB); 1.0 = unchanged (the default; every voice without the key is byte-identical to today) |
 
 ## `config/overrides.toml` — The live override layer
 

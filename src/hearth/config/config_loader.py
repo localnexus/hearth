@@ -257,6 +257,7 @@ class ActiveConfig:
         model_repo/sample_rate/streaming_interval ← voice descriptor (documented; not
             forced into the TTS call — today's code uses the module defaults, which
             equal these values, so behavior is byte-identical)
+        loudness            ← voice descriptor .loudness (default 1.0 = unchanged)
     """
 
     character: str
@@ -277,6 +278,7 @@ class ActiveConfig:
     model_repo: str | None = None
     sample_rate: int | None = None
     streaming_interval: float | None = None
+    loudness: float = 1.0
     reliable_context: int | None = None  # measured reliable-usable ctx line; panel gauges vs this
     persona_name: str = "default"  # which persona file: "default" = persona.md, else persona.<name>.md
 
@@ -634,6 +636,7 @@ def load_active() -> ActiveConfig:
         model_repo=voice.get("model_repo"),
         sample_rate=voice.get("sample_rate"),
         streaming_interval=voice.get("streaming_interval"),
+        loudness=float(voice.get("loudness", 1.0)),
         reliable_context=model.get("reliable_context"),
         persona_name=persona,
     )

@@ -144,6 +144,11 @@ class VoiceFile(_Cfg):
     model_repo: Optional[str] = Field(None, description="synth model the clip is prepared for (doc)")
     sample_rate: Optional[int] = Field(None, ge=1, description="clip sample rate, Hz (doc)")
     streaming_interval: Optional[float] = Field(None, ge=0.0, description="synth chunk interval, s (doc)")
+    loudness: Optional[float] = Field(1.0, gt=0.0, le=4.0,
+                                      description="linear multiplier on the synthesized sample values, "
+                                                  "applied before the int16 clip (not LUFS or dB); 1.0 = "
+                                                  "unchanged (the default; every voice without the key is "
+                                                  "byte-identical to today)")
 
 
 # ── config/overrides.toml (panel-managed live layer) ─────────────────────────

@@ -338,6 +338,7 @@ async def build_pipeline(
         # same clip → same voice. No TTS signature change (__init__ already accepts ref_wav).
         ref_wav=_CFG.ref_wav,
         synth_params=tts_baseline,  # live-config baseline (empty ⇒ engine defaults)
+        loudness=_CFG.loudness,  # per-voice linear gain (1.0 = unchanged)
         dump_dir=dump_dir,  # None unless --dump-tts; captures each utterance to WAV
     )
 
