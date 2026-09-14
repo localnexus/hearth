@@ -85,6 +85,7 @@ from .schema_files import (
     WeightsFile,
     WeightsHeaderTable,
     WeightsTable,
+    _ActiveSession,
     _OvLLM,
     _OvTTS,
     _OvVAD,

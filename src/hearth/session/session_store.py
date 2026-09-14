@@ -162,7 +162,7 @@ def out_of_tree_warning(target: Path, default_dir: Path) -> Optional[str]:
 
 def ensure_parent(target: Path) -> None:
     """mkdir the parent of a save-time target (0700, best effort) — perms travel to a
-    path locator's own directory even when it is nowhere near the sessions folder."""
+    path locator's own folder even when it is nowhere near the sessions folder."""
     target = Path(target)
     target.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -544,7 +544,7 @@ def hold_latest_orphan(name: Optional[str] = None, sessions_dir: Optional[Path] 
                        cwd: Optional[Path] = None):
     """stop.sh --hold with no bot running: mark the newest not-yet-held session as
     held (optionally naming/renaming it — a path locator is honored, and the
-    directory it needs travels with the write; see resolve_save_locator). Under
+    folder it needs travels with the write; see resolve_save_locator). Under
     saved-by-default this is "name it now" for the latest conversation — and the
     explicit keep for a recall-only leftover. Returns its new id, or None if
     nothing qualifies."""
