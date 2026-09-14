@@ -39,7 +39,9 @@
   #leak{margin-top:4px;font-weight:bold;color:#f66}
   #s-tokens.zone-warn{color:#e8b04b}
   #s-tokens.zone-over{color:#e5534b;font-weight:bold}
-  #ctxwarn{margin-top:4px;font-weight:bold;color:#e8b04b}
+  #ctxwarn{margin-top:4px;font-weight:bold}
+  #ctxwarn.warn{color:#e8b04b}
+  #ctxwarn.over{color:#e5534b}
   /* L2 hot knobs — segmented per-character / per-voice panels (features/config_profiles) */
   #knobs{margin-top:18px;padding-top:10px;border-top:1px solid #333}
   .kpanel{border:1px solid #444;padding:8px 12px 10px;margin:8px 0;background:#181818}

@@ -47,6 +47,13 @@ async function loadEngine() {
 }
 
 // Tier-2 → Phase 1: live per-turn token snapshot (polled).
+const CTX_WARN_AT = 0.75;   // of the reliable line: amber
+const CTX_OVER_AT = 1.0;    // past the line: red
+function contextZone(held, budget) {
+  if (!budget || typeof held !== 'number') return 'na';
+  const ratio = held / budget;
+  return ratio >= CTX_OVER_AT ? 'over' : (ratio >= CTX_WARN_AT ? 'warn' : 'ok');
+}
 async function pollUsage() {
   try {
     const r = await fetch('/usage');
@@ -55,17 +62,19 @@ async function pollUsage() {
     const allot = engine.allotted;
     // Gauge against the MEASURED reliable line; fall back to the advertised window
     // when reliable is absent (older config) → today's behavior. Zones warn BEFORE
-    // the line: ok < 75% · warn 75–100% · over ≥ 100% of the reliable budget.
+    // the line: ok < CTX_WARN_AT · warn CTX_WARN_AT–CTX_OVER_AT · over ≥ CTX_OVER_AT of the reliable budget.
     const budget = (engine.reliable !== null && engine.reliable !== undefined) ? engine.reliable : allot;
     const ratio = budget ? (held / budget) : null;
     const pct = (ratio === null) ? DASH : (ratio * 100).toFixed(1) + '%';
     const remaining = (budget !== null && budget !== undefined) ? fmt(budget - held) : DASH;
-    const zone = (ratio === null) ? 'na' : (ratio >= 1 ? 'over' : (ratio >= 0.75 ? 'warn' : 'ok'));
+    const zone = contextZone(held, budget);
     const tok = $('s-tokens');
     tok.className = 'zone-' + zone;
     tok.textContent =
       `Tokens | ${fmt(held)}${u.estimated ? ' est.' : ''} held [${pct} of ${fmt(budget)} reliable] · ${remaining} to line · advertised ${fmt(allot)} · model max: ${fmt(engine.model_max)}`;
-    $('ctxwarn').classList.toggle('hidden', zone === 'ok' || zone === 'na');
+    $('ctxwarn').className = (zone === 'ok' || zone === 'na') ? 'hidden' : zone;
+    if (zone === 'warn') $('ctxwarn').textContent = '⚠ Getting close to where the model stops working reliably — a good moment to wrap up, or start a fresh conversation.';
+    else if (zone === 'over') $('ctxwarn').textContent = '⚠ Past where the model works reliably — wrap up now, or start a fresh conversation.';
     $('s-misc').textContent =
       `Misc   | Conversation: ${engine.session || DASH} · Memory: ${engine.memory_mode || DASH} · Turns: ${fmt(u.turns)} · net turn growth: ${fmt(u.net_turn_growth)} · total tok. xmitted: ${fmt(u.prompt)}`;
     $('leak').classList.toggle('hidden', !u.leak);
