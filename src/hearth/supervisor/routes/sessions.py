@@ -157,6 +157,8 @@ async def _sessions(request: web.Request) -> web.Response:
             "origin": m.origin,
             "archived": m.archived,
             "est_tokens": _est_tokens(m),
+            "retain": m.retain,
+            "forked_from": m.forked_from,
         } for m in metas],
     })
 
@@ -493,6 +495,42 @@ async def _session_unarchive(request: web.Request) -> web.Response:
     session back on the shelf. The mirror of archive, same guard, same
     refusals."""
     return await _move(request, archive=False)
+
+
+async def _session_keep(request: web.Request) -> web.Response:
+    """POST /admin/sessions/keep {character, session, title?}: the shelf's
+    unkept-leftover row offers exactly this — promote one unkept working file
+    an unclean death left behind onto the shelf. Same front half as
+    archive/unarchive: character and session out of the body, the character
+    known, and refused while the companion is up (its shelf is read-only).
+
+    404 when the id does not name an unkept orphan (already kept, or no such
+    session at all — ``keep_orphan`` does not distinguish, and neither does
+    this). An optional ``title`` is set through the same gate rename uses; a
+    title that gate refuses is a 400 with its own reason, and the keep itself
+    has already happened by then."""
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001 — a bad body is a 400, not a traceback
+        body = {}
+    character, session, resp = _archive_request(request, body)
+    if resp is not None:
+        return resp
+    from hearth.session import session_store  # lazy: mirrors the package gate idiom
+
+    sdir = session_store.companion_sessions_dir(character)
+    kept = session_store.keep_orphan(session, None, sdir)
+    if kept is None:
+        return web.json_response(
+            {"ok": False, "error": "no unkept conversation with that id"}, status=404)
+    title = body.get("title")
+    stored = None
+    if isinstance(title, str) and title.strip():
+        try:
+            stored = verbs_mod.set_session_title(character, kept, title)
+        except verbs_mod.SessionTitleError as exc:
+            return web.json_response({"ok": False, "error": exc.reason}, status=400)
+    return web.json_response({"ok": True, "session_id": kept, "title": stored})
 
 
 # ── destroy: the one hard verb ───────────────────────────────────────────────

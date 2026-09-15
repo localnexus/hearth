@@ -309,5 +309,14 @@ class ChildLifecycle(unittest.IsolatedAsyncioTestCase):
         wrr.assert_called_once_with(False, None)
         c2.close()
 
+    async def test_status_reports_the_last_starts_switches(self):
+        c = _fake(GRACEFUL)
+        self.assertEqual(c.status()["switches"], {"recall": None, "retain": None})
+        res = await c.start(recall=False, retain=True)
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(c.status()["switches"], {"recall": False, "retain": True})
+        await c.stop()
+        c.close()
+
 if __name__ == "__main__":
     unittest.main()

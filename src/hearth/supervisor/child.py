@@ -74,6 +74,10 @@ class BotChild:
         self.pid: Optional[int] = None
         self.started_at: Optional[float] = None  # adoption time for adopted (true start unknowable)
         self.last_exit: Optional[dict] = None  # {"code": int|None, "at": iso}
+        self.last_switches: dict = {"recall": None, "retain": None}  # the last start(...)'s
+                                                                      # own recall/retain; None
+                                                                      # for both before any start
+                                                                      # (or after an adopt)
         self._proc = None
         self._reaper: Optional[asyncio.Task] = None
         self._log_fh = None
@@ -188,6 +192,7 @@ class BotChild:
         self.managed = True
         self.started_at = time.time()
         self.state = "running"
+        self.last_switches = {"recall": recall, "retain": retain}
         self._reaper = asyncio.create_task(self._reap(self._proc))
         logger.info("[supervisor] bot started (pid {}, mode {}{}{}{}{})", self.pid, mode,
                     f", memory {memory}" if memory else "",
@@ -347,4 +352,5 @@ class BotChild:
         if self.state in ("starting", "running") and self.started_at is not None:
             up = round(time.time() - self.started_at, 1)
         return {"state": self.state, "pid": self.pid, "managed": self.managed,
-                "uptime_s": up, "last_exit": self.last_exit}
+                "uptime_s": up, "last_exit": self.last_exit,
+                "switches": dict(self.last_switches)}

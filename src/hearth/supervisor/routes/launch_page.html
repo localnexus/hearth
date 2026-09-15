@@ -73,13 +73,8 @@
   <div id="startextras">
     <div class="row"><label for="pick-session">Conversation</label>
       <select id="pick-session"></select></div>
-    <div class="row"><label for="pick-memory">Memory</label>
-      <select id="pick-memory">
-        <option value="">default (full · a resumed conversation keeps its own mode)</option>
-        <option value="full">full — recall and retain</option>
-        <option value="recall-only">recall-only — the companion remembers, this session leaves no record</option>
-        <option value="off">off — a fresh meeting</option>
-      </select></div>
+    <div class="row"><label title="the companion opens with what they remember of you — untick for a first meeting"><input type="checkbox" id="pick-recall" checked> remember the past</label></div>
+    <div class="row"><label title="kept conversations go on the shelf and are remembered afterwards; unkept ones are deleted when you stop"><input type="checkbox" id="pick-keep"> keep this conversation</label> <input type="text" id="pick-keepname" autocomplete="off" placeholder="name it (optional)" disabled></div>
     <div class="row"><label title="the session comes up warm with the mic closed — open it from the panel when you are ready; you can type in the meantime"><input type="checkbox" id="pick-muted"> start with the mic off</label></div>
     <div class="row">
       <button id="compactbtn" title="Compact the selected conversation with the local model before starting — pick a session first — while it runs (~2 min) a Start is held and fires when it finishes">Compact selected session</button> <span id="compactstate" class="state"></span></div>
@@ -103,11 +98,12 @@
   <h2>Running</h2>
   <p id="runline"></p>
   <p><a href="/">Open the control panel</a></p>
-  <div class="row">
-    <input type="text" id="stopname" autocomplete="off"
-           placeholder="name this conversation (optional — it saves either way)">
-    <button id="stopbtn">Stop</button> <span id="stopstate" class="state"></span>
-  </div>
+  <p id="recallline" class="note"></p>
+  <div class="row"><label><input type="checkbox" id="stopkeep"> keep this conversation</label></div>
+  <p class="note">Kept conversations are remembered and go on the shelf. Unkept ones are deleted when you stop.</p>
+  <div class="row"><input type="text" id="stopname" autocomplete="off" placeholder="name" disabled></div>
+  <p id="forkline" class="note hidden"></p>
+  <div class="row"><button id="stopbtn">Stop and delete</button> <span id="stopstate" class="state"></span></div>
 </div>
 
 <!-- ui/launch_models.js: enroll → render → apply → load, one row per model. -->
@@ -156,6 +152,8 @@ let cookieMinted = false;  // the browser carrier for plain navigation
 let deferred = null;       // an armed start, held behind someone else's maintenance lock
 let deferredTimer = null;  // the 1s ticker that keeps the amber line counting
 let reissuing = false;     // a re-issue POST is in flight — polls must not double-fire it
+let stopWorkingId = null;  // the working file currently shown on the Stop card
+let stopTouched = false;   // the person's own edit outranks the next poll, until the working id changes
 
 // Each action speaks beside its own button, in one of three tones:
 // "warn" (working or waiting, amber), "err" (failed, red), "ok" (done, green).
@@ -170,6 +168,16 @@ function sayAt(id, text, tone) {
 function clearOnEdge(wasUp, nowUp, armed) {
   if (wasUp === nowUp) return { start: false, stop: false };
   return { start: !armed, stop: nowUp };
+}
+
+// The Stop button's own words, and the Stop card's suggested name — both cut
+// out and run under node by test_stop_card.py, so both stay pure (no DOM, no
+// clock of their own).
+function stopButtonLabel(keep, label) { return keep ? 'Stop and keep "' + label + '"' : "Stop and delete"; }
+function defaultLabel(character, when) {
+  const p2 = (n) => String(n).padStart(2, "0");
+  return character + " · " + when.getFullYear() + "-" + p2(when.getMonth() + 1) + "-" +
+         p2(when.getDate()) + " " + p2(when.getHours()) + ":" + p2(when.getMinutes());
 }
 
 function needToken(prompt) {
@@ -244,11 +252,59 @@ async function refresh() {
   if (up) {
     $("runline").textContent = "The companion is up" +
       (bot.managed === false ? " (started from the terminal)" : "") + ".";
+    const recall = bot.switches && bot.switches.recall;
+    $("recallline").textContent = "Remembering the past: " +
+      (recall === true ? "on" : recall === false ? "off" : "—") + " (set at start)";
+    await updateStopCard(card.character());
   }
   // Repopulate on each transition in EITHER direction: the verb, the hold row
   // and the current selection all change when the bot comes up or goes down.
   if (bot.state !== lastBotState || choices === null) await loadStartForm();
   lastBotState = bot.state;
+}
+
+// The Stop card's keep switch and name follow the working file — the newest
+// unheld session on the shelf, which exists from the first turn onward (before
+// that the box is unticked and the name empty). A `touched` flag per working
+// id keeps the person's own edit from being overwritten by the next poll; it
+// resets only when a new working file appears (a fresh sitting).
+async function updateStopCard(character) {
+  let row = null;
+  try {
+    const r = await api("/admin/sessions?character=" + encodeURIComponent(character || ""));
+    row = ((r.data && r.data.sessions) || []).find((m) => m.held === false) || null;
+  } catch { /* the shelf is a convenience; the card still works without it */ }
+  if (row && row.session_id !== stopWorkingId) {
+    stopWorkingId = row.session_id;
+    stopTouched = false;
+  }
+  if (!stopTouched) {
+    const keep = !!(row && row.retain === true);
+    $("stopkeep").checked = keep;
+    $("stopname").disabled = !keep;
+    $("stopname").value = keep ?
+      ((row && (row.title || row.name)) || defaultLabel(character, new Date())) : "";
+    $("stopbtn").textContent = stopButtonLabel(keep, $("stopname").value);
+  }
+  if (row && row.forked_from) {
+    $("forkline").textContent = 'Continuing "' + (row.title || row.forked_from) +
+      '": keeping replaces it, deleting leaves it untouched.';
+    show("forkline", true);
+  } else {
+    show("forkline", false);
+  }
+}
+
+async function postRetain() {
+  const checked = $("stopkeep").checked;
+  const name = $("stopname").value.trim();
+  try {
+    const r = await api("/admin/bot/retain", { json: { retain: checked, name: name || undefined } });
+    if (r.status === 409) { sayAt("stopstate", "nothing is running", ""); return; }
+    sayAt("stopstate", checked ? "will be kept" : "will be deleted", "");
+  } catch (e) {
+    sayAt("stopstate", e.message === "401" ? "key refused" : "failed: " + e.message, "err");
+  }
 }
 
 // ── the shared switch card ──────────────────────────────────────────────────
@@ -268,15 +324,17 @@ const card = window.HearthSwitchCard.mount($("switchmount"), {
   live: async () => (await api("/admin/switch/live")).data,
   submit: deferredSubmit,
   extraBody: () => {
-    // Start-only riders: on a warm switch neither applies, and sending memory
-    // would force the restart path (the daemon 409s it on a live handoff).
+    // Start-only riders: on a warm switch neither applies, and sending the
+    // switches would force the restart path (the daemon 409s it on a live
+    // handoff), same as memory did.
     if (botUp) return {};
     const sessionId = $("pick-session").value;
-    const memory = $("pick-memory").value;
     const body = { start: true };
     if (sessionId) { body.mode = "resume"; body.name = sessionId; }
     else body.mode = "new";
-    if (memory) body.memory = memory;
+    body.recall = $("pick-recall").checked;
+    body.retain = $("pick-keep").checked;
+    if (body.retain && $("pick-keepname").value.trim()) body.keep_name = $("pick-keepname").value.trim();
     if ($("pick-muted").checked) body.muted = true;
     return body;
   },
@@ -399,8 +457,8 @@ async function loadSessions() {
     for (const m of (r.data && r.data.sessions) || []) {
       const o = el("option");
       o.value = m.session_id;
-      const tags = (m.held ? " [named]" : "") +
-        (m.memory_mode === "recall-only" ? " [recall-only]" : "");
+      const tags = (m.held ? " [kept]" : "") +
+        (m.retain === false && !m.held ? " [unkept]" : "");
       const size = m.est_tokens ? " · ~" + Math.round(m.est_tokens / 1000) + "k tok" : "";
       o.textContent = (m.name || m.session_id) + " · " +
         (m.updated || m.started || "?") + " · " + m.turns + " turns" + size + tags;
@@ -431,19 +489,23 @@ async function doCompact() {
 // already-dying bot. So: count the seconds out loud, say how long is normal,
 // and hold the button down until the answer lands.
 async function doStop() {
+  const keep = $("stopkeep").checked;
   const name = $("stopname").value.trim();
-  const body = name ? { hold: true, name } : {};
+  const body = { retain: keep };
+  if (keep && name) body.name = name;
   busy = true;
   $("stopbtn").disabled = true;
   const t0 = Date.now();
   const elapsed = () => sayAt("stopstate", "stopping… " + Math.round((Date.now() - t0) / 1000) +
-                               "s · the memory close runs first (up to ~2 min)", "warn");
+                               "s · the close runs first (up to ~2 min)", "warn");
   elapsed();
   const tick = setInterval(elapsed, 1000);
   try {
     const r = await api("/admin/bot/stop", { json: body });
     clearInterval(tick);
-    if (r.data && r.data.ok) { sayAt("stopstate", "stopped" + (name ? " — conversation named " + name : ""), "ok"); $("stopname").value = ""; }
+    if (r.data && r.data.ok) {
+      sayAt("stopstate", keep ? 'stopped — kept as "' + name + '"' : "stopped — conversation deleted", "ok");
+    }
     else sayAt("stopstate", "stop failed: " + JSON.stringify((r.data && r.data.error) || r.status), "err");
   } catch (e) {
     clearInterval(tick);
@@ -457,6 +519,25 @@ wireToken(refresh);
 card.onCharacter(() => { loadSessions(); loadSessionsCard(); });
 // ↑ both halves of the shelf follow the chosen companion
 $("compactbtn").addEventListener("click", doCompact);
+$("pick-keep").addEventListener("change", () => {
+  $("pick-keepname").disabled = !$("pick-keep").checked;
+});
+$("stopkeep").addEventListener("change", () => {
+  stopTouched = true;
+  const checked = $("stopkeep").checked;
+  $("stopname").disabled = !checked;
+  if (checked && !$("stopname").value.trim()) {
+    $("stopname").value = defaultLabel(card.character(), new Date());
+  }
+  $("stopbtn").textContent = stopButtonLabel(checked, $("stopname").value);
+  postRetain();
+});
+$("stopname").addEventListener("input", () => {
+  stopTouched = true;
+  $("stopbtn").textContent = stopButtonLabel($("stopkeep").checked, $("stopname").value);
+});
+$("stopname").addEventListener("change", postRetain);
+$("stopname").addEventListener("blur", postRetain);
 $("stopbtn").addEventListener("click", doStop);
 const hearthRestart = window.HearthRestart.mount($("hearthcard"), api, report);
 

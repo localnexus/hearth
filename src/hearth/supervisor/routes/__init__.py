@@ -143,7 +143,7 @@ from .sessions import (
     DEPOSIT_SUFFIXES, REVEAL_TIMEOUT_S, _already, _archive_request, _confirm_with,
     _destroy_offered, _guarded, _known_character, _move, _read_deposit_upload,
     _session_archive, _session_deposit, _session_destroy, _session_file,
-    _session_rename, _session_reveal, _session_unarchive, _sessions)
+    _session_keep, _session_rename, _session_reveal, _session_unarchive, _sessions)
 from .lifecycle import _bot_retain, _bot_start, _bot_stop, _compact_start, _daemon_restart
 from .switching import (
     _FACADE_NOTE, _do_restart, _switch_get, _switch_live_get, _switch_post,
@@ -213,6 +213,7 @@ def build_mount(sup_cfg: dict):
         app.router.add_post("/admin/sessions/unarchive", _session_unarchive)
         app.router.add_post("/admin/sessions/destroy", _session_destroy)
         app.router.add_post("/admin/sessions/rename", _session_rename)
+        app.router.add_post("/admin/sessions/keep", _session_keep)
         app.router.add_post("/admin/bot/start", _bot_start)
         app.router.add_post("/admin/bot/stop", _bot_stop)
         app.router.add_post("/admin/bot/retain", _bot_retain)

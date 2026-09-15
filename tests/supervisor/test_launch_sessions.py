@@ -124,6 +124,31 @@ class TheRefusalsAreTheRoutes(unittest.TestCase):
                 self.assertNotIn(line, JS)   # it is the route's list, not ours
 
 
+class TheStartCardHasTwoSwitches(unittest.TestCase):
+    """The memory dropdown became two checkboxes (recall, retain) on the
+    start card, and the Stop card grew the late retain switch to match."""
+
+    def test_the_new_markers_are_in_the_page(self):
+        for marker in ('id="pick-recall"', 'id="pick-keep"', 'id="pick-keepname"',
+                       'id="stopkeep"', "Stop and delete", "/admin/bot/retain",
+                       "Remembering the past",
+                       "keeping replaces it, deleting leaves it untouched"):
+            with self.subTest(marker=marker):
+                self.assertIn(marker, PAGE)
+
+    def test_the_old_memory_dropdown_is_gone(self):
+        for gone in ("pick-memory", "saves either way", "recall-only"):
+            with self.subTest(gone=gone):
+                self.assertNotIn(gone, PAGE)
+
+    def test_the_new_bot_routes_are_mounted(self):
+        source = Path(routes_mod.__file__).read_text(encoding="utf-8")
+        mounted = set(re.findall(r'add_(?:get|post)\("(/admin/[^"]+)"', source))
+        for path in ("/admin/bot/retain", "/admin/sessions/keep"):
+            with self.subTest(path=path):
+                self.assertIn(path, mounted)
+
+
 class WhatTheCardMayNotDo(unittest.TestCase):
 
     def test_it_keeps_nothing_in_browser_storage(self):
@@ -142,11 +167,11 @@ class WhatTheCardMayNotDo(unittest.TestCase):
             with self.subTest(field=bad):
                 self.assertNotIn(bad, JS)
 
-    def test_a_recall_only_row_is_offered_destroy_and_nothing_else(self):
-        """The privacy tier: transcript-ephemeral sittings do not appear in
-        load or rename, so destroy is the only verb on the row."""
-        self.assertIn('s.memory_mode === "recall-only"', JS)
-        self.assertIn("if (!ephemeral)", JS)
+    def test_an_unkept_row_is_offered_keep_or_delete_and_nothing_else(self):
+        """An unkept working file does not appear in load or rename, so Keep
+        and Delete are the only verbs on the row."""
+        self.assertIn("s.retain === false", JS)
+        self.assertIn("if (unkept)", JS)
 
     def test_the_download_is_an_authed_fetch_and_not_a_link(self):
         """A navigation carries no Authorization header, and the bearer is

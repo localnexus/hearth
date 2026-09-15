@@ -25,9 +25,9 @@
 //     companion is up. One banner carries it for the whole card, because the
 //     guard IS the whole shelf.
 //
-// A recall-only sitting is transcript-ephemeral and is the privacy tier's own
-// case: it is not offered load or rename, so the only verb on its row is
-// Destroy.
+// An unkept row — a working file that is not yet on the shelf (retain is
+// false and it was never held) — is not offered load or rename: the two
+// verbs on it are Keep (promote it onto the shelf, with a name) and Delete.
 //
 // Download cannot be a plain link: a navigation carries no Authorization
 // header, and the bearer is never a query parameter. So it is an authed fetch
@@ -285,6 +285,21 @@ window.LaunchSessions = (function () {
     });
   }
 
+  // ── keep: the unkept row's own verb ───────────────────────────────────────
+
+  async function keep(s, pane) {
+    // defaultLabel is the launch page's own helper (a later <script> in the
+    // same document) — by the time a click fires every script has run.
+    const suggested = defaultLabel(ctx.character, new Date());
+    const title = window.prompt(
+      "A name for this conversation — it goes on the shelf under this name.",
+      suggested);
+    if (title === null) return;
+    await post("/admin/sessions/keep",
+               { character: ctx.character, session: s.session_id, title },
+               pane, "kept as " + (title.trim() || s.session_id));
+  }
+
   // ── bringing a file in ───────────────────────────────────────────────────
 
   function deposit(host) {
@@ -353,7 +368,7 @@ window.LaunchSessions = (function () {
     cell(wordOf(s));
     cell(String(s.turns == null ? "?" : s.turns), "state");
     cell(stamp(s), "state");
-    cell(s.memory_mode || "full", "state");
+    cell(s.retain === false && !s.held ? "unkept" : "kept", "state");
     cell(flagsOf(s), "note");
 
     const verbs = document.createElement("td");
@@ -363,10 +378,14 @@ window.LaunchSessions = (function () {
       verbs.appendChild(b);
       return b;
     };
-    // The privacy tier's own row: a transcript-ephemeral sitting is not offered
-    // load or rename (§2), so destroy is the only verb it has.
-    const ephemeral = s.memory_mode === "recall-only";
-    if (!ephemeral) {
+    // An unkept row — a working file that is not yet on the shelf (retain is
+    // false and it was never held) — is not offered load or rename: the two
+    // verbs on it are Keep (promote it onto the shelf, with a name) and Delete.
+    const unkept = s.retain === false && !s.held;
+    if (unkept) {
+      add("Keep", "", keep);
+      if (destroyOffered) add("Delete", "danger", destroy);
+    } else {
       if (revealOffered) add("Reveal", "", reveal);
       add("Download", "", (x) => download(x));
       add(s.archived ? "Unarchive" : "Archive", "",
@@ -378,8 +397,8 @@ window.LaunchSessions = (function () {
       const idLink = mk("button", "linky", "change id…");
       idLink.addEventListener("click", () => renameId(s, pane));
       verbs.appendChild(idLink);
+      if (destroyOffered) add("Destroy", "danger", destroy);
     }
-    if (destroyOffered) add("Destroy", "danger", destroy);
     tr.appendChild(verbs);
 
     const paneRow = document.createElement("tr");
