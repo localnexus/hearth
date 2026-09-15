@@ -48,7 +48,7 @@ Archiving is putting a conversation aside, not throwing it away. The file moves 
 What changes is what stops happening to it:
 
 - It leaves the **resume picker**. An archived session cannot be resumed, and it will not appear on the shelf you pick from when a sitting starts.
-- It leaves the **fresh-start sweep**. The sweep that clears recall-only leftovers never looks in the archive, so a session put aside stays put aside.
+- It leaves the **fresh-start sweep**. The sweep that deletes unkept leftovers once their week of quarantine is up never looks in the archive, so a session put aside stays put aside.
 
 What does not change: the file is still yours, still on this machine, still in the companion's own private tree. **Archiving is not a deletion.** Unarchive moves it straight back onto the shelf, and it resumes like it never left. Nothing is ever overwritten either — if a session with the same name is somehow on both sides, the move is refused and told to you rather than silently resolving it.
 
