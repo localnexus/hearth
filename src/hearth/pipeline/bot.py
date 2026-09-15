@@ -776,10 +776,13 @@ async def main(
 
 
 def _switches(args) -> tuple:
-    """The sitting's two switches from argv: the older --memory word resolves
-    first; --no-recall / --keep, when given, win over it."""
+    """The sitting's two switches from argv. With no --memory word at all the
+    sitting recalls and keeps nothing (recall on, retain off) — the launch page
+    passes no flag for an unticked keeping switch, so the absence has to mean
+    off. When --memory IS given its table stands; --no-recall / --keep, when
+    given, win over it."""
     recall, retain = {"full": (True, True), "recall-only": (True, False),
-                      "off": (False, False)}.get(args.memory or "full", (True, True))
+                      "off": (False, False)}.get(args.memory, (True, False))
     if args.recall is False:
         recall = False
     if args.retain:

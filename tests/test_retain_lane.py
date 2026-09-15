@@ -1,4 +1,5 @@
-"""test_retain_lane.py — the two-switch store: retain (the write lane) binds at close.
+"""test_retain_lane.py — the two-switch store: retain (the write lane) binds at close,
+and where its value comes from in the first place (argv → _switches).
 
 Runs WITHOUT config or a data root — every store here is built with an explicit
 ``sessions_dir`` under ``tempfile``, so ``SessionStore.__post_init__``'s
@@ -10,12 +11,16 @@ Run:  .venv/bin/python -m unittest discover -s tests -p "test_retain_lane.py"
 
 from __future__ import annotations
 
+import ast
 import tempfile
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 from hearth.session import session_store as ss
+
+BOT_SRC = Path(__file__).resolve().parents[1] / "src" / "hearth" / "pipeline" / "bot.py"
 
 
 def _store(tmp, sid, **kw):
@@ -93,6 +98,78 @@ class RetainLane(unittest.TestCase):
         self.assertEqual(removed, ["session-old"])
         self.assertTrue(young.path.exists(), "a young orphan survives the sweep")
         self.assertFalse(old.path.exists(), "the expired orphan is gone")
+
+
+# ── argv → the two switches ────────────────────────────────────────────────────
+# bot.py cannot be imported here: its module body loads the active config, which
+# needs a real data root. So _switches is lifted out of the source and run on a
+# namespace built from bot.py's OWN argparse defaults — the pair below can drift
+# from the parser only if the parser changes, and then the first test says so.
+
+
+def _bot_tree() -> ast.Module:
+    return ast.parse(BOT_SRC.read_text(encoding="utf-8"))
+
+
+def _load_switches():
+    """bot.py's _switches(), compiled on its own — no module import."""
+    for node in _bot_tree().body:
+        if isinstance(node, ast.FunctionDef) and node.name == "_switches":
+            ns: dict = {}
+            exec(compile(ast.Module(body=[node], type_ignores=[]),
+                         str(BOT_SRC), "exec"), ns)
+            return ns["_switches"]
+    raise AssertionError("_switches() not found in bot.py")
+
+
+def _parser_defaults() -> dict:
+    """The parser's defaults for the three attributes _switches reads."""
+    out: dict = {}
+    for call in (n for n in ast.walk(_bot_tree()) if isinstance(n, ast.Call)):
+        if getattr(call.func, "attr", "") != "add_argument" or not call.args:
+            continue
+        kw = {k.arg: k.value for k in call.keywords}
+        flag = ast.literal_eval(call.args[0])
+        dest = (ast.literal_eval(kw["dest"]) if "dest" in kw
+                else flag.lstrip("-").replace("-", "_"))
+        if dest not in ("memory", "recall", "retain"):
+            continue
+        if "default" in kw:
+            out[dest] = ast.literal_eval(kw["default"])
+        else:
+            action = ast.literal_eval(kw["action"]) if "action" in kw else None
+            out[dest] = {"store_true": False, "store_false": True}.get(action)
+    return out
+
+
+class SwitchesFromArgv(unittest.TestCase):
+
+    def setUp(self):
+        self.switches = _load_switches()
+        self.defaults = _parser_defaults()
+
+    def _args(self, **given):
+        """A parsed namespace: the parser's defaults, plus the flags given."""
+        return SimpleNamespace(**{**self.defaults, **given})
+
+    def test_the_parser_defaults_are_the_ones_these_cases_assume(self):
+        self.assertEqual(self.defaults,
+                         {"memory": None, "recall": True, "retain": False})
+
+    def test_argv_resolves_to_recall_and_retain(self):
+        """A start with no --memory word keeps NOTHING. The launch page sends no
+        flag at all for an unticked keeping switch, so absent must mean off; the
+        older word, when it IS given, still resolves by its own table."""
+        self.assertEqual(self.switches(self._args()), (True, False),
+                         "bare start: remember the past, keep nothing")
+        self.assertEqual(self.switches(self._args(retain=True)), (True, True),
+                         "--keep")
+        self.assertEqual(self.switches(self._args(memory="full")), (True, True),
+                         "--memory full")
+        self.assertEqual(self.switches(self._args(memory="off", retain=True)),
+                         (False, True), "--memory off --keep: --keep wins")
+        self.assertEqual(self.switches(self._args(recall=False)), (False, False),
+                         "--no-recall")
 
 
 if __name__ == "__main__":
