@@ -56,7 +56,8 @@ from pipecat.pipeline.worker import PipelineWorker, PipelineParams
 from pipecat.workers.runner import WorkerRunner
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
-from pipecat.transports.local.audio import LocalAudioTransport, LocalAudioTransportParams
+from pipecat.transports.local.audio import LocalAudioTransportParams
+from hearth.audio.recovering_transport import RecoveringLocalAudioTransport
 from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.services.tts_service import TTSService
 from pipecat.services.settings import STTSettings, TTSSettings
@@ -242,7 +243,7 @@ async def build_pipeline(
         → assistant_agg (collects LLM tokens → writes to context after full response)
     """
     # Transport (mic + speaker)
-    transport = LocalAudioTransport(
+    transport = RecoveringLocalAudioTransport(
         LocalAudioTransportParams(
             audio_in_enabled=True,
             audio_out_enabled=True,
@@ -410,6 +411,11 @@ async def build_pipeline(
     # buffer, not when they are heard.
     hearth.control.features.presence.attach_lead(
         hearth.control.features.presence.LeadProbe(transport.output()))
+
+    # The device pin: recovery re-opens only onto the same device identity it
+    # started on, never a substitute. /presence.audio reports, per direction,
+    # when that device is lost and when it comes back.
+    hearth.control.features.presence.attach_audio(transport)
 
     # Session recording. Two passive taps + a Recorder driven by the panel's Record
     # button. Disarmed →

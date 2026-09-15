@@ -88,6 +88,7 @@ class PresenceRouteTests(unittest.TestCase):
         presence.attach(None)
         presence.attach_level(None)
         presence.attach_lead(None)
+        presence.attach_audio(None)
 
     def _get(self, ctx) -> dict:
         async def go():
@@ -110,10 +111,11 @@ class PresenceRouteTests(unittest.TestCase):
 
     def test_shape_before_attach(self):
         body = self._get(_ctx())
-        self.assertEqual(set(body), {"bot_speaking", "user_speaking", "muted", "level", "level_ts", "lead_s", "ts"})
+        self.assertEqual(set(body), {"bot_speaking", "user_speaking", "muted", "level", "level_ts", "lead_s", "audio", "ts"})
         self.assertFalse(body["user_speaking"])
         self.assertEqual((body["level"], body["level_ts"]), (0.0, 0.0))  # before attach_level: shape, zeros
         self.assertIsNone(body["lead_s"])  # before attach_lead: shape, unknown
+        self.assertEqual(body["audio"]["input"]["state"], "unpinned")  # before attach_audio: shape, unpinned
         self.assertIsInstance(body["ts"], float)
 
     def test_composes_the_three_flags(self):
@@ -149,6 +151,16 @@ class PresenceRouteTests(unittest.TestCase):
         presence.attach_lead(probe)
         body = self._get(_ctx())
         self.assertAlmostEqual(body["lead_s"], 0.1)
+
+    def test_audio_rides_the_object(self):
+        """The device-pin state joins the object from the attached transport."""
+        transport = types.SimpleNamespace(audio_state=lambda: {
+            "input": {"state": "lost", "device": "desk mic", "since": 1.0, "uid": "u"},
+            "output": {"state": "ok", "device": "desk ears", "since": None, "uid": "v"},
+        })
+        presence.attach_audio(transport)
+        body = self._get(_ctx())
+        self.assertEqual(body["audio"], transport.audio_state())
 
     def test_muted_mic_never_reads_as_speaking(self):
         tap = PresenceTap(); tap._user_speaking = True  # the stuck-true case

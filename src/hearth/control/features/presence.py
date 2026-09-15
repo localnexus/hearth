@@ -38,7 +38,7 @@ on its own once the audio stops, never a held value; before attach_level the
 field is 0.0 so a reader always sees the shape.
 
 API:
-    GET /presence → {bot_speaking, user_speaking, muted, level, level_ts, lead_s, ts}
+    GET /presence → {bot_speaking, user_speaking, muted, level, level_ts, lead_s, audio, ts}
         Sent with ``Access-Control-Allow-Origin: *`` — the reader is another
         app's webview, not this panel's page (see the route for why that is
         safe on this route and would not be on the POSTs).
@@ -48,6 +48,12 @@ API:
 ``lead_s`` — seconds queued in the output device but not yet played, read from
 the stream on each poll; null until the stream is open or when it cannot be
 read; a consumer delays its mouth by exactly this.
+
+``audio`` — per direction (``input``, ``output``), whether the device the
+session started on is ``ok``, ``lost`` (the companion stays silent; nothing is
+re-routed to another device) or ``recovered``, together with that device's
+NAME and the wall-clock time of the last state change. ``unpinned`` when no
+device identity was available to pin at session start.
 """
 
 from __future__ import annotations
@@ -127,6 +133,12 @@ class LeadProbe:
 _TAP: PresenceTap | None = None
 _LEVEL = None   # LevelTap (control_taps) after transport.output(); None until attach_level
 _LEAD = None   # LeadProbe bound to the output transport; None until attach_lead
+_AUDIO = None   # the recovering transport; None until attach_audio
+
+_UNPINNED = {
+    "input": {"state": "unpinned", "device": None, "since": None, "uid": None},
+    "output": {"state": "unpinned", "device": None, "since": None, "uid": None},
+}
 
 
 def attach(tap: PresenceTap) -> None:
@@ -147,6 +159,12 @@ def attach_lead(probe) -> None:
     _LEAD = probe
 
 
+def attach_audio(transport) -> None:
+    """bot.py hands over the transport whose halves know their device. None detaches."""
+    global _AUDIO
+    _AUDIO = transport
+
+
 def snapshot(mute_gate, speaking_tap) -> dict:
     """The presence object — pure, so it is testable without a server."""
     muted = bool(mute_gate.is_muted)
@@ -154,6 +172,7 @@ def snapshot(mute_gate, speaking_tap) -> dict:
     level = float(_LEVEL.level()) if _LEVEL is not None else 0.0
     level_ts = float(_LEVEL.level_ts) if _LEVEL is not None else 0.0
     lead_s = _LEAD.lead_s() if _LEAD is not None else None
+    audio = _AUDIO.audio_state() if _AUDIO is not None else {k: dict(v) for k, v in _UNPINNED.items()}
     return {
         "bot_speaking": bool(speaking_tap.is_speaking),
         "user_speaking": heard and not muted,
@@ -161,6 +180,7 @@ def snapshot(mute_gate, speaking_tap) -> dict:
         "level": level,
         "level_ts": level_ts,
         "lead_s": lead_s,
+        "audio": audio,
         "ts": time.time(),
     }
 
