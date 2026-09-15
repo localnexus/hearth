@@ -164,11 +164,11 @@ class TestSeam(unittest.TestCase):
             d = Path(tmp)
             records_mod.write_record(_record("s1", "2026-08-29T09:00:00"), d)
             seam = self._seam(_BoomBackend(), d)
-            items = seam.recall()   # backend raises → floor answers
+            items = seam.recall_open()   # backend raises → floor answers
             self.assertEqual(len(items), 1)
             self.assertEqual(items[0].source_session, "s1")
             seam_empty = self._seam(_BoomBackend(), Path(tmp) / "nowhere")
-            self.assertEqual(seam_empty.recall(), [])
+            self.assertEqual(seam_empty.recall_open(), [])
 
     def test_session_end_keeps_record_despite_backend_failure(self):
         with tempfile.TemporaryDirectory() as tmp:

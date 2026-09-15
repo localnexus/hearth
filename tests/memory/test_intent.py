@@ -103,16 +103,24 @@ class TestIntentSlot(unittest.TestCase):
                 self.assertTrue(data["source_session"])
                 stated_day = data["stated_at"][:10]
 
-                # next boot: query steered, dated line injected, slot consumed
+                # next boot: query steered, dated line injected
                 spy = _QueryBackend()
-                out = self._seam(d, self._cfg(), spy).augment("SYSTEM PROMPT")
-            self.assertIn("the tea ceremony", spy.queries[0])          # steered
-            self.assertTrue(spy.queries[0].startswith(                  # …and standing
-                "the user's life, preferences, and recent conversations"))
-            self.assertIn("## MEMORY — from earlier conversations", out)
-            self.assertIn(f"On {stated_day} you agreed to pick up the tea ceremony next time.",
-                          out)
-            self.assertFalse(slot.exists())  # consume-once
+                seam = self._seam(d, self._cfg(), spy)
+                out = seam.augment("SYSTEM PROMPT")
+                self.assertIn("the tea ceremony", spy.queries[0])          # steered
+                self.assertTrue(spy.queries[0].startswith(                  # …and standing
+                    "the user's life, preferences, and recent conversations"))
+                self.assertIn("## MEMORY — from earlier conversations", out)
+                self.assertIn(
+                    f"On {stated_day} you agreed to pick up the tea ceremony next time.", out)
+                self.assertTrue(slot.exists())          # injected, not yet consumed
+
+            # that boot's own close consumes it — one boot, one use
+            with mock.patch.object(records_mod, "records_dir", return_value=d), \
+                 mock.patch.object(intent_mod, "_ollama_chat",
+                                   side_effect=OSError("no network")):
+                seam.on_session_end(self.MSGS, store=None)
+            self.assertFalse(slot.exists())  # consumed at close
 
     def test_answer_none_writes_no_slot_and_boot_unchanged(self):
         """A deliberate close that named no topic: the model says so, and the

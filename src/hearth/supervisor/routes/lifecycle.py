@@ -58,6 +58,9 @@ async def _bot_start(request: web.Request) -> web.Response:
         name=(str(body["name"]) if body.get("name") else None),
         memory=(str(body["memory"]) if body.get("memory") else None),
         muted=bool(body.get("muted")),
+        recall=(body["recall"] if isinstance(body.get("recall"), bool) else None),
+        retain=(body["retain"] if isinstance(body.get("retain"), bool) else None),
+        keep_name=(str(body["keep_name"]) if body.get("keep_name") else None),
     )
     return web.json_response(result, status=200 if result.get("ok") else 409)
 
@@ -70,8 +73,36 @@ async def _bot_stop(request: web.Request) -> web.Response:
     result = await request.app["bot_child"].stop(
         hold=bool(body.get("hold")),
         name=(str(body["name"]) if body.get("name") else None),
+        retain=(body["retain"] if isinstance(body.get("retain"), bool) else None),
     )
     return web.json_response(result, status=200 if result.get("ok") else 500)
+
+
+async def _bot_retain(request: web.Request) -> web.Response:
+    """POST /admin/bot/retain {retain: bool, name?}: the late switch, thrown
+    while the bot runs (the Stop card) — a supervisor-side write of the same
+    marker ``BotChild.stop(retain=...)`` drops, without stopping anything.
+    Only meaningful against a live sitting: nothing running ⇒ 409, naming why."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body.get("retain"), bool):
+        return web.json_response(
+            {"ok": False, "error": "JSON body {\"retain\": true|false} required"},
+            status=400)
+    status = request.app["bot_child"].status()
+    if status.get("state") not in ("starting", "running"):
+        return web.json_response(
+            {"ok": False, "error": "nothing is running — the switch is set "
+                                   "when a conversation starts"},
+            status=409)
+    from hearth.session import session_store  # lazy: mirrors the package gate idiom
+
+    retain = bool(body["retain"])
+    name = str(body["name"]) if body.get("name") else None
+    session_store.write_retain_request(retain, name)
+    return web.json_response({"ok": True, "retain": retain, "name": name})
 
 
 async def _compact_start(request: web.Request) -> web.Response:

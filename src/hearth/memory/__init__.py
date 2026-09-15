@@ -24,16 +24,13 @@ the engine is byte-identical. Enabled, the seam:
 Backend selection is per companion: [memory].backend is the default,
 [memory.companions] overrides it by name, "none" opts a companion out.
 
-Per-session memory mode (``maybe_attach(mode=...)``): recall-in and record-out
-are independent operations, so one sitting can choose
-  * "full" (default)        — everything above, unchanged;
-  * "recall-only"           — recall runs as normal (open-time, per-turn, the
-    injected intent line) but the seam RETAINS nothing: on_session_end writes
-    no record, indexes nothing, captures no intent, and the intent slot it
-    injected is preserved for the next retaining session instead of consumed;
-  * "off"                   — no seam at all (None), same as unenrolled.
-The mode governs the memory BANK only — transcript persistence is the session
-store's own, separate decision.
+Two independent switches, not a three-value mode: ``recall`` (the read
+lane — open-time recall, per-turn recall, the injected intent line; binds
+at session start; default True) and ``retain`` (the write lane — the
+canonical record, backend index, consolidate, intent capture; binds at
+session CLOSE, where the session store's own close-time ``retain`` wins
+over the seam's when the store carries one; default False). ``mode`` is
+kept, for one release, as an alias onto the two switches.
 """
 
 from __future__ import annotations
@@ -106,7 +103,8 @@ class MemorySeam:
     """The engine-facing wrapper: containment + prompt framing + record writing."""
 
     def __init__(self, companion: str, persona: str, backend, cfg: dict,
-                 retain: bool = True, owns_backend: bool = True) -> None:
+                 retain: bool = True, owns_backend: bool = True,
+                 recall: bool = True) -> None:
         self.companion = companion
         self.persona = persona
         self.backend = backend
@@ -114,10 +112,16 @@ class MemorySeam:
         # live (same companion and persona): the store is SHARED, so close()
         # must release nothing. See close() and switcher._attach_and_resolve.
         self.owns_backend = bool(owns_backend)
-        # Per-session mode, recall-only ⇒ False: recall stays live, but
-        # on_session_end retains nothing and the intent slot is peeked, never
-        # consumed. Default True keeps every existing construction unchanged.
+        # The write lane: binds at close (on_session_end), where a store's
+        # own close-time retain wins when it carries one. Default True keeps
+        # every existing positional construction unchanged.
         self.retain = bool(retain)
+        # The read lane: binds at session start. Default True keeps every
+        # existing positional construction unchanged.
+        self.recall = bool(recall)
+        # The intent slot's path once injected by the read lane (augment);
+        # consumed by the write lane at close, only if it actually ran.
+        self._intent_used: Optional[str] = None
         # Wall-clock budget for the close tail (backend index + consolidate +
         # intent capture) — the canonical record is on disk before it starts,
         # so an exhausted budget costs the index only; `rebuild` heals it.
@@ -147,10 +151,12 @@ class MemorySeam:
                 companion, intent_cfg.get("enabled", False)
             )
         )
-        # Read at attach so recall() can steer on it; consumed in augment().
-        # Disabled ⇒ an existing slot is IGNORED, not deleted (re-enabling
-        # must not have silently thrown the plan away).
-        self._intent = self._read_intent() if self.intent_enabled else None
+        # Read at attach so recall() can steer on it; injected in augment().
+        # Off (recall or the intent gate) ⇒ an existing slot is IGNORED, not
+        # deleted (re-enabling must not have silently thrown the plan away).
+        self._intent = (
+            self._read_intent() if (self.recall and self.intent_enabled) else None
+        )
         # Status-tap state (the panel's read-only memory line): attribution of
         # the last recalls — counts + the backend that ACTUALLY answered (a
         # floor fallback must never masquerade as the primary). Set by
@@ -160,9 +166,11 @@ class MemorySeam:
 
     # ── recall (session start) ───────────────────────────────────────────────
 
-    def recall(self) -> list[MemoryItem]:
+    def recall_open(self) -> list[MemoryItem]:
         """Contained recall: backend → floor → empty. Each rung records its
-        attribution for the status tap — count + the source that answered."""
+        attribution for the status tap — count + the source that answered.
+        Named apart from the ``recall`` switch attribute, which it would
+        otherwise shadow."""
         query = self._recall_query()
         try:
             items = self.backend.recall(self.companion, query, self.recall_limit)
@@ -194,8 +202,12 @@ class MemorySeam:
         plan, not merely better-briefed about it — and is consumed here,
         because "used" means injected, not merely read. The composed lines are
         cached for augment_turn() — the per-turn path re-frames them, never
-        re-recalls the open set."""
-        items = self.recall()
+        re-recalls the open set. recall=False is the read lane's own OFF
+        switch: byte-identical passthrough, no recall, no intent line, no
+        slot touch — mirrors the pre-switch unenrolled composition."""
+        if not self.recall:
+            return system_instruction
+        items = self.recall_open()
         intent_line = self._consume_intent_line()
         lines = []
         for item in items:
@@ -236,7 +248,10 @@ class MemorySeam:
         Returns (items, source-backend-name) so the caller's log names the
         backend that actually answered — a floor fallback must never
         masquerade as the primary (run-observed 2026-09-02: a broken primary
-        looked healthy for a day behind the mislabeled success line)."""
+        looked healthy for a day behind the mislabeled success line).
+        recall=False yields (), "" — the read lane's own OFF switch."""
+        if not self.recall:
+            return [], ""
         want = self.per_turn_limit + self.recall_limit
         try:
             return self.backend.recall(self.companion, cue, want), self.backend.name
@@ -256,8 +271,11 @@ class MemorySeam:
     def turn_extras(self, cue: str) -> list[MemoryItem]:
         """The targeted extras for one turn — recalled on the cue, deduped
         against the open-time block, capped at per_turn_limit. Every guard
-        (gate off, cue below min_cue_chars, nothing new) yields []. The intent
-        slot is untouched here — consumed once, at augment()."""
+        (recall off, gate off, cue below min_cue_chars, nothing new) yields
+        []. The intent slot is untouched here — injected once at augment(),
+        consumed once at close."""
+        if not self.recall:
+            return []
         cue = " ".join(str(cue or "").split())
         extras: list[MemoryItem] = []
         if (self.per_turn_enabled and self.per_turn_limit > 0
@@ -286,6 +304,8 @@ class MemorySeam:
         copy). "" when nothing surfaced — the request then goes out exactly as
         the client built it. This is the path both lanes use since 2026-09-05;
         the system instruction is never rewritten per turn."""
+        if not self.recall:
+            return ""
         extras = self.turn_extras(cue)
         if not extras:
             return ""
@@ -314,6 +334,7 @@ class MemorySeam:
             "companion": self.companion,
             "backend": self.backend.name,
             "retain": self.retain,
+            "recall": self.recall,
             "recall_limit": self.recall_limit,
             "per_turn": {
                 "chat": self.per_turn_enabled,
@@ -347,11 +368,10 @@ class MemorySeam:
         return self.recall_query
 
     def _consume_intent_line(self) -> str:
-        """The dated intent line, and the slot's end: one boot, one use.
-
-        "One use" means one RETAINING boot: a recall-only session still opens
-        aware of the plan (the line is injected) but must not destroy it — the
-        slot is peeked, not popped, and survives for the next full session."""
+        """The dated intent line. The read lane injects it here (only called
+        from augment(), so only when recall is on); the write lane consumes
+        the slot at close, once the record it rides is actually on disk —
+        this method never clears it."""
         if not self._intent:
             return ""
         slot, self._intent = self._intent, None
@@ -359,12 +379,8 @@ class MemorySeam:
             when = str(slot.get("stated_at", ""))[:10]
             dated = f"On {when} " if when else ""
             line = f"- {dated}you agreed to pick up {slot['text']} next time."
-            if self.retain:
-                intent_mod.clear_slot(slot["path"])
-                logger.info("[memory] intent slot consumed (stated {})", when or "unknown")
-            else:
-                logger.info("[memory] intent slot injected, preserved (stated {}) — "
-                            "recall-only session", when or "unknown")
+            self._intent_used = slot["path"]
+            logger.info("[memory] intent slot injected (stated {})", when or "unknown")
             return line
         except Exception as exc:  # noqa: BLE001
             logger.warning("[memory] intent injection failed ({}) — skipped",
@@ -381,12 +397,19 @@ class MemorySeam:
         file — so that order cannot starve it. The index tail is bounded by
         ``close_budget_s``; on expiry the record is already on disk.
 
-        A recall-only session (retain=False) suppresses ALL of it — record,
-        index, consolidate, intent capture — and says so in the status, so the
-        shutdown log can never be misread as a memory failure.
+        The write switch binds HERE, at close: ``store.retain`` wins when the
+        store carries one — set by session_store.finalize, which runs first
+        and is where a late retain request (the Stop-card marker) lands —
+        falling back to the seam's own ``self.retain`` otherwise. Not
+        retained suppresses ALL of it — record, index, consolidate, intent
+        capture — and says so in the status, so the shutdown log can never be
+        misread as a memory failure. The record only ever covers what a prior
+        kept file had not already banked: ``store.banked_from`` is the
+        watermark a fork carries from the file it was copied from, and the
+        messages up to it are sliced away before the record is built.
 
         ``outcome``, when given, is filled for the close row (session/
-        close_row.py): ``result`` ∈ recall-only · record-build-failed ·
+        close_row.py): ``result`` ∈ not-kept · record-build-failed ·
         record-write-failed · empty · kept, plus ``index`` ∈ ok · skipped ·
         deferred (**§4 D1/D2**), ``consolidate`` ∈ ok · failed, and ``intent``
         ∈ ok · failed · off (**§4 D9**). Those three were caught-and-logged and
@@ -399,10 +422,15 @@ class MemorySeam:
         directly on the caller's ``outcome`` — the row must describe what was
         true at the deadline, not race the worker for a later value."""
         out = outcome if outcome is not None else {}
-        if not self.retain:
-            out["result"] = "recall-only"
-            logger.info("[memory] recall-only session — nothing retained")
-            return "recall-only session — nothing retained"
+        retain = getattr(store, "retain", None)
+        if retain is None:
+            retain = self.retain
+        if not retain:
+            out["result"] = "not-kept"
+            logger.info("[memory] conversation not kept — nothing remembered")
+            return "conversation not kept — nothing remembered"
+        start = int(getattr(store, "banked_from", 0) or 0)
+        messages = list(messages)[start:]
         try:
             record = self._make_record(messages, store)
         except Exception as exc:  # noqa: BLE001
@@ -421,6 +449,13 @@ class MemorySeam:
             out["error"] = type(exc).__name__
             logger.warning("[memory] canonical record write failed ({})", type(exc).__name__)
             return "canonical record write failed"
+        if self._intent_used:
+            try:
+                intent_mod.clear_slot(self._intent_used)
+                logger.info("[memory] intent slot consumed at close")
+            except Exception as exc:  # noqa: BLE001 — a slot we can't clear must not fail the close
+                logger.warning("[memory] intent slot could not be consumed at close ({})",
+                               type(exc).__name__)
         out["result"] = "kept"
         out["session_id"] = record.session_id
         status = f"record kept ({record.session_id})"
@@ -543,23 +578,34 @@ def _merge_tail(out: dict, tail: dict) -> None:
             out[k] = v
 
 
-def maybe_attach(companion: str, persona: str = "default",
-                 mode: str = "full", reuse_backend=None) -> Optional[MemorySeam]:
-    """The activation gate. None when config/memory.toml is absent, disabled,
-    or maps this companion to "none" — engine byte-identical, nothing loaded.
-    Malformed config ⇒ ConfigError naming the file (fail-fast, config tier).
+_MODE_SWITCHES = {"full": (True, True), "recall-only": (True, False), "off": (False, False)}
 
-    ``mode`` is the per-session memory mode (module docstring): "full"
-    (default), "recall-only" (attach with retain=False), "off" (None even for
-    an enrolled companion — this sitting runs without the seam)."""
-    if mode not in ("full", "recall-only", "off"):
+
+def maybe_attach(companion: str, persona: str = "default",
+                 mode: str = "full", reuse_backend=None, *,
+                 recall: Optional[bool] = None,
+                 retain: Optional[bool] = None) -> Optional[MemorySeam]:
+    """The activation gate. None when config/memory.toml is absent, disabled,
+    maps this companion to "none", or both switches land off — engine
+    byte-identical, nothing loaded. Malformed config ⇒ ConfigError naming the
+    file (fail-fast, config tier).
+
+    ``recall`` (the read lane) and ``retain`` (the write lane) are the
+    switches; either explicit boolean wins. ``mode`` is a one-release alias
+    for the older three-value posture — "full" (default) → both on,
+    "recall-only" → recall only, "off" → neither — resolved into the two
+    switches before any explicit override is applied."""
+    if mode not in _MODE_SWITCHES:
         raise ValueError(f"unknown memory mode {mode!r} (full | recall-only | off)")
+    alias_recall, alias_retain = _MODE_SWITCHES[mode]
+    recall = alias_recall if recall is None else bool(recall)
+    retain = alias_retain if retain is None else bool(retain)
     from hearth.config import config_loader
 
     cfg = config_loader.load_memory_config()
     if cfg is None:
         return None
-    if mode == "off":
+    if not recall and not retain:
         logger.info("[memory] session memory OFF — seam not attached for {}", companion)
         return None
     backend_name = str(dict(cfg.get("companions") or {}).get(companion, cfg.get("backend", "floor")))
@@ -572,9 +618,9 @@ def maybe_attach(companion: str, persona: str = "default",
     shared = (reuse_backend is not None
               and getattr(reuse_backend, "name", None) == backend_name)
     backend = reuse_backend if shared else _build_backend(backend_name, cfg)
-    logger.info("[memory] seam attached: companion={} backend={}{}{}",
+    logger.info("[memory] seam attached: companion={} backend={}{} remembering={} keeping={}",
                 companion, backend_name,
                 " (warm store kept)" if shared else "",
-                " mode=recall-only (nothing will be retained)" if mode == "recall-only" else "")
-    return MemorySeam(companion, persona, backend, cfg, retain=(mode != "recall-only"),
-                      owns_backend=not shared)
+                "on" if recall else "off", "on" if retain else "off")
+    return MemorySeam(companion, persona, backend, cfg, retain=retain,
+                      recall=recall, owns_backend=not shared)

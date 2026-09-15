@@ -28,8 +28,9 @@ runtime poke could light, and the POST says so with a 409 instead of
 pretending.
 
 API:
-    GET /memory → {ok, mode, attached, voice_prefetch_built, seam?}
-        seam = MemorySeam.status(): {companion, backend, retain, recall_limit,
+    GET /memory → {ok, mode, attached, voice_prefetch_built, recall?, retain?, seam?}
+        recall/retain mirror the attached seam's own two switches (seam.status()).
+        seam = MemorySeam.status(): {companion, backend, retain, recall, recall_limit,
         per_turn:{chat, voice, limit}, open_recall, turn_recall} — the recall
         entries name the backend that ACTUALLY answered (a floor fallback
         never masquerades as the primary), and per_turn.voice is EFFECTIVE
@@ -71,7 +72,10 @@ def memory_status_routes(ctx: PanelContext) -> web.RouteTableDef:  # noqa: ARG00
         body: dict = {"ok": True, "mode": _MODE, "attached": seam is not None,
                       "voice_prefetch_built": _VOICE_PREFETCH_BUILT}
         if seam is not None:
-            body["seam"] = seam.status()
+            status = seam.status()
+            body["seam"] = status
+            body["recall"] = status["recall"]
+            body["retain"] = status["retain"]
         return web.json_response(body)
 
     @routes.post("/memory/per-turn-voice")

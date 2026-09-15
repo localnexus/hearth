@@ -144,7 +144,7 @@ from .sessions import (
     _destroy_offered, _guarded, _known_character, _move, _read_deposit_upload,
     _session_archive, _session_deposit, _session_destroy, _session_file,
     _session_rename, _session_reveal, _session_unarchive, _sessions)
-from .lifecycle import _bot_start, _bot_stop, _compact_start, _daemon_restart
+from .lifecycle import _bot_retain, _bot_start, _bot_stop, _compact_start, _daemon_restart
 from .switching import (
     _FACADE_NOTE, _do_restart, _switch_get, _switch_live_get, _switch_post,
     _try_live)
@@ -215,6 +215,7 @@ def build_mount(sup_cfg: dict):
         app.router.add_post("/admin/sessions/rename", _session_rename)
         app.router.add_post("/admin/bot/start", _bot_start)
         app.router.add_post("/admin/bot/stop", _bot_stop)
+        app.router.add_post("/admin/bot/retain", _bot_retain)
         app.router.add_post("/admin/compact", _compact_start)
         app.router.add_post("/admin/daemon/restart", _daemon_restart)
         # Mutated IN PLACE at runtime (the app mapping is frozen after startup):

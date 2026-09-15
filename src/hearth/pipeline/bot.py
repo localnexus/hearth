@@ -218,11 +218,20 @@ T4_METRICS = os.environ.get("T4_METRICS", "0") == "1"
 # ── Pipeline assembly ──────────────────────────────────────────────────────────
 
 
+# The one-release alias between the two switches and the older three-value
+# word: full = (True, True), recall-only = (True, False), off = (False,
+# False); keep-only (False, True) has no --memory equivalent.
+def _memory_mode_str(recall: bool, retain: bool) -> str:
+    return {(True, True): "full", (True, False): "recall-only",
+            (False, False): "off", (False, True): "keep-only"}[(bool(recall), bool(retain))]
+
+
 async def build_pipeline(
     dump_dir: Optional[str] = None,
     resume_messages: Optional[list] = None,
     store: Optional["session_store.SessionStore"] = None,
-    memory_mode: str = "full",
+    recall: bool = True,
+    retain: bool = False,
     start_muted: bool = False,
 ):
     """
@@ -280,15 +289,17 @@ async def build_pipeline(
     # (never on the per-turn path) and appends a dated, provenance-framed block
     # AFTER the persona render — PROMPT_FINGERPRINT is computed memory-free in
     # config_loader, so drift detection and resume warnings stay stable.
-    # memory_mode is this SITTING's posture (--memory): full / recall-only
-    # (recall as normal, nothing retained) / off (no seam even when enrolled).
-    if memory_mode != "full":
-        print(f"[memory] session memory mode: {memory_mode}", flush=True)
+    # recall / retain are this SITTING's two switches (--no-recall / --keep):
+    # recall is the read lane this block depends on; retain is the write lane,
+    # which binds later, at close.
+    if recall is not True or retain is not False:
+        print(f"[memory] remembering: {'on' if recall else 'off'} · "
+              f"keeping: {'on' if retain else 'off'}", flush=True)
         if config_loader.load_memory_config() is None:
-            print(f"[memory] --memory {memory_mode}: memory is not enabled "
-                  "(config/memory.toml) — the flag has no effect", flush=True)
+            print("[memory] the switches have no effect — memory is not "
+                  "enabled (config/memory.toml)", flush=True)
     memory_seam = hearth_memory.maybe_attach(
-        _CFG.character, persona=_CFG.persona_name, mode=memory_mode)
+        _CFG.character, persona=_CFG.persona_name, recall=recall, retain=retain)
     system_instruction = (
         memory_seam.augment(SYSTEM_INSTRUCTION) if memory_seam else SYSTEM_INSTRUCTION
     )
@@ -479,14 +490,15 @@ async def build_pipeline(
     # the reloader onto the new companion's baselines).
     live_switcher = switcher_mod.LiveSwitcher(
         active=_CFG, reloader=_reloader, tts=tts, context=context,
-        store=store, seam=memory_seam, memory_mode=memory_mode,
+        store=store, seam=memory_seam, memory_mode=_memory_mode_str(recall, retain),
         lm_provider=LM_PROVIDER, lm_base_url=LM_BASE_URL, lm_token=LM_API_TOKEN,
-        # The sitting's memory mode rides a live switch: the incoming
-        # companion attaches under the SAME mode (off ⇒ no seam), and the
-        # outgoing side's finalize suppresses itself via its own retain flag.
+        # The sitting's two switches ride a live switch unchanged: the
+        # incoming companion attaches under the SAME recall/retain (both off
+        # ⇒ no seam), and the outgoing side's finalize suppresses itself via
+        # its own retain flag.
         seam_factory=lambda character, persona, reuse_backend=None:
             hearth_memory.maybe_attach(character, persona=persona,
-                                       mode=memory_mode,
+                                       recall=recall, retain=retain,
                                        reuse_backend=reuse_backend),
     )
     config_reload_proc = config_reload.ConfigReloadProcessor(
@@ -537,7 +549,8 @@ async def main(
     store: Optional["session_store.SessionStore"] = None,
     resume_messages: Optional[list] = None,
     session_descriptor: Optional[str] = None,
-    memory_mode: str = "full",
+    recall: bool = True,
+    retain: bool = False,
     start_muted: bool = False,
 ):
     """Entry point for the live-mic voice loop."""
@@ -566,7 +579,7 @@ async def main(
      recorder, memory_seam, live_switcher, system_instruction,
      memory_prefetch_proc) = await build_pipeline(
         dump_dir, resume_messages=resume_messages, store=store,
-        memory_mode=memory_mode, start_muted=start_muted,
+        recall=recall, retain=retain, start_muted=start_muted,
     )
 
     # TokenMeter captures LM Studio's own per-turn usage block (ground truth).
@@ -618,11 +631,15 @@ async def main(
     # resolved once at startup (New / Restored / <held-name>) and rides the
     # existing /engine route + one-shot fetch. "New" is the safe default.
     engine_info["session"] = session_descriptor or "New"
-    # The sitting's memory posture, as EFFECTIVE state: the mode when the seam
-    # is attached (or deliberately "off"); None when memory simply isn't
+    # The sitting's two switches, as EFFECTIVE state; memory_mode stays one
+    # release as their DERIVED string — shown when the seam is attached (or
+    # both switches are deliberately off); None when memory simply isn't
     # configured — the panel dashes rather than implying a bank exists.
+    engine_info["recall"] = recall
+    engine_info["retain"] = retain
+    _derived_mode = _memory_mode_str(recall, retain)
     engine_info["memory_mode"] = (
-        memory_mode if (memory_seam is not None or memory_mode == "off") else None
+        _derived_mode if (memory_seam is not None or _derived_mode == "off") else None
     )
     # Also piggyback the active persona identity (character + voice), resolved once
     # from config at startup (_CFG). Rides the same /engine route → the panel's
@@ -758,6 +775,18 @@ async def main(
 # fail fast, and are parameterized by the live identity values below.
 
 
+def _switches(args) -> tuple:
+    """The sitting's two switches from argv: the older --memory word resolves
+    first; --no-recall / --keep, when given, win over it."""
+    recall, retain = {"full": (True, True), "recall-only": (True, False),
+                      "off": (False, False)}.get(args.memory or "full", (True, True))
+    if args.recall is False:
+        recall = False
+    if args.retain:
+        retain = True
+    return recall, retain
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -791,14 +820,31 @@ if __name__ == "__main__":
     parser.add_argument(
         "--memory",
         choices=("full", "recall-only", "off"),
-        default=None,  # absent ⇒ a resumed session's own stamp, else "full"
+        default=None,
         metavar="MODE",
-        help="this session's memory posture: full (default — recall and retain, "
-        "unchanged), recall-only (the companion recalls their real memories but this "
-        "session leaves no memory record — nothing is retained), off (no "
-        "recall, no retention — a fresh meeting). Governs the memory bank "
-        "only; the session transcript keeps its own lifecycle (--hold). "
-        "Flag absent, a resumed session keeps the mode it was saved under.",
+        help="the older one-word form of --no-recall / --keep below, kept for "
+        "one release.",
+    )
+    parser.add_argument(
+        "--no-recall",
+        dest="recall",
+        action="store_false",
+        default=True,
+        help="start without remembering the past: no recalled block, no "
+        "per-turn recall — a first meeting",
+    )
+    parser.add_argument(
+        "--keep",
+        dest="retain",
+        action="store_true",
+        help="keep this conversation: at Stop the transcript goes on the "
+        "shelf and what was said is remembered afterwards; without it the "
+        "transcript is deleted at Stop",
+    )
+    parser.add_argument(
+        "--keep-name",
+        metavar="LABEL",
+        help="the label a kept conversation carries from its first turn",
     )
     parser.add_argument(
         "--muted",
@@ -827,19 +873,20 @@ if __name__ == "__main__":
         character=_CFG.character, persona=_CFG.persona_name,
     )
 
-    # The sitting's memory mode: explicit --memory wins; flag absent, a resumed
-    # session's stamp is inherited (a crashed recall-only sitting must not get
-    # banked by a default resume). Stamps the store for this run's snapshots.
-    _memory_mode = session_store.inherit_memory_mode(args.memory, _store)
-    if args.memory is None and _memory_mode != "full":
-        print(f"[memory] resumed session carries memory mode '{_memory_mode}' — "
-              "inheriting it (pass --memory full to override)", flush=True)
+    # The sitting's two switches: --no-recall / --keep win over the older
+    # --memory word. A fork never inherits a prior sitting's posture — every
+    # sitting runs on its own working file, stamped from this run's own flags.
+    _recall, _retain = _switches(args)
+    _store.retain = _retain
+    if args.keep_name:
+        _store.title = args.keep_name
 
     asyncio.run(main(
         dump_dir=args.dump_dir if args.dump_tts else None,
         store=_store,
         resume_messages=_resume_messages,
         session_descriptor=_session_desc,
-        memory_mode=_memory_mode,
+        recall=_recall,
+        retain=_retain,
         start_muted=args.muted,
     ))

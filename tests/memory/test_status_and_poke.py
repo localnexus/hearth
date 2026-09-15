@@ -138,7 +138,7 @@ class TestSeamStatus(unittest.TestCase):
             seam = MemorySeam("testchar", "default", _BoomBackend(), {"recall_limit": 3})
             seam._floor = FloorBackend(d)
             self.assertIsNone(seam.status()["open_recall"])   # nothing ran yet
-            seam.recall()                       # primary raises → floor answers
+            seam.recall_open()                  # primary raises → floor answers
             got = seam.status()["open_recall"]
             self.assertEqual(got["source"], "floor")
             self.assertEqual(got["count"], 1)
@@ -183,7 +183,8 @@ class TestPerTurnVoicePoke(unittest.TestCase):
         import types
         return types.SimpleNamespace(
             per_turn_enabled=enabled, per_turn_voice=voice,
-            status=lambda: {"per_turn": {"chat": enabled, "voice": voice}})
+            status=lambda: {"recall": True, "retain": True,
+                            "per_turn": {"chat": enabled, "voice": voice}})
 
     def _wired(self, ms, seam, built=True):
         import types

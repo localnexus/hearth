@@ -162,7 +162,7 @@ class TestPerTurnRecall(unittest.TestCase):
                             "stated_at": "2026-08-31", "path": slot}
             opened = seam.augment("BASE")
             self.assertIn("you agreed to pick up the walk debrief", opened)
-            self.assertFalse(slot.exists())                  # consumed at augment
+            self.assertTrue(slot.exists())            # injected, not yet consumed — close does that
             out = seam.augment_turn("BASE", self.CUE)
             self.assertEqual(out.count("you agreed to pick up"), 1)
 

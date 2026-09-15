@@ -195,20 +195,30 @@ class _FakeChild:
         self.pid = None
         return {"ok": True, "escalated": False, "held": bool(hold)}
 
-    async def start(self, mode="new", name=None, memory=None, muted=False):
+    async def start(self, mode="new", name=None, memory=None, muted=False,
+                    recall=None, retain=None, keep_name=None):
         # 3-tuple when no memory rider (keeps existing assertions), 4-tuple
-        # with; a 5th element (muted) only when muted.
+        # with; a 5th element (muted) only when muted. The two switches +
+        # keep-name ride as ONE trailing dict, appended only when any of them
+        # is given, so every pre-existing shape above is untouched.
         if muted:
-            self.calls.append(("start", mode, name, memory, muted))
+            call = ["start", mode, name, memory, muted]
         elif memory is not None:
-            self.calls.append(("start", mode, name, memory))
+            call = ["start", mode, name, memory]
         else:
-            self.calls.append(("start", mode, name))
+            call = ["start", mode, name]
+        if recall is not None or retain is not None or keep_name is not None:
+            call.append({"recall": recall, "retain": retain, "keep_name": keep_name})
+        self.calls.append(tuple(call))
         self.state = "running"
         self.pid = 4243
         result = {"ok": True, "pid": self.pid, "mode": mode}
         if memory is not None:
             result["memory"] = memory
+        if recall is not None:
+            result["recall"] = recall
+        if retain is not None:
+            result["retain"] = retain
         if muted:
             result["muted"] = True
         return result
@@ -335,6 +345,24 @@ class SwitchRoutes(_SwitchHarness):
         await self.app["switch_state"]["task"]
         self.assertEqual(self.child.calls,
                          [("stop", False, None), ("start", "new", None, "recall-only")])
+
+    async def test_post_retain_rider_forces_restart_and_forwards(self):
+        resp = await self.client.post("/admin/switch", headers=self.BEARER,
+                                      json={**GOOD, "retain": True})
+        self.assertEqual(resp.status, 200, await resp.text())
+        self.assertEqual((await resp.json())["applied"], "restart")
+        await self.app["switch_state"]["task"]
+        self.assertEqual(self.child.calls,
+                         [("stop", False, None),
+                          ("start", "new", None,
+                           {"recall": None, "retain": True, "keep_name": None})])
+
+    async def test_post_apply_live_with_retain_refused(self):
+        resp = await self.client.post("/admin/switch", headers=self.BEARER,
+                                      json={**GOOD, "apply": "live", "retain": True})
+        self.assertEqual(resp.status, 409)
+        self.assertIn("restart", (await resp.json())["errors"][0])
+        self.assertEqual(self.child.calls, [], "no stop/start on a refused live+retain")
 
     async def test_post_bad_memory_writes_nothing(self):
         resp = await self.client.post("/admin/switch", headers=self.BEARER,

@@ -119,6 +119,17 @@ async def _switch_post(request: web.Request) -> web.Response:
             {"ok": False,
              "errors": [f"unknown memory mode {memory!r} (full | recall-only | off)"]},
             status=400)
+    # The two switches, same validation shape as the memory rider: present
+    # and not a boolean ⇒ 400, nothing written.
+    recall = body.get("recall")
+    if recall is not None and not isinstance(recall, bool):
+        return web.json_response(
+            {"ok": False, "errors": ["recall must be true or false"]}, status=400)
+    retain = body.get("retain")
+    if retain is not None and not isinstance(retain, bool):
+        return web.json_response(
+            {"ok": False, "errors": ["retain must be true or false"]}, status=400)
+    keep_name = str(body["keep_name"]) if body.get("keep_name") else None
     muted = bool(body.get("muted"))
     current, cur_err = switch_mod.read_selection()
     if cur_err:
@@ -139,17 +150,20 @@ async def _switch_post(request: web.Request) -> web.Response:
     # every CHANGED field declares a live path; "apply" steers ("auto" default).
     apply_mode = str(body.get("apply") or "auto").lower()
     changed = switch_mod.changed_fields(wrote["previous"], merged)
-    # A memory-mode rider forces the restart path: the mode is the SITTING's
-    # posture (set at boot, rides a live switch unchanged) — only a fresh spawn
-    # can honor a different one.
-    live_eligible = bool(changed) and memory is None and not muted and all(
+    # A memory-mode / recall / retain / keep-name rider forces the restart
+    # path: the sitting's memory posture is set at boot and rides a live
+    # switch unchanged — only a fresh spawn can honor a different one.
+    live_eligible = bool(changed) and memory is None and recall is None \
+        and retain is None and keep_name is None and not muted and all(
         k in switch_mod.live_capable_fields() for k in changed)
     live_result = None
-    if apply_mode == "live" and memory is not None:
+    if apply_mode == "live" and (memory is not None or recall is not None
+                                 or retain is not None or keep_name is not None):
         return web.json_response(
             {"ok": False,
-             "errors": ["a memory-mode change cannot ride a live switch — "
-                        'it needs a restart (repost with "apply": "auto")'],
+             "errors": ["a change of the remembering or keeping switch cannot "
+                        'ride a live switch — it needs a restart (repost with '
+                        '"apply": "auto")'],
              "wrote": merged}, status=409)
     if apply_mode == "live" and muted:
         return web.json_response(
@@ -207,6 +221,9 @@ async def _switch_post(request: web.Request) -> web.Response:
             name=(str(body["name"]) if body.get("name") else None),
             memory=memory,
             muted=muted,
+            recall=recall,
+            retain=retain,
+            keep_name=keep_name,
         ))
     logger.info("[supervisor] switch → {} (restart: {})",
                 {k: merged[k] for k in switch_mod.SELECTION_KEYS}, restart)
@@ -255,7 +272,8 @@ async def _try_live(app: web.Application, merged: dict, body: dict) -> dict:
 
 
 async def _do_restart(app: web.Application, *, hold, hold_name, mode, name,
-                      memory=None, muted=False) -> None:
+                      memory=None, muted=False, recall=None, retain=None,
+                      keep_name=None) -> None:
     """stop (graceful ladder — the bot's own finalize/hold path runs) → start."""
     child = app["bot_child"]
     status = app["switch_state"]["last"]
@@ -264,7 +282,8 @@ async def _do_restart(app: web.Application, *, hold, hold_name, mode, name,
         status.update(phase="failed", error=stopped.get("error") or "stop failed",
                       at=_now_iso())
         return
-    started = await child.start(mode=mode, name=name, memory=memory, muted=muted)
+    started = await child.start(mode=mode, name=name, memory=memory, muted=muted,
+                                recall=recall, retain=retain, keep_name=keep_name)
     if started.get("ok"):
         status.update(phase="done", error=None, at=_now_iso(), pid=started.get("pid"))
     else:

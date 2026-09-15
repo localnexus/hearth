@@ -15,6 +15,7 @@ import subprocess
 import sys
 import unittest
 from unittest import mock
+from hearth.session import session_store
 from hearth.supervisor.child import BotChild
 
 
@@ -257,6 +258,56 @@ class ChildLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(res["ok"])
         self.assertIn("nothing to stop", res["note"])
         c.close()
+
+    async def test_switches_forwarded_as_flags(self):
+        async def _start_and_capture_argv(**start_kwargs):
+            c = _fake(GRACEFUL)
+            captured = []
+
+            class _FakeProbeProc:
+                async def communicate(self):
+                    return b"", b""  # pgrep: no match
+
+            class _FakeSpawnProc:
+                pid = 999999
+                returncode = None
+
+                async def wait(self):
+                    await asyncio.sleep(3600)
+
+            async def _record(*args, **kwargs):
+                if args and args[0] == "pgrep":
+                    return _FakeProbeProc()
+                captured.append(args)
+                return _FakeSpawnProc()
+
+            with mock.patch("hearth.supervisor.child.asyncio.create_subprocess_exec",
+                            side_effect=_record):
+                res = await c.start(**start_kwargs)
+            c.close()
+            return res, captured[0]
+
+        res, argv = await _start_and_capture_argv(recall=False, retain=True, keep_name="x")
+        self.assertTrue(res["ok"], res)
+        self.assertIs(res["recall"], False)
+        self.assertIs(res["retain"], True)
+        self.assertEqual(argv.count("--no-recall"), 1)
+        self.assertEqual(argv.count("--keep"), 1)
+        self.assertEqual(argv[argv.index("--keep-name") + 1], "x")
+
+        res, argv = await _start_and_capture_argv(retain=True)
+        self.assertTrue(res["ok"], res)
+        self.assertNotIn("--no-recall", argv)
+        self.assertIn("--keep", argv)
+
+        c2 = _fake(GRACEFUL)
+        self.assertTrue((await c2.start())["ok"])
+        await asyncio.sleep(0.4)
+        with mock.patch.object(session_store, "write_retain_request") as wrr:
+            res = await c2.stop(retain=False)
+        self.assertTrue(res["ok"], res)
+        wrr.assert_called_once_with(False, None)
+        c2.close()
 
 if __name__ == "__main__":
     unittest.main()
