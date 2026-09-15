@@ -620,26 +620,20 @@ def retain_marker_path(sessions_dir: Optional[Path] = None) -> Path:
 
 def write_retain_request(retain: bool, name: Optional[str] = None,
                          sessions_dir: Optional[Path] = None, *,
-                         session_id: Optional[str] = None,
-                         cwd: Optional[Path] = None) -> None:
+                         session_id: Optional[str] = None) -> None:
     """The late switch: a supervisor throws this while the bot runs (the Stop
     card); finalize consumes it, and it is crash-safe because the next start
-    can read it too. ``name`` is honored exactly as the hold marker's: a path
-    locator is stored fully resolved (see write_hold_request), so finalize
-    never needs to re-derive a relative anchor.
+    can read it too. ``name`` is a LABEL (decision 008, "Id ≠ label") and is
+    stored exactly as the person typed it — no locator resolution: finalize
+    writes it to the file's ``title`` and never renames the file, so there is
+    no path for a locator to name. The older hold marker keeps the other
+    meaning (see write_hold_request) for one release.
     """
     ensure_dir(sessions_dir)
     m = retain_marker_path(sessions_dir)
-    resolved_name = name
-    if name and classify_locator(name) == "path":
-        target = resolve_save_locator(name, sessions_dir, cwd=cwd)
-        warning = out_of_tree_warning(target, _dir(sessions_dir))
-        if warning:
-            print(warning)
-        resolved_name = str(target)
     payload = {
         "retain": bool(retain),
-        "name": resolved_name or None,
+        "name": (name.strip() or None) if isinstance(name, str) else None,
         "session_id": session_id or None,
         "at": _now_iso(),
     }
@@ -742,10 +736,18 @@ def finalize(store: "SessionStore", messages, *, outcome: Optional[dict] = None)
     marker, honored as "retain + name" for one release — can still flip it
     before this runs; a request naming a stale ``session_id`` is ignored.
 
+    **The two markers mean different things by a name** (decision 008, "Id ≠
+    label"). The retain marker's name is a LABEL: it is written to the file's
+    ``title`` and the filename never moves — the Stop card's default label is
+    "<character> · <date> <time>", which is not a legal session id, and a row
+    whose id is not a legal id is a row no shelf verb can act on. The older
+    hold marker's name still RENAMES the file, unchanged for one release.
+
     ``outcome``, when given, is filled with the machine-readable result for the
     close row (session/close_row.py): ``result`` ∈ none · held · held-unnamed ·
-    kept · deleted · nothing-to-delete · empty, and for a retain/hold request
-    ``hold_requested`` / ``hold_name`` / ``hold_ok`` / ``stale_request``.
+    kept · deleted · nothing-to-delete · empty, plus ``label`` for a retain
+    request that carried one, ``hold_requested`` / ``hold_name`` / ``hold_ok``
+    for a hold request (the rename lane only), and ``stale_request``.
 
     **Why the rename is caught and the snapshot is not** (spec-session-close-ux
     §4): a failed rename is **D7** — the user named the session, the name did
@@ -761,6 +763,9 @@ def finalize(store: "SessionStore", messages, *, outcome: Optional[dict] = None)
         return "no session"
 
     req = read_retain_request(store.sessions_dir)
+    # WHICH marker spoke decides what a name means: the retain marker labels,
+    # the legacy hold marker renames. See the docstring.
+    labelling = req is not None
     if req is None:
         requested, name = read_hold_request(store.sessions_dir)
         if requested:
@@ -771,10 +776,17 @@ def finalize(store: "SessionStore", messages, *, outcome: Optional[dict] = None)
 
     name_requested = False
     renamed = True
+    labelled = None
     name = None
     if req is not None:
         store.retain = bool(req["retain"])
-        if req["retain"] and req.get("name"):
+        if req["retain"] and req.get("name") and labelling:
+            # A label cannot fail: it is a field in the file the snapshot below
+            # writes, set exactly the way the start path sets --keep-name.
+            labelled = name = req["name"]
+            store.title = name
+            out["label"] = name
+        elif req["retain"] and req.get("name"):
             name_requested = True
             name = req["name"]
             out["hold_requested"] = True
@@ -787,7 +799,7 @@ def finalize(store: "SessionStore", messages, *, outcome: Optional[dict] = None)
                 renamed = False
                 out["hold_ok"] = False
                 out["hold_error"] = type(exc).__name__
-                logger.warning("[session] retain rename to {!r} failed ({}) — keeping the "
+                logger.warning("[session] hold rename to {!r} failed ({}) — keeping the "
                                "conversation under its current name", name, type(exc).__name__)
 
     if store.retain or store.held:
@@ -809,7 +821,8 @@ def finalize(store: "SessionStore", messages, *, outcome: Optional[dict] = None)
             return f"held → {store.path.name}" if renamed else (
                 f"held → {store.path.name} (could not use the name {name!r})")
         out["result"] = "kept"
-        return f"conversation kept → {store.path.name}"
+        return (f"conversation kept as {labelled!r} → {store.path.name}" if labelled
+                else f"conversation kept → {store.path.name}")
 
     if not store.path.exists() and not _persistable_messages(messages):
         out["result"] = "empty"

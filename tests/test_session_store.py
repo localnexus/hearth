@@ -140,16 +140,25 @@ def test_retain_lane(tmp):
     check(ss._meta_of(legacy_ro).retain is False,
           "a recall-only legacy file with no retain key reads as unkept")
 
-    # write_retain_request(True, name) then finalize -> renamed, held, marker gone
+    # write_retain_request(True, name) then finalize -> LABELLED, held, marker gone.
+    # Changed from "renamed to named-late.json": the retain marker's name is a
+    # label, not an id (decision 008, "Id ≠ label") — the file id never moves.
     named = _store(tmp, sid="session-named-late")
     named.snapshot(ctx.messages)
     ss.write_retain_request(True, "named-late", sessions_dir=Path(tmp))
-    status = ss.finalize(named, ctx.messages)
-    new_path = Path(tmp) / "named-late.json"
-    check(new_path.exists(), "renamed to named-late.json")
-    check(ss.load(new_path).get("held") is True, "renamed file is held")
+    out = {}
+    status = ss.finalize(named, ctx.messages, outcome=out)
+    check(named.path == Path(tmp) / "session-named-late.json" and named.path.exists(),
+          "the file id is untouched by a late name")
+    check(not (Path(tmp) / "named-late.json").exists(),
+          "no file was created under the label")
+    check(ss.load(named.path).get("title") == "named-late", "the name landed as the title")
+    check(ss.load(named.path).get("held") is True, "the labelled file is held")
+    check(out.get("label") == "named-late" and "hold_requested" not in out,
+          "the close row records a label, not a rename")
     check(not ss.retain_marker_path(Path(tmp)).exists(), "retain-request marker consumed")
-    check("held" in status, f"status reports held ({status!r})")
+    check("kept" in status and "named-late" in status,
+          f"status reports kept, with the label ({status!r})")
 
     # write_retain_request(False) on a retain=True store -> a change of mind, deleted
     changed_mind = _store(tmp, sid="session-change-of-mind", retain=True)

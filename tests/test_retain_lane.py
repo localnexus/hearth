@@ -19,6 +19,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from hearth.session import session_store as ss
+from hearth.session.verbs import SESSION_ID_RE
 
 BOT_SRC = Path(__file__).resolve().parents[1] / "src" / "hearth" / "pipeline" / "bot.py"
 
@@ -84,6 +85,40 @@ class RetainLane(unittest.TestCase):
         ss.finalize(st2, [{"role": "user", "content": "x"}], outcome=out2)
         self.assertTrue(out2.get("stale_request"), "a mismatched session_id is flagged stale")
         self.assertFalse(st2.path.exists(), "the store's own (default) retain decided instead")
+
+    def test_a_late_label_is_a_title_and_a_hold_still_renames(self):
+        """Id ≠ label (decision 008). The Stop card's default label is
+        "<character> · <date> <time>" — a space and a middle dot, neither legal
+        in a session id. Renaming the file to it produced a row every shelf verb
+        answered 400 for, so the retain marker labels and never renames; the
+        older hold marker's rename is untouched."""
+        label = "placeholder-companion · 2026-09-15 10:55"
+
+        st = _store(self.d, "session-labelled")
+        st.snapshot([{"role": "user", "content": "x"}])
+        ss.write_retain_request(True, label, sessions_dir=self.d)
+        out = {}
+        status = ss.finalize(st, [{"role": "user", "content": "x"}], outcome=out)
+
+        self.assertEqual(st.session_id, "session-labelled", "the file id never moved")
+        self.assertTrue((self.d / "session-labelled.json").exists())
+        self.assertEqual([p.name for p in self.d.glob("*.json")],
+                         ["session-labelled.json"], "no second file under the label")
+        self.assertTrue(SESSION_ID_RE.fullmatch(st.session_id),
+                        "the id every shelf verb checks is still legal")
+        self.assertEqual(ss.load(st.path).get("title"), label)
+        self.assertEqual(out.get("label"), label)
+        self.assertNotIn("hold_requested", out, "nothing was renamed, so nothing to report")
+        self.assertIn("kept", status)
+
+        st2 = _store(self.d, "session-held-name")
+        st2.snapshot([{"role": "user", "content": "x"}])
+        ss.write_hold_request("work-chat", sessions_dir=self.d)
+        ss.finalize(st2, [{"role": "user", "content": "x"}])
+        self.assertEqual(st2.session_id, "work-chat",
+                         "the legacy hold marker still renames, for one release")
+        self.assertTrue((self.d / "work-chat.json").exists())
+        self.assertFalse((self.d / "session-held-name.json").exists())
 
     def test_expiry_sweep_spares_young_orphans(self):
         young = _store(self.d, "session-young")

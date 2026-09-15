@@ -65,7 +65,9 @@ than offering something that would be refused.
 companion change, and it's covered in [The one-button switch](the-one-button-switch.md). Beside it: a
 **Stop** button with its own **keep this conversation** box and an optional name field — ticking the box
 before pressing Stop is the late chance to keep what would otherwise be deleted, and the button's label
-says which it will do (**Stop**, or **Stop and keep**). Plus a link straight into the control panel.
+says which it will do (**Stop**, or **Stop and keep**). The name you type is a label for the shelf, not a
+filename: the conversation keeps the id it was born with, so nothing that already points at it is lost.
+Plus a link straight into the control panel.
 
 Below, when Hearth is kept alive by launchd, a **Restart Hearth** card: the way to pick up an update to
 the pages. A companion who is talking keeps talking; the page reconnects by itself. Started from a
