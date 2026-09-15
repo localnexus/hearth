@@ -87,7 +87,8 @@ class PinDefaultTests(unittest.TestCase):
 class ResolveIndexTests(unittest.TestCase):
 
     def test_resolve_unique_name_in_direction(self):
-        pa = _PA([_entry(0, "desk mic", 1, 0), _entry(1, "desk ears", 0, 2)])
+        # "some other mic" has the right channels and the wrong name: only the name check keeps it out.
+        pa = _PA([_entry(0, "desk mic", 1, 0), _entry(1, "desk ears", 0, 2), _entry(2, "some other mic", 1, 0)])
         pin = DevicePin(uid="uid-mic", name="desk mic", direction="in", rate=48000)
         self.assertEqual(resolve_index(pa, pin), 0)
 
@@ -97,7 +98,8 @@ class ResolveIndexTests(unittest.TestCase):
         self.assertIsNone(resolve_index(pa, pin))
 
     def test_resolve_refuses_an_absent_name(self):
-        pa = _PA([_entry(0, "desk ears", 0, 2)])
+        # an input device exists, but under another name: name equality alone must refuse it
+        pa = _PA([_entry(0, "desk ears", 0, 2), _entry(1, "some other mic", 1, 0)])
         pin = DevicePin(uid="uid-mic", name="desk mic", direction="in", rate=48000)
         self.assertIsNone(resolve_index(pa, pin))
 
