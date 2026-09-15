@@ -6,9 +6,9 @@
 
 **By design:**
 - **Interactive terminal, ≥1 resumable session:** a metadata-only chooser — `0. new session` + each saved session (named ones tagged `[HELD]`). Number = resume · `0` = fresh · **Enter/Ctrl-C = cancel** (nothing started or discarded). With zero saved sessions (fresh install) there's nothing to choose from — it starts fresh with no menu, same as `--new`.
-- **Non-interactive** (launchd / web / piped stdin): starts fresh without discarding anything; the hard **guard** exits 2 only when a **recall-only leftover** (a crashed `--memory recall-only` sitting's file) is present, so automation never silently deletes the privacy tier's one recovery chance — re-run with `--resume <name>` or `--new`.
+- **Non-interactive** (launchd / web / piped stdin): starts fresh without discarding anything; the guard prints a **notice**, never an exit, when an **unkept leftover** (an unclean death's working file) is waiting — it stays in quarantine on the launch page, keep or delete it there. Re-run with `--resume <name>` or `--new` any time.
 
-> Sessions save by default; `0` / `--new` sweep only recall-only leftovers. Saved and held sessions are never removed by a fresh start — only `./stop.sh --discard-held` (or deleting the file) removes them.
+> Conversations are unkept by default; `0` / `--new` sweep only expired unkept leftovers. Kept conversations are never removed by a fresh start — only `./stop.sh --discard-held` (or deleting the file) removes them.
 
 ### Fault S2 — `--resume <name>` shows nothing / "session not found"
 
@@ -43,6 +43,6 @@
 
 **Purge options:**
 - `./stop.sh --discard-held [name|--all]` — true-delete a held session.
-- Manual: `rm characters/<character>/sessions/<file>.json` for a session you've confirmed you don't need (sessions save by default — a graceful stop no longer deletes anything except a recall-only sitting's transcript).
+- Manual: `rm characters/<character>/sessions/<file>.json` for a session you've confirmed you don't need (conversations are unkept by default — a graceful stop deletes everything except one you asked to keep).
 
 Each companion's `sessions/` is `0700`, gitignored, never exposed over the `:65000` web endpoint. If it ever gets accidentally un-ignored, re-add `sessions/` to `.gitignore` immediately.

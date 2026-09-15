@@ -76,7 +76,7 @@ async function pollUsage() {
     if (zone === 'warn') $('ctxwarn').textContent = '⚠ Getting close to where the model stops working reliably — a good moment to wrap up, or start a fresh conversation.';
     else if (zone === 'over') $('ctxwarn').textContent = '⚠ Past where the model works reliably — wrap up now, or start a fresh conversation.';
     $('s-misc').textContent =
-      `Misc   | Conversation: ${engine.session || DASH} · Memory: ${engine.memory_mode || DASH} · Turns: ${fmt(u.turns)} · net turn growth: ${fmt(u.net_turn_growth)} · total tok. xmitted: ${fmt(u.prompt)}`;
+      `Misc   | Conversation: ${engine.session || DASH} · Remembering: ${engine.recall === false ? "off" : engine.recall === true ? "on" : DASH} · Keeping: ${engine.retain === true ? "on" : engine.retain === false ? "off" : DASH} · Turns: ${fmt(u.turns)} · net turn growth: ${fmt(u.net_turn_growth)} · total tok. xmitted: ${fmt(u.prompt)}`;
     $('leak').classList.toggle('hidden', !u.leak);
   } catch(e) { /* transient; next tick retries */ }
 }
@@ -100,7 +100,7 @@ async function pollMemory() {
     const turn = s.turn_recall
       ? `${fmt(s.turn_recall.extras)} extra(s) via ${s.turn_recall.source || DASH}` : DASH;
     $('s-memory-txt').textContent =
-      `Memory | ${s.backend || DASH}${s.retain === false ? ' (recall-only)' : ''} · per-turn: ${ptTxt} · recalled: ${open} · last turn: ${turn}`;
+      `Memory | ${s.backend || DASH}${s.retain === false ? ' (not keeping)' : ''} · per-turn: ${ptTxt} · recalled: ${open} · last turn: ${turn}`;
     // Per-turn-voice pause/resume: a RUNTIME-ONLY poke of the live seam
     // (decision signed 2026-09-02) — self-gating: shown only when bot.py built
     // the prefetch processor this sitting (a voice-off start has nothing to

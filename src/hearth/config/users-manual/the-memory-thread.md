@@ -53,20 +53,21 @@ separately while they are open, so two live conversations can't overwrite each o
 That separation ends when they close. Both land in the same history. A walk and a desk session are two
 sessions with one companion, not two companions — and the next conversation recalls from all of it.
 
-## The three modes, per session
+## The two switches, per session
 
-Each session runs in one of three modes, chosen when it starts and shown on the panel's **Memory**
-line while it runs:
+Each session runs with two switches set when it starts, and shown on the panel's **Misc** line
+while it runs: whether to **remember the past**, and whether to **keep this conversation**.
 
-| Mode | Recall | Retain |
+| | keeps this conversation: off | keeps this conversation: on |
 |---|---|---|
-| `full` | yes | yes — this session becomes part of the thread |
-| `recall-only` | yes | **no** — they remember everything, this session leaves no record |
-| `off` | no | no — a fresh meeting, and nothing is written |
+| remembers the past: on | the default — they remember everything, this session adds nothing to the thread | this session becomes part of the thread too |
+| remembers the past: off | a fresh meeting — nothing recalled, nothing kept | a first meeting you want remembered afterwards |
 
-`recall-only` is the useful middle one: a conversation you'd rather not add to the record, held by someone
-who still knows you. The mode is picked on the launch page before starting, and it is a property of *that
-session* — a resumed conversation keeps its own mode unless you say otherwise.
+The launch page ticks the default cell — remembering the past, not keeping this one — unless you
+ask otherwise. Both switches are a property of *that session*, not the companion: a resumed
+conversation keeps its own switches unless you say otherwise, and because a kept conversation is
+never written to directly, resuming one always works on a copy — keeping that copy is what
+replaces the original.
 
 ## How a session becomes a memory
 

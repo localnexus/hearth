@@ -21,7 +21,7 @@ CLI (used by start.sh / stop.sh; keeps the bash thin and the logic unit-tested):
     python session_store.py list
     python session_store.py request-hold [name|path] [--cwd folder]  # bot running: drop marker, bot honors in finally
     python session_store.py hold [name|path] [--cwd folder]          # no bot: name/keep the newest unnamed session
-    python session_store.py discard-ephemeral      # sweep recall-only leftovers (everything else is saved)
+    python session_store.py discard-ephemeral      # sweep unkept leftovers (kept conversations are never touched)
     python session_store.py discard-held [name|--all]
 
 Locator rule: a bare name (no separator, no leading "." or "~") saves under the sessions

@@ -2,18 +2,20 @@
 
 Per-turn transcript saved to `characters/<character>/sessions/<id>.json` under the data folder (dir `0700`, file `0600`, gitignored). Sessions are keyed by companion: the choosers only offer the live character's; `python -m hearth.session.session_store list` shows every companion's. Persona prompt NOT stored. No new env vars or deps.
 
-**Saved by default** — `./stop.sh` keeps the session (unclean exits keep it too); deleting is the
-explicit act. The one carve-out: a `--memory recall-only` sitting stays **transcript-ephemeral** —
-its file is truly deleted on graceful stop (and its crash leftover is swept by the next fresh
-start) unless explicitly held.
+**Unkept by default** — `./stop.sh` deletes the working file unless it was kept; keeping is the
+explicit act. An unclean death leaves an unkept file behind too — it waits in quarantine on the
+launch page for a week (keep or delete it there) rather than being swept on sight.
 
 | Flag | Script | Effect |
 |---|---|---|
 | `--resume [file\|name]` | `start.sh` | Reload a prior session. Bare = metadata-only picker if >1 candidate. |
-| `--new` | `start.sh` | Start fresh. Saved sessions are kept; only recall-only leftovers are swept. |
-| `--memory <mode>` | `start.sh` | This sitting's memory posture: `full` (default) · `recall-only` (recalls, retains nothing) · `off` (no seam). Governs the memory **bank**; the transcript layer keys ONE default off it — a recall-only sitting's transcript deletes on graceful stop unless held. Non-full sittings stamp the session file; `--resume` without the flag inherits the stamp. See [memory.md](../memory.md). |
-| `--hold [name]` | `stop.sh` | Name/keep: mark the session **held** — sticky, sweep-exempt, named for `--resume <name>`. Also the explicit keep for a recall-only sitting's transcript. |
-| `--discard-held <name>` | `stop.sh` | True-delete ONE held session (immediate). Bare/`--all` wipe of **all** held is irreversible → requires typing **`HEARTH`** to confirm (refused non-interactively). |
+| `--new` | `start.sh` | Start fresh. Kept conversations are untouched; only expired unkept leftovers are swept. |
+| `--no-recall` | `start.sh` | Start without remembering the past — a first meeting. |
+| `--keep` | `start.sh` | Keep this conversation: at Stop the transcript goes on the shelf and what was said is remembered afterwards. |
+| `--keep-name <label>` | `start.sh` | The label a kept conversation carries from its first turn. |
+| `--memory <mode>` | `start.sh` | The older one-word form of the two switches above, kept for one release: `full` (= `--keep`) · `recall-only` (the default) · `off` (= `--no-recall`). Non-kept sittings stamp the session file; `--resume` without the flag inherits the stamp. See [memory.md](../memory.md). |
+| `--hold [name]` | `stop.sh` | Keep and name: mark the session **kept** — sticky, sweep-exempt, named for `--resume <name>`. The older form of the Stop card's keep switch. |
+| `--discard-held <name>` | `stop.sh` | True-delete ONE kept conversation (immediate). Bare/`--all` wipe of **all** kept is irreversible → requires typing **`HEARTH`** to confirm (refused non-interactively). |
 
 **Bare `./start.sh`:** interactive TTY → a metadata-only **chooser** (`0`=new · N=resume · Enter=cancel) listing every saved session; non-interactive → falls through to fresh (nothing is discarded), except a hard **exit-2 guard** when a recall-only leftover is present (automation never silently discards the privacy tier's one recovery chance). Resume mismatch → **warns, never blocks**; malformed file → fresh fallback. See the [runbook](../runbook/03.5-session-continuity.md) and [debugging/session-continuity-faults.md](../debugging/session-continuity-faults.md).
 

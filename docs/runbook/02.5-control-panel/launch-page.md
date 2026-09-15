@@ -15,14 +15,16 @@ WebRTC). Open `http://<facade-host>:65001/admin/launch`; it asks for the serve a
   **warm** switch possible without walking to the desk — Hearth applies it at the next words
   when every changed piece has a live path, and warm-restarts otherwise. Both rides are the same
   `POST /admin/switch`; a down companion gets `start:true`.
-- **Session + Memory** (companion down only): **— new session —** or a saved session off the shelf, and
-  the memory posture (default = full; a resumed session keeps its own saved mode). Both are
-  start-only — a memory change cannot ride a live switch, so Hearth refuses that pairing.
+- **Session + the two switches** (companion down only): **— new session —** or a conversation off the
+  shelf, and this sitting's remember-the-past / keep-this-conversation switches (default = remember,
+  don't keep; a resumed conversation keeps its own switches). Both are start-only — the switches
+  cannot ride a live switch, so Hearth refuses that pairing.
 - The **control panel** link (companion up): the page mints the browser carrier once per load, so
   the proxied `:65000` panel opens by clicking rather than answering `401`. Everything else
   here sends the access key as a header and never needs the cookie.
-- **Stop** (companion up): one button — the session saves by default; an optional *name this session*
-  field is the "name it now" ergonomic. Plus a link into the proxied control panel.
+- **Stop** (companion up): the session is unkept by default; a **keep this conversation** box and an
+  optional name field are the late chance to keep it, and the button's label says which it will do
+  (**Stop**, or **Stop and keep**). Plus a link into the proxied control panel.
 - A live state line (companion / pid / uptime / externals / switch phase, polled every few seconds).
 - **Externals** (only when actuators are declared): one row per
   `[serve.supervisor.actuators.<name>]` with its note, its reachability probe, and the last

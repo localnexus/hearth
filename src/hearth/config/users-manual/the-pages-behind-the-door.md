@@ -53,18 +53,19 @@ Hearth, and it never makes you remember a flag.
 
 **When nothing is running**, it offers a start: who to bring up (the same companion card the panel carries —
 character, voice, persona, model), which **conversation** to open (a new one, or one off the shelf), and this
-session's **memory posture** — remembering and recording normally, remembering but leaving no record behind,
-or a fresh meeting with no memory at all. There's also a button to **compact** a selected conversation first,
+session's two switches — **remember the past** (on by default) and **keep this conversation** (off by
+default, with a field to name it). There's also a button to **compact** a selected conversation first,
 which shrinks a long transcript before it's reopened.
 
-Conversation and memory are **start-only, on purpose.** The posture is decided when the companion comes up and
-doesn't change underneath a live conversation, so those two controls disappear once one is running rather
+Conversation and the two switches are **start-only, on purpose.** They're decided when the companion comes up
+and don't change underneath a live conversation, so those controls disappear once one is running rather
 than offering something that would be refused.
 
 **When someone is running**, the same card reads **Switch** instead of Start — that's the one-press
 companion change, and it's covered in [The one-button switch](the-one-button-switch.md). Beside it: a
-**Stop** button, with an optional field to name the conversation on the way out (it saves either way), and a link
-straight into the control panel.
+**Stop** button with its own **keep this conversation** box and an optional name field — ticking the box
+before pressing Stop is the late chance to keep what would otherwise be deleted, and the button's label
+says which it will do (**Stop**, or **Stop and keep**). Plus a link straight into the control panel.
 
 Below, when Hearth is kept alive by launchd, a **Restart Hearth** card: the way to pick up an update to
 the pages. A companion who is talking keeps talking; the page reconnects by itself. Started from a

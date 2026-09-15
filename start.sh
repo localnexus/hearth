@@ -2,9 +2,12 @@
 # start.sh — bring the Hearth voice loop online (preflight + launch).
 #   ./start.sh          run preflight, then launch the bot in the FOREGROUND (Ctrl-C or ./stop.sh to stop)
 #   ./start.sh --check  run preflight ONLY and exit (are we ready to launch?) — does not touch the mic
-#   ./start.sh --resume [file|name|path] · --new · --memory <mode>    session flags (forwarded to the bot)
-#                                              --memory: full | recall-only | off — this sitting's
-#                                              memory posture (bank only; see docs/memory.md)
+#   ./start.sh --resume [file|name|path] · --new · --keep · --keep-name <label> · --no-recall · --memory <mode>
+#                                              session flags (forwarded to the bot) — --keep: keep this
+#                                              conversation afterwards · --keep-name <label>: keep it, and
+#                                              name it · --no-recall: don't remember the past this sitting ·
+#                                              --memory: the older one-word form (full | recall-only | off;
+#                                              see docs/memory.md)
 #
 # Run it in a terminal window — mic permission (macOS TCC) is granted to the terminal app, not to python.
 #
@@ -59,7 +62,13 @@ while [ $# -gt 0 ]; do
       [ $# -ge 2 ] || fail "--memory needs a value: full | recall-only | off"
       BOT_ARGS+=("--memory" "$2"); shift 2
       ;;
-    *) fail "unknown arg '${1}'. Usage: ./start.sh [--check] [--resume [file|name]] [--new] [--memory full|recall-only|off]" ;;
+    --keep) BOT_ARGS+=("--keep"); shift ;;
+    --keep-name)
+      [ $# -ge 2 ] || fail "--keep-name needs a value: <label>"
+      BOT_ARGS+=("--keep-name" "$2"); shift 2
+      ;;
+    --no-recall) BOT_ARGS+=("--no-recall"); shift ;;
+    *) fail "unknown arg '${1}'. Usage: ./start.sh [--check] [--resume [file|name]] [--new] [--keep] [--keep-name <label>] [--no-recall] [--memory full|recall-only|off]" ;;
   esac
 done
 

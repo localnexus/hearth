@@ -32,9 +32,9 @@ is still the selection, a save from the panel's preset buttons carries the key t
 untouched, and a pin naming a bundle that has been renamed away falls back to first-in-list
 rather than pre-selecting a voice that cannot load.
 
-Tick **keep this session** to drop a hold marker first, so the current session is kept as a
-**named (held)** one (the `stop.sh --hold` semantics; sessions save by default either way, and
-for a recall-only sitting the marker is what keeps the transcript) — honored on BOTH paths. The box hides
+Tick **keep this conversation** to drop a keep marker first, so the current session is kept —
+sticky, named if you gave it a name (the `stop.sh --hold` semantics) — the marker is what keeps
+the transcript, whichever way it closes — honored on BOTH paths. The box hides
 itself when Hearth isn't configured, isn't reachable, or the panel is LAN-exposed
 (`WEB_HOST` not loopback — use Hearth's authed `/admin/switch` directly there).
 
@@ -45,7 +45,7 @@ panel page and Hearth's [launch page](launch-page.md) at import. Same fields, sa
 same live-vs-restart reading — Hearth does the routing either way, so the two surfaces
 cannot answer differently. What each host still owns is only what genuinely differs: the
 transport (the panel's unauthed loopback relay vs. Hearth's access key), the start-only riders
-(session + memory-mode, which the launch page adds on a cold start), and the aftermath — the
+(session + the two switches, which the launch page adds on a cold start), and the aftermath — the
 panel dies with a restarting companion and waits for its own return, while Hearth page stays up.
 
 On the launch page the same box reads **Start** while the companion is down and **Switch** while it is

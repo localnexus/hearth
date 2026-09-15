@@ -4,59 +4,71 @@
 
 What a single sitting does with the bank, and what the last one leaves for the next.
 
-## Per-session memory mode (`--memory`)
+## The two switches
 
-Enrollment says whether a companion *has* memory; the per-session mode says
-what **this sitting** does with it. Recall (reading the bank) and retention
-(writing it) are independent operations, so the launch flag offers three
-postures:
+Two independent switches govern one sitting: **remember the past** (recall — do
+they open aware of earlier conversations?) and **keep this conversation**
+(retain — does what's said this sitting get added to what they remember?).
+They bind at different moments: recall at session **start**, retain at session
+**close**.
+
+|  | keep this conversation: **off** | keep this conversation: **on** |
+|---|---|---|
+| remember the past: **on** | the default — they remember everything, this sitting adds nothing to the shelf | remembers, and this sitting joins what they remember |
+| remember the past: **off** | a fresh meeting — no memory in, nothing kept | a first meeting you want remembered afterwards |
 
 ```bash
-./start.sh                         # full (default): recall + retain, as configured
-./start.sh --memory recall-only    # they remember everything — this sitting adds nothing to the bank
-./start.sh --memory off            # no recall, no retention: a fresh meeting
+./start.sh                              # default: remember the past, don't keep this one
+./start.sh --keep                       # remember the past, and keep this conversation too
+./start.sh --keep --keep-name <label>   # keep it, and give it a name
+./start.sh --no-recall                  # a fresh meeting — no memory in
+./start.sh --no-recall --keep           # a fresh meeting you want remembered afterwards
 ```
 
-* **full** — today's behavior, unchanged. Flag absent means full (or a resumed
-  session's own saved mode — see the stamp below).
-* **recall-only** — recall runs exactly as configured (the open-time block,
-  per-turn targeted recall, an intent line), but at session end **nothing is
-  retained**: no canonical record, no backend index or consolidate, no intent
-  capture. The shutdown log says `recall-only session — nothing retained`, so
-  suppression is never mistakable for a memory failure. An injected intent
-  line is *peeked, not consumed* — the plan survives for the next full session.
-* **off** — the seam is not attached at all: no recall block, no per-turn
-  extras, nothing written. Like mapping the companion to `"none"`, but for one
-  sitting instead of forever.
+`--memory full|recall-only|off` is the older, one-word form of the same two
+switches, kept for one release: `full` is `--keep`, `recall-only` is the
+default (recall on, nothing kept), `off` is `--no-recall`.
 
-**The mode governs the memory bank.** The session transcript keeps its own
-lifecycle (saved-by-default — see the
-[runbook](runbook/03.5-session-continuity.md)), with ONE default keyed off the
-mode: a `recall-only` sitting's transcript is deleted on graceful stop unless
-held, so the privacy tier truly leaves no durable record by default.
-`--memory recall-only` plus `./stop.sh --hold` is still coherent: transcript
-kept, bank untouched.
+**The close rule.** An unkept conversation's working file is deleted at a
+graceful stop — nothing was asked to be remembered, so nothing durable is left
+behind. A kept conversation goes on the shelf: the transcript stays, and what
+was said is folded into what the companion remembers.
 
-**Crash safety — the stamp.** A non-full sitting stamps its mode into the
-session file. If the sitting dies uncleanly, the orphan carries the stamp and a
-later `--resume` *without* the flag inherits it (announced at startup) — a
-recall-only conversation cannot get banked just because the resume forgot the
-flag. An explicit `--memory` always wins and re-stamps.
+**The fork rule.** A kept conversation is immutable to sittings: resuming it
+copies it into a fresh working file (a fork) rather than writing the original
+in place, so the sitting you are having can never corrupt the one you resumed
+from. Keep that fork and the keep replaces the original — the older file steps
+aside for the newer one. A **watermark** travels with the fork (how much of the
+conversation was already remembered before it began), so keeping it later only
+adds what's new to what the companion remembers, never doubling up.
 
-**Live companion switch.** The mode is the sitting's posture, not the
-companion's: a live switch attaches the incoming companion under the same mode,
-and the outgoing companion's session-end honors its own. Resuming a session
-(via the switch) that was saved under a different mode warns — the sitting's
-mode wins.
+**The quarantine.** An unkept conversation that an unclean death leaves behind
+is never swept on sight — it waits on the launch page for a week, offered as
+keep or delete, then is quietly removed. A start is never blocked by one
+waiting.
 
-**Boundaries.** A restart-path switch spawns a new companion process — that is a new
-sitting, back to the default (or to the resumed session's stamp). The serve
-Hearth's conversations are separate sittings; this flag does not govern them.
+**Crash safety — the stamp.** A sitting that isn't keeping this conversation
+stamps that onto the session file. If the sitting dies uncleanly, the orphan
+carries the stamp and a later `--resume` *without* the flag inherits it
+(announced at startup) — a conversation that wasn't being kept cannot get
+kept just because the resume forgot the flag. An explicit `--keep` or
+`--no-recall` always wins and re-stamps.
 
-**Seeing it.** The control panel's `Misc` line shows the sitting's effective
-posture (`Memory: full | recall-only | off`; a `—` means memory isn't
-configured at all), so mid-conversation you never have to wonder whether the
-sitting retains.
+**Live companion switch.** The switches are the sitting's posture, not the
+companion's: a live switch attaches the incoming companion under the same
+posture, and the outgoing companion's session-end honors its own. Resuming a
+session (via the switch) that was kept under a different posture warns — the
+sitting's posture wins.
+
+**Boundaries.** A restart-path switch spawns a new companion process — that is
+a new sitting, back to the default (or to the resumed session's stamp). The
+serve Hearth's conversations are separate sittings; these flags do not govern
+them.
+
+**Seeing it.** The control panel's `Misc` line shows both switches for the
+running sitting (`Remembering: on | off`, `Keeping: on | off`; a `—` means
+memory isn't configured at all), so mid-conversation you never have to wonder
+which way either one is set.
 
 ## Intent-primed boot recall
 
@@ -78,8 +90,10 @@ land next time:
 * **Consume-once** — the slot is deleted the moment it has been injected. A
   plan that re-asserts itself for weeks is worse than no plan. An expiry
   backstop (`expiry_days`, default 14) clears one that was never used. (One
-  exception: a `--memory recall-only` sitting injects the line but leaves the
-  slot in place — "one use" means one *retaining* use.)
+  exception: the read lane injects the line unconditionally, but the write
+  lane is what consumes it, and only at close — a sitting not keeping this
+  conversation injects the line but leaves the slot in place, so "one use"
+  means one *retaining* use.)
 
 This works on **every** backend, the floor included: the capture call goes to
 the extraction model directly from the seam, and the injected line doesn't

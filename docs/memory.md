@@ -54,7 +54,7 @@ Memory's detail lives in [`memory/`](memory/), one page per concern:
 | Page | What it covers |
 |---|---|
 | [Records, forking, and forgetting](memory/records-and-curation.md) | The record is the truth; backends are indexes · Forking the track at a juncture · Forgetting one conversation |
-| [Session mode and boot recall](memory/session-modes.md) | Per-session memory mode (`--memory`) · Intent-primed boot recall |
+| [Session mode and boot recall](memory/session-modes.md) | The two switches (`--keep` / `--no-recall`) · Intent-primed boot recall |
 | [Per-turn targeted recall](memory/per-turn-recall.md) | Recall re-asked on the user's own words, every turn |
 | [The Hearth lane](memory/serve-facade-lane.md) | Sessions for the `/v1` door · client-declared companions |
 | [Backends](memory/backends.md) | The floor · Hindsight setup (sidecar topology) and its notes |

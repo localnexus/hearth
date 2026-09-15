@@ -11,14 +11,16 @@
 ./stop.sh           stop the loop from any shell (your LLM server is left running)
 ```
 
-**Session continuity flags** (both scripts forward these — sessions save by default; full story in [§3.5](03.5-session-continuity.md)):
+**Session continuity flags** (both scripts forward these — conversations are unkept by default; full story in [§3.5](03.5-session-continuity.md)):
 ```
 ./start.sh --resume [file|name]   resume a saved session (bare --resume = metadata picker)
 ./start.sh --new                   force a fresh session, skipping the interactive chooser
-./start.sh --memory <mode>         this sitting's posture: full | recall-only | off
-./stop.sh --hold [name]            stop and NAME this session (sticky, sweep-exempt)
-./stop.sh --discard-held <name>    true-delete one held session
-./stop.sh --discard-held --all     true-delete ALL held sessions (irreversible — requires typing HEARTH)
+./start.sh --no-recall              don't remember the past this sitting — a first meeting
+./start.sh --keep [--keep-name <label>]   keep this conversation, optionally naming it
+./start.sh --memory <mode>         the older one-word form: full | recall-only | off
+./stop.sh --hold [name]            stop and keep this conversation, naming it (sticky, sweep-exempt)
+./stop.sh --discard-held <name>    true-delete one kept conversation
+./stop.sh --discard-held --all     true-delete ALL kept conversations (irreversible — requires typing HEARTH)
 ```
 
 Manual equivalent:

@@ -5,13 +5,13 @@
 # stop llama-server (or eject the model in whatever server you run); this script never touches it.
 #
 # Session continuity (Tier 1):
-#   ./stop.sh                     stop; the session is SAVED by default (a recall-only sitting is
-#                                 the carve-out: its transcript is truly deleted unless held)
-#   ./stop.sh --hold [name|path]  stop and NAME this session (held class: sticky, purge-exempt,
-#                                 resumable via `--resume <name>`; also the explicit keep for a
-#                                 recall-only sitting)
-#   ./stop.sh --discard-held <name>         true-delete ONE held session (targeted, immediate)
-#   ./stop.sh --discard-held [--all]         true-delete ALL held — irreversible; requires typing HEARTH
+#   ./stop.sh                     stop; the conversation is UNKEPT by default (deleted at this
+#                                 graceful stop unless kept)
+#   ./stop.sh --hold [name|path]  stop and keep this conversation, naming it (the older form of
+#                                 the Stop card's keep switch: sticky, purge-exempt, resumable via
+#                                 `--resume <name>`)
+#   ./stop.sh --discard-held <name>         true-delete ONE kept conversation (targeted, immediate)
+#   ./stop.sh --discard-held [--all]         true-delete ALL kept — irreversible; requires typing HEARTH
 set -uo pipefail
 
 CALLER_PWD="$PWD"   # the folder the operator ran this from — a path locator anchors here
