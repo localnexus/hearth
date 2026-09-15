@@ -4,9 +4,10 @@ Runs WITHOUT mic / LM Studio (the voice loop can't be exercised here). It proves
 the load-bearing invariants on the REAL artifacts:
   1. context.messages JSON round-trip through a real LLMContext (the #1 risk)
   2. system prompt is never persisted (no duplication on reload)
-  3. saved-by-default on graceful stop; recall-only carve-out deletes; held sticky;
-     hold-request promotes/names
-  4. picker/guard metadata never carries content; sweep spares saved + held
+  3. unkept by default on graceful stop; retain keeps (and marks held); a late
+     retain-request (or the legacy hold marker) can still flip the switch
+  4. picker/guard metadata never carries content; unkept orphans are
+     quarantined, not swept, until they expire; keep_orphan promotes by id
   5. atomicity (no .tmp left) + private perms (dir 0700 / file 0600)
   6. malformed files never crash startup (fall back / skip)
 
@@ -20,6 +21,7 @@ import os
 import stat
 import sys
 import tempfile
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from hearth.session import session_store as ss
@@ -39,10 +41,10 @@ def check(cond, label):
         print(f"  FAIL  {label}")
 
 
-def _store(tmp, sid="session-test", held=False, name=None, memory_mode="full"):
+def _store(tmp, sid="session-test", held=False, retain=False, name=None, memory_mode="full"):
     return ss.SessionStore(
         session_id=sid, model="qwen-test", voice="default",
-        prompt_sha256="deadbeef", sessions_dir=Path(tmp), held=held, name=name,
+        prompt_sha256="deadbeef", sessions_dir=Path(tmp), held=held, retain=retain, name=name,
         memory_mode=memory_mode,
     )
 
@@ -87,16 +89,16 @@ def test_system_excluded(tmp):
     check(roles == ["user"], "only the user message persisted")
 
 
-def test_saved_default(tmp):
-    print("\n[3a] saved-by-default: graceful stop KEEPS the file; empty sitting saves nothing")
+def test_unkept_by_default(tmp):
+    print("\n[3a] unkept by default: graceful stop DELETES the file; empty sitting saves nothing")
     ctx = LLMContext()
     ctx.add_message({"role": "user", "content": "hi"})
-    st = _store(tmp, sid="session-saved")
+    st = _store(tmp, sid="session-unkept")
     st.snapshot(ctx.messages)
     check(st.path.exists(), "file exists after a turn")
     status = ss.finalize(st, ctx.messages)
-    check(st.path.exists(), "file SURVIVES graceful finalize (saved by default)")
-    check("saved" in status, f"status reports saved ({status!r})")
+    check(not st.path.exists(), "file GONE after graceful finalize (unkept by default)")
+    check("not kept" in status, f"status reports not kept ({status!r})")
     # zero-turn sitting: no file was ever snapshotted → finalize creates nothing
     empty = _store(tmp, sid="session-empty")
     status = ss.finalize(empty, [])
@@ -104,33 +106,68 @@ def test_saved_default(tmp):
     check("nothing to save" in status, f"status reports empty ({status!r})")
 
 
-def test_recall_only_carveout(tmp):
-    print("\n[3a'] recall-only carve-out: transcript truly deleted on graceful stop; held exempt")
-    ctx = LLMContext()
-    ctx.add_message({"role": "user", "content": "private"})
-    st = _store(tmp, sid="session-ro", memory_mode="recall-only")
-    st.snapshot(ctx.messages)
-    check(ss.load(st.path).get("memory_mode") == "recall-only", "leftover carries its stamp")
-    status = ss.finalize(st, ctx.messages)
-    check(not st.path.exists(), "recall-only file GONE after graceful finalize")
-    check("deleted" in status, f"status reports deletion ({status!r})")
-    # explicit keep wins over the carve-out
-    kept = _store(tmp, sid="session-ro-held", held=True, memory_mode="recall-only")
-    kept.snapshot(ctx.messages)
-    status = ss.finalize(kept, ctx.messages)
-    check(kept.path.exists(), "held recall-only file SURVIVES (deliberate keep wins)")
-    check("kept" in status, f"status reports kept ({status!r})")
-
-
-def test_held_exempt(tmp):
-    print("\n[3b] held session is exempt from the ephemeral delete (sticky)")
+def test_retain_lane(tmp):
+    print("\n[3b] retain: the write switch keeps the file, and a late request can flip it")
     ctx = LLMContext()
     ctx.add_message({"role": "user", "content": "keep me"})
-    st = _store(tmp, sid="session-held", held=True)
+
+    st = _store(tmp, sid="session-retained", retain=True)
     st.snapshot(ctx.messages)
     status = ss.finalize(st, ctx.messages)
-    check(st.path.exists(), "held file SURVIVES graceful finalize")
+    check(st.path.exists(), "retain=True file SURVIVES graceful finalize")
+    check(ss.load(st.path).get("held") is True, "kept file is stamped held")
     check("kept" in status, f"status reports kept ({status!r})")
+
+    already_held = _store(tmp, sid="session-already-held", held=True)
+    already_held.snapshot(ctx.messages)
+    status = ss.finalize(already_held, ctx.messages)
+    check(already_held.path.exists(), "an already-held store stays kept (sticky)")
+    check("kept" in status, f"status reports kept ({status!r})")
+
+    # a file written without a retain key reads as kept through _meta_of
+    legacy = Path(tmp) / "legacy-no-key.json"
+    ss._atomic_write_json(legacy, {"schema": 2, "model": "m", "voice": "v", "persona": "default",
+                                   "started": "x", "updated": "x", "held": False,
+                                   "messages": [{"role": "user", "content": "x"}]})
+    check(ss._meta_of(legacy).retain is True, "a file with no retain key reads as kept")
+
+    # a file stamped memory_mode: recall-only and no retain key reads retain=False
+    legacy_ro = Path(tmp) / "legacy-ro.json"
+    ss._atomic_write_json(legacy_ro, {"schema": 2, "model": "m", "voice": "v", "persona": "default",
+                                      "started": "x", "updated": "x", "held": False,
+                                      "memory_mode": "recall-only",
+                                      "messages": [{"role": "user", "content": "x"}]})
+    check(ss._meta_of(legacy_ro).retain is False,
+          "a recall-only legacy file with no retain key reads as unkept")
+
+    # write_retain_request(True, name) then finalize -> renamed, held, marker gone
+    named = _store(tmp, sid="session-named-late")
+    named.snapshot(ctx.messages)
+    ss.write_retain_request(True, "named-late", sessions_dir=Path(tmp))
+    status = ss.finalize(named, ctx.messages)
+    new_path = Path(tmp) / "named-late.json"
+    check(new_path.exists(), "renamed to named-late.json")
+    check(ss.load(new_path).get("held") is True, "renamed file is held")
+    check(not ss.retain_marker_path(Path(tmp)).exists(), "retain-request marker consumed")
+    check("held" in status, f"status reports held ({status!r})")
+
+    # write_retain_request(False) on a retain=True store -> a change of mind, deleted
+    changed_mind = _store(tmp, sid="session-change-of-mind", retain=True)
+    changed_mind.snapshot(ctx.messages)
+    ss.write_retain_request(False, sessions_dir=Path(tmp))
+    status = ss.finalize(changed_mind, ctx.messages)
+    check(not changed_mind.path.exists(),
+          "a False retain-request deletes despite retain=True at construction")
+    check("not kept" in status, f"status reports not kept ({status!r})")
+
+    # a marker naming a different session_id is ignored — the store's own switch decides
+    stale = _store(tmp, sid="session-stale-marker", retain=True)
+    stale.snapshot(ctx.messages)
+    ss.write_retain_request(False, sessions_dir=Path(tmp), session_id="some-other-session")
+    out = {}
+    status = ss.finalize(stale, ctx.messages, outcome=out)
+    check(out.get("stale_request") is True, "a marker for another session is flagged stale")
+    check(stale.path.exists(), "the store's own retain decides, not the stale marker")
 
 
 def test_hold_request_promotes(tmp):
@@ -169,28 +206,51 @@ def test_picker_and_resolve(tmp):
     check(p is not None and p.name == "convo-b.json", "resolve by name → correct file")
 
 
-def test_guard_and_discard(tmp):
-    print("\n[5] sweep classes: only recall-only leftovers are ephemeral; saved + held spared")
+def test_orphan_quarantine_and_keep(tmp):
+    print("\n[4] orphans: unkept not-held files are quarantined — expiry sweeps, keep_orphan promotes by id")
     d = Path(tmp) / "guard"
     ss.ensure_dir(d)
-    _store(d, sid="session-saved1").snapshot([{"role": "user", "content": "s1"}])
-    _store(d, sid="session-ro1", memory_mode="recall-only").snapshot(
-        [{"role": "user", "content": "r1"}])
-    _store(d, sid="session-ro-kept", held=True,
-           memory_mode="recall-only").snapshot([{"role": "user", "content": "r2"}])
+    _store(d, sid="session-kept-default", retain=True).snapshot([{"role": "user", "content": "s1"}])
+    _store(d, sid="session-unkept1").snapshot([{"role": "user", "content": "r1"}])
+    _store(d, sid="session-unkept-held", held=True).snapshot([{"role": "user", "content": "r2"}])
     _store(d, sid="kept", held=True, name="kept").snapshot([{"role": "user", "content": "k"}])
 
-    check(len(ss.ephemeral_orphans(d)) == 1, "only the recall-only leftover is ephemeral")
+    check(len(ss.ephemeral_orphans(d)) == 1, "only the plain unkept file is an orphan")
     check(len(ss.held_sessions(d)) == 2, "2 held sessions detected")
+
+    # a young orphan survives the default (expiry-gated) sweep
     removed = ss.discard_ephemeral(d)
-    check(removed == ["session-ro1"], "sweep removed exactly the recall-only leftover")
-    check((d / "session-saved1.json").exists(), "plain saved session untouched by the sweep")
-    check((d / "session-ro-kept.json").exists(), "held recall-only file untouched by the sweep")
+    check(removed == [], "a fresh orphan survives the default sweep")
+    check((d / "session-unkept1.json").exists(), "young orphan untouched by the default sweep")
+
+    # age it past the quarantine window and it becomes expired
+    data = ss.load(d / "session-unkept1.json")
+    data["updated"] = (datetime.now() - timedelta(days=8)).strftime("%Y-%m-%dT%H:%M:%S")
+    ss._atomic_write_json(d / "session-unkept1.json", data)
+    check(len(ss.expired_orphans(d)) == 1, "the 8-day-old orphan is now expired")
+    removed = ss.discard_ephemeral(d)
+    check(removed == ["session-unkept1"], "the default sweep removed exactly the expired orphan")
+    check(not (d / "session-unkept1.json").exists(), "expired orphan deleted")
+    check((d / "session-kept-default.json").exists(), "kept session untouched by the sweep")
     check((d / "kept.json").exists(), "held file untouched by the sweep")
-    check(len(ss.ephemeral_orphans(d)) == 0, "no leftovers remain")
-    # name-it-now: hold with no bot promotes the newest not-yet-held session
+
+    # expired_only=False sweeps the whole unkept class, regardless of age
+    _store(d, sid="session-unkept2").snapshot([{"role": "user", "content": "r3"}])
+    removed = ss.discard_ephemeral(d, expired_only=False)
+    check(removed == ["session-unkept2"], "expired_only=False sweeps every unkept file")
+
+    # keep_orphan promotes ONE orphan by id, not "the newest"
+    _store(d, sid="session-x").snapshot([{"role": "user", "content": "x"}])
+    _store(d, sid="session-y").snapshot([{"role": "user", "content": "y"}])
+    stem = ss.keep_orphan("session-x", "kept-now", d)
+    check(stem == "kept-now", f"keep_orphan promoted by id and returned the new stem ({stem!r})")
+    check(ss.load(d / "kept-now.json").get("held") is True, "promoted file marked held")
+    check(ss.keep_orphan("session-does-not-exist", sessions_dir=d) is None,
+          "keep_orphan on a non-orphan id returns None")
+
+    # name-it-now: hold with no bot still promotes the newest not-yet-held session
     sid = ss.hold_latest_orphan("named-later", d)
-    check(sid == "named-later", f"hold_latest_orphan named the saved session ({sid!r})")
+    check(sid == "named-later", f"hold_latest_orphan named the newest session ({sid!r})")
     check(ss.load(d / "named-later.json").get("held") is True, "promoted file marked held")
     # explicit discard-held verb removes a held one (true delete)
     ss.discard_held("kept", d)
@@ -344,12 +404,11 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         test_round_trip(tmp)
         test_system_excluded(tmp)
-        test_saved_default(tmp)
-        test_recall_only_carveout(tmp)
-        test_held_exempt(tmp)
+        test_unkept_by_default(tmp)
+        test_retain_lane(tmp)
         test_hold_request_promotes(tmp)
         test_picker_and_resolve(tmp)
-        test_guard_and_discard(tmp)
+        test_orphan_quarantine_and_keep(tmp)
         test_atomic_and_perms(tmp)
         test_malformed(tmp)
         test_memory_mode_stamp(tmp)

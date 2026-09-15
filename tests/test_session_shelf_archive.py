@@ -38,16 +38,17 @@ class ArchiveIsOutOfSight(unittest.TestCase):
         # named one (the name-based resume form).
         self._write(self.archive / "session-old.json", held=True,
                     updated="2026-09-06T10:00:00", name="the-old-one")
-        self._write(self.archive / "session-ro.json", held=False,
+        self._write(self.archive / "session-ro.json", held=False, retain=False,
                     memory_mode="recall-only", updated="2026-09-05T10:00:00")
         self._write(self.archive / "session-plain.json", held=False,
                     updated="2026-09-04T10:00:00")
 
     @staticmethod
     def _write(path: Path, *, held: bool, updated: str, name=None,
-               memory_mode="full"):
+               memory_mode="full", retain=True):
         data = {"schema": 2, "model": "m", "voice": "v", "persona": "default",
                 "started": updated, "updated": updated, "held": held,
+                "retain": retain,
                 "messages": [{"role": "user", "content": "x"}]}
         if name:
             data["name"] = name

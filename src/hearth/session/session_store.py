@@ -8,15 +8,12 @@ persisted here → zero duplication on reload.
 
 Privacy: a session file (``characters/<name>/sessions/*.json`` under the data root)
 is a full plaintext transcript.
-It is local-only, gitignored, dir ``0700`` / files ``0600``, and **saved by
-default** — a graceful ``./stop.sh`` keeps it; deleting is the explicit act
-(``discard-held`` / ``discard-ephemeral``), and every delete is a true-delete
-(this sensitive class is deleted, not retained). The one carve-out: a
-**recall-only** sitting (``--memory recall-only``) stays transcript-ephemeral —
-a graceful stop deletes its file unless it was explicitly held, so "leaves no
-durable record" stays true of the privacy tier. ``held`` now means *explicitly
-kept/named* (sticky, exempt from every sweep); ``--hold`` degenerates to "name
-it now". The snapshot+os.replace model closes the file handle every turn, so
+It is local-only, gitignored, dir ``0700`` / files ``0600``.
+Ephemeral by default: an unkept working file is deleted at a graceful stop.
+Kept = ``held``. A file without a ``retain`` key is read as kept, unless it is
+stamped **recall-only** (the old ephemeral class). The hold marker means "keep,
+and name it" (for one release).
+The snapshot+os.replace model closes the file handle every turn, so
 delete frees the file cleanly (no deleted-but-open-handle trap). Transcripts are
 never exposed over the web ``/``.
 
@@ -40,6 +37,7 @@ import os
 import sys
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -47,6 +45,8 @@ from loguru import logger
 
 SCHEMA = 2  # 2 (2026-08): adds "character" + "persona"; schema-1 files load as persona "default"
 _HOLD_MARKER = ".hold-request"  # stop.sh --hold drops this; the bot honors + consumes it in finally
+_RETAIN_MARKER = ".retain-request"  # the late switch: thrown while the bot runs, consumed in finalize
+ORPHAN_EXPIRY_DAYS = 7  # an unkept orphan an unclean death left behind is quarantined this long
 ARCHIVE_DIR = ".archive"  # the soft verb's dot-dir (session/verbs.py owns the move);
                           # hidden from every walker below, so an archived session
                           # is out of resume and out of the fresh-start sweep
@@ -246,6 +246,8 @@ class SessionStore:
     started: str = field(default_factory=_now_iso)
     name: Optional[str] = None
     held: bool = False
+    retain: bool = False  # the write switch: False = this working file is deleted at a
+                          # graceful stop; True = kept on the shelf (and then held)
     character: Optional[str] = None
     persona: str = "default"              # which persona file was live ("default" = persona.md)
     memory_mode: str = "full"             # the sitting's memory posture (--memory); stamped into
@@ -277,6 +279,7 @@ class SessionStore:
             "started": self.started,
             "updated": _now_iso(),
             "held": self.held,
+            "retain": self.retain,
         }
         if self.character:
             payload["character"] = self.character
@@ -356,6 +359,7 @@ class SessionMeta:
     persona: str = "default"
     character: Optional[str] = None
     memory_mode: str = "full"  # the sitting's stamped posture ("full" when unstamped)
+    retain: bool = True  # the write switch as read back; a held file is always kept
     title: Optional[str] = None  # the display name a person typed (session/verbs
                                  # set_session_title); None (unwritten) on every
                                  # file nobody has renamed, so those stay
@@ -377,19 +381,24 @@ def _meta_of(p: Path, *, archived: bool = False):
         return None  # malformed → skip; fresh/other files unaffected
     msgs = data.get("messages", [])
     turns = sum(1 for m in msgs if isinstance(m, dict) and m.get("role") == "user")
+    held = bool(data.get("held", False))
+    retain = data["retain"] if isinstance(data.get("retain"), bool) else (
+        data.get("memory_mode") != "recall-only")
+    retain = retain or held  # a held file is always kept
     return SessionMeta(
         path=p,
         session_id=p.stem,
         model=data.get("model"),
         voice=data.get("voice"),
         name=data.get("name"),
-        held=bool(data.get("held", False)),
+        held=held,
         started=data.get("started"),
         updated=data.get("updated"),
         turns=turns,
         persona=str(data.get("persona") or "default"),
         character=data.get("character"),
         memory_mode=str(data.get("memory_mode") or "full"),
+        retain=retain,
         title=(data.get("title") or None) if isinstance(data.get("title"), str) else None,
         origin=data.get("origin") or None,
         archived=archived,
@@ -428,12 +437,29 @@ def list_sessions(sessions_dir: Optional[Path] = None, *,
 
 
 def ephemeral_orphans(sessions_dir: Optional[Path] = None) -> list:
-    """The sweepable class under saved-by-default: ONLY a recall-only sitting's
-    leftover (crash/unclean death) is ephemeral — everything else is a saved
-    conversation. Explicitly held recall-only files are exempt (the deliberate
-    keep wins)."""
-    return [m for m in list_sessions(sessions_dir)
-            if not m.held and m.memory_mode == "recall-only"]
+    """Unkept working files an unclean death left behind — quarantined, not
+    swept: shown at start, kept a week, then deleted."""
+    return [m for m in list_sessions(sessions_dir) if not m.held and not m.retain]
+
+
+def expired_orphans(sessions_dir: Optional[Path] = None, *,
+                    now: Optional[datetime] = None) -> list:
+    """The subset of ``ephemeral_orphans`` old enough to actually delete — a
+    stamp (``updated`` or ``started``) that fails to parse is never treated as
+    expired (no deleting on a guess)."""
+    current = now if now is not None else datetime.now()
+    out = []
+    for m in ephemeral_orphans(sessions_dir):
+        stamp = m.updated or m.started
+        if not stamp:
+            continue
+        try:
+            when = datetime.fromisoformat(stamp)
+        except ValueError:
+            continue
+        if current - when >= timedelta(days=ORPHAN_EXPIRY_DAYS):
+            out.append(m)
+    return out
 
 
 def held_sessions(sessions_dir: Optional[Path] = None) -> list:
@@ -466,11 +492,15 @@ def resolve_resume_arg(arg: str, sessions_dir: Optional[Path] = None):
 
 # ── discard verbs (all true-delete for this sensitive class) ────────
 
-def discard_ephemeral(sessions_dir: Optional[Path] = None) -> list:
-    """Fresh start: true-delete recall-only leftovers; every saved conversation
-    (and every held file) is left untouched."""
+def discard_ephemeral(sessions_dir: Optional[Path] = None, *, expired_only: bool = True,
+                      now: Optional[datetime] = None) -> list:
+    """Fresh start: by default true-delete only EXPIRED unkept orphans (the
+    quarantine window); every kept conversation is left untouched regardless.
+    ``expired_only=False`` sweeps the whole unkept class — the old behavior,
+    kept for an explicit act."""
     removed = []
-    for m in ephemeral_orphans(sessions_dir):
+    targets = expired_orphans(sessions_dir, now=now) if expired_only else ephemeral_orphans(sessions_dir)
+    for m in targets:
         try:
             m.path.unlink()
             removed.append(m.session_id)
@@ -540,20 +570,106 @@ def clear_hold_request(sessions_dir: Optional[Path] = None) -> None:
         pass
 
 
+def retain_marker_path(sessions_dir: Optional[Path] = None) -> Path:
+    return _dir(sessions_dir) / _RETAIN_MARKER
+
+
+def write_retain_request(retain: bool, name: Optional[str] = None,
+                         sessions_dir: Optional[Path] = None, *,
+                         session_id: Optional[str] = None,
+                         cwd: Optional[Path] = None) -> None:
+    """The late switch: a supervisor throws this while the bot runs (the Stop
+    card); finalize consumes it, and it is crash-safe because the next start
+    can read it too. ``name`` is honored exactly as the hold marker's: a path
+    locator is stored fully resolved (see write_hold_request), so finalize
+    never needs to re-derive a relative anchor.
+    """
+    ensure_dir(sessions_dir)
+    m = retain_marker_path(sessions_dir)
+    resolved_name = name
+    if name and classify_locator(name) == "path":
+        target = resolve_save_locator(name, sessions_dir, cwd=cwd)
+        warning = out_of_tree_warning(target, _dir(sessions_dir))
+        if warning:
+            print(warning)
+        resolved_name = str(target)
+    payload = {
+        "retain": bool(retain),
+        "name": resolved_name or None,
+        "session_id": session_id or None,
+        "at": _now_iso(),
+    }
+    text = json.dumps(payload)
+    fd = os.open(m, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, FILE_MODE)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(text)
+
+
+def read_retain_request(sessions_dir: Optional[Path] = None) -> Optional[dict]:
+    """Consume the marker. Returns the parsed request dict, or None on a
+    missing or unreadable marker."""
+    m = retain_marker_path(sessions_dir)
+    if not m.exists():
+        return None
+    try:
+        data = json.loads(m.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        data = None
+    clear_retain_request(sessions_dir)
+    if not isinstance(data, dict) or "retain" not in data:
+        return None
+    return data
+
+
+def clear_retain_request(sessions_dir: Optional[Path] = None) -> None:
+    try:
+        retain_marker_path(sessions_dir).unlink()
+    except FileNotFoundError:
+        pass
+
+
 def hold_latest_orphan(name: Optional[str] = None, sessions_dir: Optional[Path] = None, *,
                        cwd: Optional[Path] = None):
     """stop.sh --hold with no bot running: mark the newest not-yet-held session as
     held (optionally naming/renaming it — a path locator is honored, and the
-    folder it needs travels with the write; see resolve_save_locator). Under
-    saved-by-default this is "name it now" for the latest conversation — and the
-    explicit keep for a recall-only leftover. Returns its new id, or None if
-    nothing qualifies."""
+    folder it needs travels with the write; see resolve_save_locator). This is
+    "name it now" for the latest conversation — and the explicit keep for an
+    unkept leftover. Returns its new id, or None if nothing qualifies."""
     orphans = [m for m in list_sessions(sessions_dir) if not m.held]
     if not orphans:
         return None
     m = orphans[0]  # newest first
     data = load(m.path)
     data["held"] = True
+    data["retain"] = True
+    target = m.path
+    if name:
+        data["name"] = name
+        target = resolve_save_locator(name, sessions_dir, cwd=cwd)
+        warning = out_of_tree_warning(target, _dir(sessions_dir))
+        if warning:
+            print(warning)
+    _atomic_write_json(target, data)
+    if target != m.path:
+        try:
+            m.path.unlink()
+        except OSError:
+            pass
+    return target.stem
+
+
+def keep_orphan(session_id: str, name: Optional[str] = None, sessions_dir: Optional[Path] = None, *,
+                cwd: Optional[Path] = None) -> Optional[str]:
+    """Promote ONE unkept orphan, by id (not "the newest"), onto the shelf —
+    the Stop card's / CLI's "keep" verb. None when ``session_id`` does not name
+    an unkept orphan (already kept, or no such session)."""
+    orphans = {m.session_id: m for m in ephemeral_orphans(sessions_dir)}
+    m = orphans.get(session_id)
+    if m is None:
+        return None
+    data = load(m.path)
+    data["held"] = True
+    data["retain"] = True
     target = m.path
     if name:
         data["name"] = name
@@ -575,14 +691,17 @@ def hold_latest_orphan(name: Optional[str] = None, sessions_dir: Optional[Path] 
 def finalize(store: "SessionStore", messages, *, outcome: Optional[dict] = None) -> str:
     """Apply the shutdown keep-decision. Returns a short human status string.
 
-    Saved-by-default: hold-request present → promote to held/named (keep).
-    already held → keep (sticky). recall-only sitting → true-delete (the
-    privacy tier stays transcript-ephemeral). otherwise → saved.
+    Ephemeral by default: an unkept working file is deleted at a graceful
+    stop. A kept sitting (``store.retain`` or already ``held``) is snapshotted
+    and marked ``held``. The write switch binds at close, so a late retain
+    request — thrown while the bot runs (the Stop card), or the legacy hold
+    marker, honored as "retain + name" for one release — can still flip it
+    before this runs; a request naming a stale ``session_id`` is ignored.
 
     ``outcome``, when given, is filled with the machine-readable result for the
-    close row (session/close_row.py): ``result`` ∈ none · held · held-kept ·
-    deleted · nothing-to-delete · empty · saved, and for a hold request
-    ``hold_requested`` / ``hold_name`` / ``hold_ok``.
+    close row (session/close_row.py): ``result`` ∈ none · held · held-unnamed ·
+    kept · deleted · nothing-to-delete · empty, and for a retain/hold request
+    ``hold_requested`` / ``hold_name`` / ``hold_ok`` / ``stale_request``.
 
     **Why the rename is caught and the snapshot is not** (spec-session-close-ux
     §4): a failed rename is **D7** — the user named the session, the name did
@@ -596,13 +715,27 @@ def finalize(store: "SessionStore", messages, *, outcome: Optional[dict] = None)
     if store is None:
         out["result"] = "none"
         return "no session"
-    requested, name = read_hold_request(store.sessions_dir)
-    if requested:
-        out["hold_requested"] = True
-        out["hold_name"] = name or None
-        out["hold_ok"] = True
-        renamed = True
-        if name:
+
+    req = read_retain_request(store.sessions_dir)
+    if req is None:
+        requested, name = read_hold_request(store.sessions_dir)
+        if requested:
+            req = {"retain": True, "name": name}
+    if req is not None and req.get("session_id") and req["session_id"] != store.session_id:
+        out["stale_request"] = True
+        req = None
+
+    name_requested = False
+    renamed = True
+    name = None
+    if req is not None:
+        store.retain = bool(req["retain"])
+        if req["retain"] and req.get("name"):
+            name_requested = True
+            name = req["name"]
+            out["hold_requested"] = True
+            out["hold_name"] = name or None
+            out["hold_ok"] = True
             try:
                 store.rename(name)
                 store.name = name
@@ -610,35 +743,35 @@ def finalize(store: "SessionStore", messages, *, outcome: Optional[dict] = None)
                 renamed = False
                 out["hold_ok"] = False
                 out["hold_error"] = type(exc).__name__
-                logger.warning("[session] hold rename to {!r} failed ({}) — keeping the "
+                logger.warning("[session] retain rename to {!r} failed ({}) — keeping the "
                                "conversation under its current name", name, type(exc).__name__)
+
+    if store.retain or store.held:
         store.held = True
+        store.retain = True
         store.snapshot(messages)
-        out["result"] = "held" if renamed else "held-unnamed"
-        return f"held → {store.path.name}" if renamed else (
-            f"held → {store.path.name} (could not use the name {name!r})")
-    if store.held:
-        out["result"] = "held-kept"
-        return f"held session kept → {store.path.name}"
-    if getattr(store, "memory_mode", "full") == "recall-only":
-        if store.delete():
-            out["result"] = "deleted"
-            return "recall-only sitting — transcript deleted (graceful stop)"
-        out["result"] = "nothing-to-delete"
-        return "recall-only sitting — no transcript to delete"
+        if name_requested:
+            out["result"] = "held" if renamed else "held-unnamed"
+            return f"held → {store.path.name}" if renamed else (
+                f"held → {store.path.name} (could not use the name {name!r})")
+        out["result"] = "kept"
+        return f"conversation kept → {store.path.name}"
+
     if not store.path.exists() and not _persistable_messages(messages):
         out["result"] = "empty"
         return "empty sitting — nothing to save"
-    store.snapshot(messages)
-    out["result"] = "saved"
-    return f"session saved → {store.path.name}"
+
+    if store.delete():
+        out["result"] = "deleted"
+        return "conversation not kept — transcript deleted (graceful stop)"
+    out["result"] = "nothing-to-delete"
+    return "conversation not kept — no transcript to delete"
 
 
 # ── CLI (thin surface for start.sh / stop.sh) ────────────────────────────────
 
 def _fmt_meta(m: "SessionMeta") -> str:
-    tag = " [HELD]" if m.held else (
-        " [recall-only]" if m.memory_mode == "recall-only" else "")
+    tag = " [HELD]" if m.held else (" [unkept]" if not m.retain else "")
     nm = f" · {m.name}" if m.name else ""
     pv = f" · persona.{m.persona}.md" if m.persona not in (None, "", "default") else ""
     return f"{m.updated or m.started or '?'}  ·  {m.turns} turns  ·  {m.model}  ·  {m.voice}{pv}{nm}{tag}"
@@ -661,7 +794,7 @@ def _parse_cwd(rest: list) -> tuple:
 
 def _main(argv) -> int:
     if not argv:
-        print("usage: session_store.py {list|request-hold|hold|discard-ephemeral|discard-held} "
+        print("usage: session_store.py {list|request-hold|hold|keep|discard-ephemeral|discard-held} "
               "[name|path] [--cwd folder]", file=sys.stderr)
         return 2
     cmd, rest = argv[0], argv[1:]
@@ -691,9 +824,18 @@ def _main(argv) -> int:
         sid = hold_latest_orphan(arg, cwd=cwd)
         print(f"held: {sid}" if sid else "no unnamed session to hold")
         return 0
+    if cmd == "keep":
+        if not rest:
+            print("usage: session_store.py keep <id> [name]", file=sys.stderr)
+            return 2
+        stem = keep_orphan(rest[0], rest[1] if len(rest) > 1 else None)
+        print(f"kept: {stem}" if stem else "no unkept conversation with that id")
+        return 0
     if cmd == "discard-ephemeral":
-        removed = discard_ephemeral()
-        print(f"discarded {len(removed)} recall-only leftover(s)")
+        expired_only = arg != "--all"
+        removed = discard_ephemeral(expired_only=expired_only)
+        label = "expired unkept conversation(s)" if expired_only else "unkept conversation(s)"
+        print(f"deleted {len(removed)} {label}")
         return 0
     if cmd == "discard-held":
         if arg in (None, "--all"):
