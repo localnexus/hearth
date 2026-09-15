@@ -10,6 +10,9 @@
 // Commands (JSON on stdout, exit 0 = ok):
 //   status              → current default output + whether BlackHole / a leftover
 //                         mirror exists
+//   devices             → READ-ONLY list of every device (uid, name, channel
+//                         counts, nominal rate) plus the current default input
+//                         and output uid — the identity layer recovery pins to
 //   engage              → create stacked aggregate "Hearth Record Mirror"
 //                         [current default + BlackHole], drift-corrected, set it
 //                         as default output; prints previous_uid for release
@@ -79,6 +82,29 @@ func findDevice(uid: String) -> AudioObjectID? {
 
 func defaultOutput() -> AudioObjectID? {
     sysProp(kAudioHardwarePropertyDefaultOutputDevice, as: AudioObjectID.self).first
+}
+
+func defaultInput() -> AudioObjectID? {
+    sysProp(kAudioHardwarePropertyDefaultInputDevice, as: AudioObjectID.self).first
+}
+
+func channelCount(_ dev: AudioObjectID, _ scope: AudioObjectPropertyScope) -> Int {
+    var addr = AudioObjectPropertyAddress(
+        mSelector: kAudioDevicePropertyStreamConfiguration,
+        mScope: scope, mElement: kAudioObjectPropertyElementMain)
+    var size: UInt32 = 0
+    guard AudioObjectGetPropertyDataSize(dev, &addr, 0, nil, &size) == noErr, size > 0
+    else { return 0 }
+    let rawBuf = UnsafeMutableRawPointer.allocate(byteCount: Int(size), alignment: MemoryLayout<AudioBufferList>.alignment)
+    defer { rawBuf.deallocate() }
+    let ablPtr = rawBuf.bindMemory(to: AudioBufferList.self, capacity: 1)
+    guard AudioObjectGetPropertyData(dev, &addr, 0, nil, &size, rawBuf) == noErr
+    else { return 0 }
+    var total = 0
+    for buf in UnsafeMutableAudioBufferListPointer(ablPtr) {
+        total += Int(buf.mNumberChannels)
+    }
+    return total
 }
 
 func subDeviceUIDs(_ dev: AudioObjectID) -> [String] {
@@ -315,6 +341,22 @@ case "release":
     print("{\"ok\": \(restored || destroyed), \"restored\": \(restored), " +
           "\"destroyed\": \(destroyed)}")
 
+case "devices":
+    let defInUID = defaultInput().flatMap { devString($0, kAudioDevicePropertyDeviceUID) }
+    let defOutUID = defaultOutput().flatMap { devString($0, kAudioDevicePropertyDeviceUID) }
+    let entries = sysProp(kAudioHardwarePropertyDevices, as: AudioObjectID.self).map { d -> String in
+        let uid = devString(d, kAudioDevicePropertyDeviceUID)
+        let name = devString(d, kAudioObjectPropertyName)
+        let inCh = channelCount(d, kAudioDevicePropertyScopeInput)
+        let outCh = channelCount(d, kAudioDevicePropertyScopeOutput)
+        let rate = nominalRate(d).map { String(Int($0)) } ?? "null"
+        return "{\"uid\": \(jstr(uid)), \"name\": \(jstr(name)), " +
+               "\"in\": \(inCh), \"out\": \(outCh), \"rate\": \(rate)}"
+    }
+    print("{\"ok\": true, \"default_input_uid\": \(jstr(defInUID)), " +
+          "\"default_output_uid\": \(jstr(defOutUID)), " +
+          "\"devices\": [\(entries.joined(separator: ", "))]}")
+
 default:
-    fail("unknown command '\(cmd)' (status | engage | release <prev_uid>)")
+    fail("unknown command '\(cmd)' (status | devices | engage | release <prev_uid> | repair)")
 }
