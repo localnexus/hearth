@@ -291,8 +291,8 @@ class SwitcherApply(_Base):
                          self.ctx.messages[:0] + [{"role": "user", "content": "u1"},
                                                   {"role": "assistant", "content": "a1"}])
         self.assertTrue(self.boot_seam.closed)
-        self.assertTrue(self.boot_store.path.exists(),
-                        "old session saved by default (graceful-stop parity)")
+        self.assertFalse(self.boot_store.path.exists(),
+                         "old session unkept by default (retain is a switch, off unless asked)")
         # file discipline: active.toml converged on the applied selection
         with open(self.active, "rb") as f:
             data = tomllib.load(f)
