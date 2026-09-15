@@ -6,8 +6,8 @@
 // word it goes by (its title, else the name it was held under, else its id —
 // exactly destroy's own precedence, so the word the person is asked to type
 // back is the word they were shown), how many turns, when it was last written,
-// its memory posture, whether it is held, whether it was brought in, and
-// whether it is archived. Then the verbs it is actually offered.
+// whether it is kept or unkept, whether it is held, whether it was brought
+// in, and whether it is archived. Then the verbs it is actually offered.
 //
 // WHAT IS OFFERED IS PROBED, NEVER GUESSED. The panel has no audience layer in
 // code — one access key, one caller — so the card learns what this browser may

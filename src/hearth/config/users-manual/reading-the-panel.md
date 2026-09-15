@@ -64,8 +64,8 @@ total tokens sent so far.
 ## The Memory line
 
 When this companion has cross-session memory attached, a fifth line appears: which backend answered,
-whether this conversation is being kept (an unkept one is marked **not keeping** — it remembers the past
-but banks nothing new this session), what per-turn recall is doing
+whether this conversation is being kept (an unkept one is marked **not keeping** — it banks nothing
+new this session), what per-turn recall is doing
 (`off`, `chat`, or `chat + voice`), how many facts were recalled at the start of the session and from where,
 and how many extra facts the last turn pulled in and from where. A recall source is always named honestly —
 a fallback path never poses as the primary backend.

@@ -27,8 +27,8 @@ Index + how-it's-organized: [`README.md`](README.md). A–M: [`A-M.md`](A-M.md).
 - **session** (in full: **conversation session**, also written *conversational session*) — one run of the
   companion from **Start** to **Stop**, inside a conversation: a *sitting*. Every session belongs to some
   conversation (Start always opens a new one or resumes one), and one conversation can hold many sessions
-  across days. A session has its own memory mode (`full` · `recall-only` · `off`) and, when memory is on,
-  writes **one memory record at its close** — so a companion switch that restarts the process ends one
+  across days. A session has its own two switches — whether it **remembers the past** and whether it
+  **keeps this conversation** — and a session that keeps it writes **one memory record at its close** — so a companion switch that restarts the process ends one
   session and begins another inside the same conversation. Reserved for this meaning: nothing about the
   browser, the pairing code or the access key is called a session. Adopted 2026-09-05.
 - **session snapshot** — the atomic per-turn write of the LLM message list to the companion's `sessions/<id>.json`, via `<id>.json.tmp` → `os.replace`. The only durable conversational state that needs preserving (persona prompt is injected per-request from settings and is never stored in the file).

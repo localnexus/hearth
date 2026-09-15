@@ -104,7 +104,7 @@ As with archiving and destroying, **the running companion's files are read-only*
 
 Everything above has a button. The launch page (`/admin/launch`) carries a **Sessions** card beside the Conversation picker — the same shelf seen from the other side: the picker chooses which conversation to resume, the card decides which conversations there are. It follows whichever companion is selected, and reloads itself after a start or a stop, because what it may offer changes with them.
 
-One row per saved conversation: the word it goes by (its title, else the name it was held under, else its id), its turns, when it was last written, its memory posture, and whether it is held, archived, or brought in. A **show archived** box adds the archived ones. Then the verbs:
+One row per saved conversation: the word it goes by (its title, else the name it was held under, else its id), its turns, when it was last written, whether it is kept or unkept, and whether it is held, archived, or brought in. A **show archived** box adds the archived ones. Then the verbs:
 
 - **Reveal** shows the file in the file manager — and disappears from every row the first time it is refused, because that refusal means this browser is not on the machine Hearth runs on (or the machine is not a Mac). Download is what remains, and it is enough.
 - **Download** hands you the file. It is not an ordinary link: a link cannot carry the access key, so the card fetches the file with the key as a header and saves what comes back.
@@ -114,6 +114,8 @@ One row per saved conversation: the word it goes by (its title, else the name it
 
 At the foot of the card, **Bring in** takes a session file from this device and deposits it on the shelf; the answer says how many turns arrived and how many prompt messages were dropped on the way in, and a file that is refused is refused in a sentence about the file.
 
-A **recall-only** conversation is the privacy tier's own case: it is not offered load or rename, so **Destroy is the only verb on its row**.
+An **unkept** conversation — a working file that was never kept onto the shelf — is the shelf's own
+special case: it is not offered load or rename, so the two verbs on its row are **Keep** (promote it
+onto the shelf, with a name) and **Delete**.
 
 While the companion is up its whole shelf is read-only, and the card says so once at the top rather than once per refused press.
