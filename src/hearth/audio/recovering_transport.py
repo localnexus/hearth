@@ -19,6 +19,18 @@ call against it forever, and Ctrl-C does not land on a wedged call):
   2. A dead stream's teardown is never awaited on the event loop. It is
      abandoned to its own thread, unjoined.
 
+A third rule came out of a measured recovery failure: PortAudio enumerates
+devices only when its initialise count goes 0 -> 1, so while the start-time
+instance is still alive every "fresh" one inherits the device list from
+before the loss — the pinned name resolves to the index of the device that
+went away and the open fails, forever (284 times at 2s in one sitting).
+  3. The instance is treated as process-level state, owned by `pa_pool`. A
+     loss RELEASES it; a reopen waits for the pool to be clear and only then
+     acquires. Because the two halves share one instance, a half going lost
+     CYCLES its peer through the same path, and the peer reopens onto its own
+     pin a probe later. THE GATE is untouched by this: each half still
+     resolves only its own pinned name in its own direction.
+
 What is deliberately leaked, and why:
   - `_on_lost` hands the dead stream's `stop_stream`/`close` to a daemon
     thread that is never joined. If the device is truly wedged, that thread
@@ -28,6 +40,12 @@ What is deliberately leaked, and why:
     `ThreadPoolExecutor`. The old one may have a worker stuck inside a
     `stream.write` that will never return; it is abandoned rather than
     shut down, because shutting it down would itself block.
+  - The audio-library instances themselves are NOT leaked any more. The
+    shared start-time instance is released on the same daemon thread, right
+    after the dead handle is abandoned; an instance acquired for a reopen
+    that fails is released too. What is still abandoned is the `terminate()`
+    call inside that release — it can wedge, so `pa_pool` runs it on its own
+    unjoined thread and simply reports the pool as unclear until it returns.
 
 Log lines carry names only — never a UID, never audio.
 """
@@ -52,6 +70,7 @@ from pipecat.transports.local.audio import (
 )
 
 from hearth.audio.device_pin import DevicePin, pin_default, resolve_index, uid_present
+from hearth.audio.pa_pool import pool as _pa_pool
 
 
 def _abandon(handle) -> None:
@@ -81,6 +100,19 @@ class _RecoveryHalf:
     since: Optional[float] = None
     _last_activity_at: Optional[float] = None
     _watchdog: Optional[asyncio.Task] = None
+
+    # The other half of the same transport, sharing one audio-library
+    # instance; set by `RecoveringLocalAudioTransport` once both exist.
+    _peer: Optional["_RecoveryHalf"] = None
+
+    # True from the moment a loss is declared until the release of the shared
+    # instance has actually been handed to the pool. It closes the window in
+    # which the pool has not been told yet and would look clear.
+    _release_pending: bool = False
+
+    _lost_at: Optional[float] = None
+    _waiting_logged: bool = False
+    _gave_up_logged: bool = False
 
     PERIOD_S = 2.0
     PROBE_TIMEOUT_S = 5.0
@@ -138,34 +170,114 @@ class _RecoveryHalf:
             await self._try_reopen()
         # present is None, or still absent while lost: nothing to do.
 
-    async def _on_lost(self) -> None:
+    async def _on_lost(self, cycled: bool = False) -> None:
+        """Declare the loss, drop the dead handle, and give the shared audio
+        library instance back so the device can be seen if it returns.
+
+        `cycled` marks the peer half being taken down with us: its own device
+        never went anywhere, but it holds the same library instance, and that
+        instance has to terminate before anything can enumerate again.
+        """
         self.state = "lost"
         self.since = time.time()
+        self._lost_at = time.monotonic()
+        self._waiting_logged = False
+        self._gave_up_logged = False
+
         name = self.pin.name if self.pin else "?"
-        logger.warning(f"[audio] {self._direction} device lost: {name} — staying silent until it returns")
+        if cycled:
+            peer_direction = self._peer._direction if self._peer else "?"
+            logger.warning(
+                f"[audio] {self._direction} device cycled with the {peer_direction} device"
+                " — the audio library restarts to see a returned device"
+            )
+        else:
+            logger.warning(f"[audio] {self._direction} device lost: {name} — staying silent until it returns")
+
+        peer = self._peer
+        cycle_peer = (
+            not cycled
+            and peer is not None
+            and peer.state in ("ok", "recovered")
+            and peer._py_audio is self._py_audio
+        )
 
         handle = self._take_and_clear_handle()
-        threading.Thread(target=_abandon, args=(handle,), daemon=True).start()
+        pa = self._py_audio
+        self._release_pending = True
+
+        if cycle_peer:
+            await peer._on_lost(cycled=True)
+
+        threading.Thread(target=self._abandon_and_release, args=(handle, pa), daemon=True).start()
+
+    def _abandon_and_release(self, handle, pa) -> None:
+        """Daemon-thread tail of a loss: close the dead handle, then hand the
+        instance to the pool. Never joined — either call may wedge."""
+        try:
+            _abandon(handle)
+        finally:
+            try:
+                _pa_pool.release(pa)
+            finally:
+                self._release_pending = False
+
+    def _release_unless_shared(self, pa: pyaudio.PyAudio) -> None:
+        """Give a reopen instance back — unless a half is already playing
+        through it, which is the case when the peer reopened onto it first."""
+        peer = self._peer
+        if self._py_audio is pa or (peer is not None and peer._py_audio is pa):
+            return
+        _pa_pool.release(pa)
 
     async def _try_reopen(self) -> None:
-        pa = pyaudio.PyAudio()  # a fresh instance: the original may be wedged
+        if self._release_pending or not _pa_pool.clear:
+            # Attempting now would only bump the initialise count and re-read
+            # the device list from before the loss. Say so once, then keep
+            # probing quietly — probing is cheap and costs no instance.
+            if not self._waiting_logged:
+                self._waiting_logged = True
+                logger.info(
+                    f"[audio] {self._direction} audio library has not released yet — waiting to reopen"
+                )
+            if (
+                not self._gave_up_logged
+                and self._lost_at is not None
+                and (time.monotonic() - self._lost_at) > self.CLEANUP_TIMEOUT_S
+            ):
+                self._gave_up_logged = True
+                logger.warning(
+                    f"[audio] {self._direction} audio library did not release within"
+                    f" {int(self.CLEANUP_TIMEOUT_S)}s — recovery unavailable this sitting;"
+                    " stop and start again"
+                )
+            return
+
+        pa = _pa_pool.acquire()
+        if pa is None:
+            return
+
         idx = resolve_index(pa, self.pin)
         if idx is None:
             logger.info(
                 f"[audio] {self._direction} device is back but not resolvable by name — staying silent"
             )
+            self._release_unless_shared(pa)
             return
 
         rate = self._sample_rate
         try:
             self._open_stream(pa, idx, rate)
         except Exception:
-            retry_rate = int(pa.get_device_info_by_index(idx)["defaultSampleRate"])
             try:
+                retry_rate = int(pa.get_device_info_by_index(idx)["defaultSampleRate"])
                 self._open_stream(pa, idx, retry_rate)
                 self._sample_rate = retry_rate
-            except Exception:
-                logger.warning(f"[audio] {self._direction} device reopen failed — staying lost")
+            except Exception as exc:
+                logger.warning(
+                    f"[audio] {self._direction} device reopen failed ({exc!r}) — staying lost"
+                )
+                self._release_unless_shared(pa)
                 return
 
         self._py_audio = pa
@@ -280,8 +392,8 @@ class RecoveringOutput(_RecoveryHalf, LocalAudioOutputTransport):
         finally:
             self._write_started_at = None
 
-    async def _on_lost(self) -> None:
-        await super()._on_lost()
+    async def _on_lost(self, cycled: bool = False) -> None:
+        await super()._on_lost(cycled=cycled)
         # The old worker may be wedged inside a write that never returns;
         # it is abandoned on purpose, never shut down (that would block too).
         self._executor = ThreadPoolExecutor(max_workers=1)
@@ -319,12 +431,21 @@ class RecoveringLocalAudioTransport(LocalAudioTransport):
     def input(self) -> RecoveringInput:
         if not self._input:
             self._input = RecoveringInput(self._pyaudio, self._params)
+            self._link_halves()
         return self._input
 
     def output(self) -> RecoveringOutput:
         if not self._output:
             self._output = RecoveringOutput(self._pyaudio, self._params)
+            self._link_halves()
         return self._output
+
+    def _link_halves(self) -> None:
+        """Let each half reach the other. They share one audio-library
+        instance, so one going lost has to cycle the other."""
+        if self._input and self._output:
+            self._input._peer = self._output
+            self._output._peer = self._input
 
     def audio_state(self) -> dict:
         return {
