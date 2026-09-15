@@ -133,6 +133,8 @@ class _Library:
         self.terminate_entered.set()
         if self.terminate_gate is not None:
             self.terminate_gate.wait()
+        for stream in pa.opened:
+            stream.close()  # the real one closes every stream still open on it
         self.count -= 1
 
 
@@ -587,6 +589,55 @@ class PoolTests(_PoolCase):
 
         self.assertEqual(sink.count("device reopen failed"), 1)
         self.assertTrue(any("device refused this rate" in line for line in sink.lines))
+
+
+    @patch("hearth.audio.recovering_transport.uid_present", new_callable=AsyncMock)
+    def test_f_an_unpinned_peer_is_never_closed_out_from_under(self, uid_present):
+        # mutation: delete the unpinned-peer guard in _on_lost — the loss
+        # releases the shared instance instead, so this line never appears,
+        # the fake's terminate runs, and the output half's stream is closed
+        # out from under it with no state change and nothing said.
+        uid_present.return_value = True
+        library = _Library([_entry(0, "desk mic", 1, 0)])
+        self.use_library(library)
+
+        with patch.object(rt.pyaudio, "PyAudio", library.create):
+            transport = RecoveringLocalAudioTransport(LocalAudioTransportParams())
+        half_in = transport.input()
+        half_out = transport.output()
+
+        half_in.pin = _MIC_PIN
+        half_in.state = "ok"
+        half_in._sample_rate = 16000
+        half_in._in_stream = _Stream({})
+        half_in._last_activity_at = time.monotonic() - 10
+
+        # Only one direction got a pin at start; the other is still playing
+        # through the very same instance.
+        half_out.pin = None
+        half_out.state = "unpinned"
+        out_stream = transport._pyaudio.open(output=True, output_device_index=0, rate=24000)
+        half_out._out_stream = out_stream
+
+        with _Sink() as sink:
+            asyncio.run(half_in._probe())
+
+            self.assertEqual(half_in.state, "lost")
+            self.assertEqual(sink.count("the out side is not pinned"), 1)
+
+            for _ in range(3):
+                asyncio.run(half_in._probe())  # the mic is right there again
+
+            self.assertEqual(library.count, 1)  # nothing was terminated
+            self.assertEqual(len(library.created), 1)  # and nothing acquired
+            self.assertEqual(sink.count("the out side is not pinned"), 1)
+            self.assertEqual(sink.count("has not released yet"), 0)
+            self.assertEqual(sink.count("did not release within"), 0)
+
+        self.assertEqual(half_in.state, "lost")
+        self.assertEqual(half_out.state, "unpinned")  # untouched
+        self.assertIs(half_out._out_stream, out_stream)
+        self.assertNotIn("close", out_stream.calls)  # still playing
 
 
 if __name__ == "__main__":

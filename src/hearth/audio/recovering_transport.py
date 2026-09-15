@@ -29,7 +29,10 @@ went away and the open fails, forever (284 times at 2s in one sitting).
      acquires. Because the two halves share one instance, a half going lost
      CYCLES its peer through the same path, and the peer reopens onto its own
      pin a probe later. THE GATE is untouched by this: each half still
-     resolves only its own pinned name in its own direction.
+     resolves only its own pinned name in its own direction. A peer that was
+     never pinned is the exception — it has no pin to reopen on, so the
+     instance is kept rather than terminated out from under it and recovery
+     is off for the sitting, rather than that half going quiet unannounced.
 
 What is deliberately leaked, and why:
   - `_on_lost` hands the dead stream's `stop_stream`/`close` to a daemon
@@ -42,8 +45,9 @@ What is deliberately leaked, and why:
     shut down, because shutting it down would itself block.
   - The audio-library instances themselves are NOT leaked any more. The
     shared start-time instance is released on the same daemon thread, right
-    after the dead handle is abandoned; an instance acquired for a reopen
-    that fails is released too. What is still abandoned is the `terminate()`
+    after the dead handle is abandoned (the one exception being an unpinned
+    peer still playing through it); an instance acquired for a reopen that
+    fails is released too. What is still abandoned is the `terminate()`
     call inside that release — it can wedge, so `pa_pool` runs it on its own
     unjoined thread and simply reports the pool as unclear until it returns.
 
@@ -114,6 +118,11 @@ class _RecoveryHalf:
     _waiting_logged: bool = False
     _gave_up_logged: bool = False
 
+    # Set when recovery has been given up for the rest of the sitting — the
+    # shared instance could not be released, because an UNPINNED peer is still
+    # playing through it. Cleared only by a fresh `start()`.
+    _recovery_off: bool = False
+
     PERIOD_S = 2.0
     PROBE_TIMEOUT_S = 5.0
     INPUT_STALE_S = 3.0
@@ -177,12 +186,32 @@ class _RecoveryHalf:
         `cycled` marks the peer half being taken down with us: its own device
         never went anywhere, but it holds the same library instance, and that
         instance has to terminate before anything can enumerate again.
+
+        The one case where the instance is NOT given back: a peer that was
+        never pinned. Terminating closes every open stream, and an unpinned
+        peer has no pin to reopen on — it would simply go quiet, with no state
+        change and no line, which is the one thing this module never does. So
+        the instance stays, the peer keeps playing, and recovery is off for
+        the rest of the sitting, said plainly once.
         """
         self.state = "lost"
         self.since = time.time()
         self._lost_at = time.monotonic()
         self._waiting_logged = False
         self._gave_up_logged = False
+
+        peer = self._peer
+        shares_instance = peer is not None and peer._py_audio is self._py_audio
+        peer_unpinned = (
+            not cycled
+            and shares_instance
+            and (peer.state == "unpinned" or peer.pin is None)
+        )
+        cycle_peer = (
+            not cycled
+            and shares_instance
+            and peer.state in ("ok", "recovered")
+        )
 
         name = self.pin.name if self.pin else "?"
         if cycled:
@@ -191,25 +220,27 @@ class _RecoveryHalf:
                 f"[audio] {self._direction} device cycled with the {peer_direction} device"
                 " — the audio library restarts to see a returned device"
             )
+        elif peer_unpinned:
+            self._recovery_off = True
+            self._gave_up_logged = True
+            logger.warning(
+                f"[audio] {self._direction} device lost: {name} — staying silent;"
+                f" recovery unavailable this sitting (the {peer._direction} side is not pinned)"
+            )
         else:
             logger.warning(f"[audio] {self._direction} device lost: {name} — staying silent until it returns")
 
-        peer = self._peer
-        cycle_peer = (
-            not cycled
-            and peer is not None
-            and peer.state in ("ok", "recovered")
-            and peer._py_audio is self._py_audio
-        )
-
         handle = self._take_and_clear_handle()
         pa = self._py_audio
-        self._release_pending = True
+        self._release_pending = not peer_unpinned
 
         if cycle_peer:
             await peer._on_lost(cycled=True)
 
-        threading.Thread(target=self._abandon_and_release, args=(handle, pa), daemon=True).start()
+        if peer_unpinned:
+            threading.Thread(target=_abandon, args=(handle,), daemon=True).start()
+        else:
+            threading.Thread(target=self._abandon_and_release, args=(handle, pa), daemon=True).start()
 
     def _abandon_and_release(self, handle, pa) -> None:
         """Daemon-thread tail of a loss: close the dead handle, then hand the
@@ -231,6 +262,9 @@ class _RecoveryHalf:
         _pa_pool.release(pa)
 
     async def _try_reopen(self) -> None:
+        if self._recovery_off:
+            return  # given up for this sitting, and already said so once
+
         if self._release_pending or not _pa_pool.clear:
             # Attempting now would only bump the initialise count and re-read
             # the device list from before the loss. Say so once, then keep
@@ -321,6 +355,7 @@ class RecoveringInput(_RecoveryHalf, LocalAudioInputTransport):
     _direction = "in"
 
     async def start(self, frame) -> None:
+        self._recovery_off = False
         self.pin = await pin_default("in")
         idx = resolve_index(self._py_audio, self.pin) if self.pin else None
         if idx is not None:
@@ -374,6 +409,7 @@ class RecoveringOutput(_RecoveryHalf, LocalAudioOutputTransport):
     _write_started_at: Optional[float] = None
 
     async def start(self, frame) -> None:
+        self._recovery_off = False
         self.pin = await pin_default("out")
         idx = resolve_index(self._py_audio, self.pin) if self.pin else None
         if idx is not None:
