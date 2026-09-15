@@ -42,7 +42,8 @@ Hearth uses three words for three different things, and the pages keep to them:
 - A **conversation** is one thread of talk you can come back to — the saved conversation on disk, plus
   the memories it has left behind. The launch page lets you open a new one or pick one off the shelf.
 - A **session** (in full, a *conversation session*) is one sitting inside it: from **Start** to **Stop**,
-  today. A conversation can hold many sessions across weeks. Each session picks its own memory mode.
+  today. A conversation can hold many sessions across weeks. Each session sets its own two switches at
+  **Start**: whether to remember the past, and whether to keep this conversation.
 - **History** is what the companion knows of you across *all* your conversations. Think of a conversation
   as one notebook you can reopen and keep writing in; history is what your companion has learned from every
   notebook so far. A new conversation starts on a blank page, and the companion still knows you.

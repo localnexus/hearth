@@ -44,8 +44,8 @@ facts behind them, through the same `curation.forget_session` the memory pane
 uses) go in ONE act, memory first so a failed index update leaves everything
 intact and re-runnable. Because confidentiality is the whole reason the verb
 exists, it also says out loud what it CANNOT reach (`verbs.CANNOT_REACH`).
-It is the only verb offered for a recall-only sitting, and the only one behind
-an exposure check: same-machine callers always, everyone else only where
+An unkept row is offered Keep and Delete — Delete is this same verb under
+another label — and destroy is the only verb behind an exposure check: same-machine callers always, everyone else only where
 [serve.sessions] destroy_for_all says so.
 
 **Rename** (`POST /admin/sessions/rename`) is two verbs wearing one route,
@@ -595,8 +595,8 @@ async def _session_destroy(request: web.Request) -> web.Response:
     everything, including the file, and the verb can be run again — the
     opposite order would leave a person with the conversation gone and the
     facts extracted from it still in the bank, which is the failure this verb
-    exists to prevent. A sitting that banked nothing (recall-only, or memory
-    off) has no record, and the memory step says `no-record` rather than
+    exists to prevent. A sitting that banked nothing (one that did not keep
+    the conversation) has no record, and the memory step says `no-record` rather than
     pretending it did something.
 
     A file that is already gone while records remain is not an error: destroy

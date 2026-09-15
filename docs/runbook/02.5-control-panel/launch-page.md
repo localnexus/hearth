@@ -42,7 +42,8 @@ WebRTC). Open `http://<facade-host>:65001/admin/launch`; it asks for the serve a
   key), archive/unarchive, rename (a title; the id only through `change id…`, and only when
   nothing knows the id), and a red **Destroy** that shows its plan and asks for the word the
   row displays. A **Bring in** file picker at the foot deposits a session file onto the shelf.
-  A recall-only conversation is offered destroy and nothing else, and while the companion is up
+  An unkept leftover — a working file never kept onto the shelf — is offered Keep and Delete
+  and nothing else; destroy is the one verb behind an exposure check. While the companion is up
   its whole shelf is read-only. Full account: [session continuity](../../config-manual/session-continuity.md).
 - **Models** (only when weights are enrolled or a door is declared): which weights the door
   serves, one row per enrolled model, with enroll · render · apply · unenroll and the door's own

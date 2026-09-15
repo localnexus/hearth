@@ -151,7 +151,7 @@ async def _switch_post(request: web.Request) -> web.Response:
     apply_mode = str(body.get("apply") or "auto").lower()
     changed = switch_mod.changed_fields(wrote["previous"], merged)
     # A memory-mode / recall / retain / keep-name rider forces the restart
-    # path: the sitting's memory posture is set at boot and rides a live
+    # path: the sitting's two switches are set at boot and ride a live
     # switch unchanged — only a fresh spawn can honor a different one.
     live_eligible = bool(changed) and memory is None and recall is None \
         and retain is None and keep_name is None and not muted and all(

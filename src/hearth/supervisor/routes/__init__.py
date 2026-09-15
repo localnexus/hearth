@@ -68,8 +68,8 @@ preview-then-confirm forget — the memory CLI's web half, living here because
 the write-layer rule (c) puts every memory mutation behind this door.
 POST /admin/bot/start
 and the switch's restart rider accept "memory": full | recall-only | off (the
-sitting's --memory posture); a live handoff never does — the mode is set at
-boot and rides a live switch unchanged.
+older one-word form of the sitting's two switches); a live handoff never does
+— the switches are set at boot and ride a live switch unchanged.
 
 /admin/models is the weights surface (supervisor/models/): the enrolled
 models with their state, fit, residency and unit, a scan of what is on disk,

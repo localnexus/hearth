@@ -56,14 +56,16 @@ without a Hearth restart.
 live from the **VOICE** box's Sample dropdown (see [The live knobs panel](the-live-knobs-panel.md)), this
 line shows both — the session's real baseline voice, and the one you're currently hearing instead.
 
-**`Misc`** carries the conversation's name, this session's memory mode (`off` / `recall-only` / `full` — the mode
-it *started* with; see [The config layers](the-config-layers.md)), the turn count, net context growth, and
+**`Misc`** carries the conversation's name, this session's two switches — **Remembering** (the past) and
+**Keeping** (this conversation), each `on` or `off` as the session *started*; see
+[The config layers](the-config-layers.md) — the turn count, net context growth, and
 total tokens sent so far.
 
 ## The Memory line
 
 When this companion has cross-session memory attached, a fifth line appears: which backend answered,
-whether it's running **recall-only** (remembers nothing new this session), what per-turn recall is doing
+whether this conversation is being kept (an unkept one is marked **not keeping** — it remembers the past
+but banks nothing new this session), what per-turn recall is doing
 (`off`, `chat`, or `chat + voice`), how many facts were recalled at the start of the session and from where,
 and how many extra facts the last turn pulled in and from where. A recall source is always named honestly —
 a fallback path never poses as the primary backend.
