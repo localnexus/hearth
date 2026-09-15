@@ -21,6 +21,7 @@ Run:  .venv/bin/python -m unittest tests.test_live_switch
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import tempfile
 import tomllib
@@ -327,7 +328,10 @@ class SwitcherApply(_Base):
             {"role": "user", "content": "u2"},
         ])
         self.assertEqual(self.ei["session"], "topic")
-        self.assertTrue(sw.current_store.held)
+        # A resume forks the kept file into a fresh working file — unkept
+        # until this sitting is kept again (decision 008).
+        self.assertFalse(sw.current_store.held)
+        self.assertEqual(sw.current_store.forked_from, "topic")
 
     async def test_switch_store_carries_sitting_memory_mode(self):
         # The sitting's posture stamps every store the switcher creates, so a
@@ -338,19 +342,23 @@ class SwitcherApply(_Base):
         self.assertIsNotNone(await sw.apply_pending())
         self.assertEqual(sw.current_store.memory_mode, "recall-only")
 
-    async def test_switch_resume_warns_on_memory_mode_drift(self):
+    async def test_switch_resume_forks_the_kept_file(self):
         held = session_store.SessionStore(
             session_id="offtopic", model="model-one", voice="beta-v1",
             prompt_sha256="y" * 64, character="beta", persona="default",
             name="offtopic", held=True, memory_mode="recall-only")
         held.snapshot([{"role": "user", "content": "old"},
                        {"role": "assistant", "content": "old-reply"}])
+        before = hashlib.sha256(held.path.read_bytes()).hexdigest()
         sw = self._mk()  # a full sitting
         res = await sw.prepare({"character": "beta", "mode": "resume", "name": "offtopic"})
         self.assertTrue(res["ok"], res)
-        self.assertTrue(any("memory mode" in w for w in res["warnings"]), res)
+        self.assertFalse(any("memory mode" in w for w in res["warnings"]), res)
         self.assertIsNotNone(await sw.apply_pending())
-        self.assertEqual(sw.current_store.memory_mode, "full")  # the sitting's mode wins
+        self.assertEqual(hashlib.sha256(held.path.read_bytes()).hexdigest(), before,
+                         "the kept file is resumed read-only")
+        self.assertEqual(sw.current_store.forked_from, "offtopic")
+        self.assertNotEqual(sw.current_store.path, held.path)
 
     async def test_apply_nothing_pending(self):
         sw = self._mk()

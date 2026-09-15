@@ -111,16 +111,15 @@ def resolve_session(args, lm_model: str, voice_tag: str, prompt_fingerprint: str
                     character: str | None = None, persona: str = "default"):
     """Resolve --resume/--new → (SessionStore, resume_messages | None, descriptor).
 
-    ``descriptor`` is a static-at-startup panel label (never content):
-      "New"          — a fresh session created this run,
-      "Restored"     — a resumed unnamed saved session (auto-saved, or recovered
-                       from an unclean death),
-      "<name>"       — a resumed held (deliberately-named) session.
+    ``descriptor`` is a static-at-startup panel label (never content): a
+    person's title, else the resumed file's name, else its own stem; "New"
+    for a fresh session.
 
-    Never crashes startup: a malformed/missing/empty file falls back to a fresh
-    session with a warning. The recall-only-leftover guard exits(2) so a bare
-    non-interactive start can't silently discard the privacy tier's one
-    crash-recovery chance.
+    Never crashes startup: a malformed/missing/empty file falls back to a
+    fresh session with a warning. A resume forks the kept file into a new
+    working file rather than writing it in place (``fork_session``); a start
+    is never blocked by an unkept orphan (decision 008) — one just present is
+    surfaced, never silently discarded.
 
     ``lm_model`` / ``voice_tag`` / ``prompt_fingerprint`` / ``character`` / ``persona``
     are the live identity values (from bot.py's config load) — passed in so this module
@@ -134,6 +133,7 @@ def resolve_session(args, lm_model: str, voice_tag: str, prompt_fingerprint: str
 
     resume_data = None
     resume_path = None
+    store = None
 
     if args.resume is not None:
         if args.resume == "":  # bare --resume
@@ -150,16 +150,25 @@ def resolve_session(args, lm_model: str, voice_tag: str, prompt_fingerprint: str
                 print(f"[session] --resume {args.resume!r}: not found — starting fresh")
         if resume_path is not None:
             try:
-                resume_data = session_store.load(resume_path)
+                store, resume_data = session_store.fork_session(
+                    resume_path, model=lm_model, voice=voice_tag, prompt_sha256=psha,
+                    character=character, persona=persona, sessions_dir=sdir)
             except Exception as exc:  # noqa: BLE001 — never crash startup
                 print(f"[session] {resume_path} unreadable ({type(exc).__name__}) — starting fresh")
-                resume_data, resume_path = None, None
+                resume_data, resume_path, store = None, None, None
     elif args.new:
-        # Explicit fresh start: saved sessions are kept; only recall-only
-        # leftovers (the transcript-ephemeral class) are swept.
+        # Explicit fresh start: saved sessions are kept; expired unkept
+        # orphans are swept, and any still-waiting ones are surfaced (never
+        # discarded here — the launch page is where they're kept or deleted).
         removed = session_store.discard_ephemeral(sdir)
         if removed:
-            print(f"[session] --new: swept {len(removed)} recall-only leftover(s)")
+            print(f"[session] deleted {len(removed)} expired unkept conversation(s)")
+        waiting = session_store.ephemeral_orphans(sdir)
+        if waiting:
+            print(f"[session] {len(waiting)} unkept conversation(s) waiting — keep or delete "
+                  f"them from the launch page; they expire after 7 days")
+            for m in waiting:
+                print(f"    {_fmt_session(m)}")
     else:
         # Bare ./start.sh. Interactive terminal → offer a chooser (new + resumables,
         # held included so named work-topics are pickable). Non-interactive → keep the
@@ -172,49 +181,43 @@ def resolve_session(args, lm_model: str, voice_tag: str, prompt_fingerprint: str
             if sel is _NEW_SESSION:
                 removed = session_store.discard_ephemeral(sdir)
                 if removed:
-                    print(f"[session] new session: swept {len(removed)} recall-only leftover(s)")
+                    print(f"[session] deleted {len(removed)} expired unkept conversation(s)")
+                waiting = session_store.ephemeral_orphans(sdir)
+                if waiting:
+                    print(f"[session] {len(waiting)} unkept conversation(s) waiting — keep or "
+                          f"delete them from the launch page; they expire after 7 days")
+                    for m in waiting:
+                        print(f"    {_fmt_session(m)}")
             else:
                 resume_path = sel
                 try:
-                    resume_data = session_store.load(resume_path)
+                    store, resume_data = session_store.fork_session(
+                        resume_path, model=lm_model, voice=voice_tag, prompt_sha256=psha,
+                        character=character, persona=persona, sessions_dir=sdir)
                 except Exception as exc:  # noqa: BLE001 — never crash startup
                     print(f"[session] {resume_path} unreadable ({type(exc).__name__}) — starting fresh")
-                    resume_data, resume_path = None, None
+                    resume_data, resume_path, store = None, None, None
         elif session_store.ephemeral_orphans(sdir):
-            # Non-interactive with recall-only leftovers present: refuse rather
-            # than silently discard the one recovery chance after a crash.
-            print("[session] recall-only leftover session(s) present — refusing to silently discard:")
-            for m in session_store.ephemeral_orphans(sdir):
-                print(f"    leftover  {_fmt_session(m)}")
-            print("  Non-interactive start — re-run with:  --resume <name>   or   --new")
-            raise SystemExit(2)
+            # Non-interactive with unkept orphans present: a start is never
+            # blocked by one (decision 008 — launchd starts must come up).
+            # They stay quarantined (shown, kept a week, then deleted) —
+            # never silently discarded here.
+            waiting = session_store.ephemeral_orphans(sdir)
+            print(f"[session] {len(waiting)} unkept conversation(s) waiting — keep or delete "
+                  f"them from the launch page; they expire after 7 days")
+            for m in waiting:
+                print(f"    {_fmt_session(m)}")
         # else: saved/held-only (or none), non-interactive → fall through to fresh
         # (nothing is discarded on a bare fresh start under saved-by-default)
 
     if resume_data is not None:
         resume_messages = resume_data.get("messages") or []
         _warn_resume_mismatch(resume_data, psha, lm_model, voice_tag, persona)
-        store = session_store.SessionStore(
-            session_id=resume_path.stem,
-            model=lm_model,
-            voice=voice_tag,
-            prompt_sha256=psha,
-            sessions_dir=sdir,
-            character=character,
-            persona=persona,
-            started=resume_data.get("started") or session_store._now_iso(),
-            name=resume_data.get("name"),
-            held=bool(resume_data.get("held", False)),
-            # The saved sitting's memory posture rides along; the caller
-            # resolves it against an explicit --memory (inherit_memory_mode).
-            memory_mode=str(resume_data.get("memory_mode") or "full"),
-        )
-        held_tag = " [HELD]" if store.held else ""
-        print(f"[session] resumed {store.path.name} · {len(resume_messages)} messages{held_tag}")
-        # Panel descriptor: a held session shows its NAME (fall back to the file
-        # stem, then "Held", if it was kept without one); a resumed unnamed
-        # saved session is "Restored". Just a static label — never content.
-        descriptor = (store.name or store.session_id or "Held") if store.held else "Restored"
+        print(f"[session] continuing {resume_path.name} as {store.path.name} · "
+              f"{len(resume_messages)} messages (a kept conversation is never written in place)")
+        # Panel descriptor: a person's title wins, then the source's name, then
+        # the source's own stem. Just a static label — never content.
+        descriptor = store.title or resume_data.get("name") or resume_path.stem
         return store, resume_messages, descriptor
 
     store = session_store.SessionStore(

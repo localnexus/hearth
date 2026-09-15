@@ -248,6 +248,11 @@ class SessionStore:
     held: bool = False
     retain: bool = False  # the write switch: False = this working file is deleted at a
                           # graceful stop; True = kept on the shelf (and then held)
+    forked_from: Optional[str] = None  # the kept file this working file was copied from
+    banked_from: int = 0  # watermark: messages up to this index were already
+                          # remembered when the original was kept; the memory
+                          # tail starts after it
+    title: Optional[str] = None  # a person's label (the same key verbs.set_session_title writes)
     character: Optional[str] = None
     persona: str = "default"              # which persona file was live ("default" = persona.md)
     memory_mode: str = "full"             # the sitting's memory posture (--memory); stamped into
@@ -281,6 +286,11 @@ class SessionStore:
             "held": self.held,
             "retain": self.retain,
         }
+        if self.forked_from:
+            payload["forked_from"] = self.forked_from
+            payload["banked_from"] = self.banked_from
+        if self.title:
+            payload["title"] = self.title
         if self.character:
             payload["character"] = self.character
         if self.name:
@@ -329,6 +339,36 @@ def load(path) -> dict:
     return data
 
 
+def fork_session(source: Path, *, model: str, voice: str, prompt_sha256: str,
+                 character: Optional[str] = None, persona: str = "default",
+                 sessions_dir: Optional[Path] = None) -> tuple:
+    """Resume as a fork: a kept file is immutable to sittings, so resuming it
+    copies it into a fresh working file rather than writing the original in
+    place. ``source`` is opened for reading only. Returns
+    ``(store, source_data)`` — the new store (already snapshotted, so the
+    working file exists from the first second) and the source's loaded data
+    (for the caller's drift warnings / descriptor)."""
+    data = load(source)
+    store = SessionStore(
+        session_id=new_session_id(),
+        model=model,
+        voice=voice,
+        prompt_sha256=prompt_sha256,
+        sessions_dir=sessions_dir,
+        character=character,
+        persona=persona,
+        started=data.get("started") or _now_iso(),
+        retain=False,
+        held=False,
+        name=None,
+        forked_from=Path(source).stem,
+        banked_from=len(data.get("messages") or []),
+        title=data.get("title") or None,
+    )
+    store.snapshot(data.get("messages") or [])
+    return store, data
+
+
 def inherit_memory_mode(flag_value: Optional[str], store: "SessionStore") -> str:
     """Resolve the sitting's memory mode and stamp the store with it.
 
@@ -370,6 +410,8 @@ class SessionMeta:
                                   # existing files stay byte-identical
     archived: bool = False  # NOT a file field — it is the LOCATION (.archive/),
                             # answered by where list_sessions found the file
+    forked_from: Optional[str] = None  # the kept file this one was copied from, if any
+    banked_from: int = 0  # watermark: messages already remembered before the fork
 
 
 def _meta_of(p: Path, *, archived: bool = False):
@@ -402,6 +444,8 @@ def _meta_of(p: Path, *, archived: bool = False):
         title=(data.get("title") or None) if isinstance(data.get("title"), str) else None,
         origin=data.get("origin") or None,
         archived=archived,
+        forked_from=data.get("forked_from") or None,
+        banked_from=int(data.get("banked_from") or 0),
     )
 
 
@@ -750,6 +794,16 @@ def finalize(store: "SessionStore", messages, *, outcome: Optional[dict] = None)
         store.held = True
         store.retain = True
         store.snapshot(messages)
+        forked_from = getattr(store, "forked_from", None)
+        if forked_from:
+            old = Path(store.sessions_dir) / f"{forked_from}.json"
+            # A rename onto the original's own id lands on this same path via
+            # os.replace above — that is a supersede by replacement, and
+            # old == store.path then correctly skips the unlink (nothing left
+            # to delete: the rename already consumed it).
+            if old.exists() and old != store.path:
+                old.unlink()
+                out["superseded"] = forked_from
         if name_requested:
             out["result"] = "held" if renamed else "held-unnamed"
             return f"held → {store.path.name}" if renamed else (

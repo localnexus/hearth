@@ -294,11 +294,14 @@ class LiveSwitcher:
                             warnings.append("resume: no matching session — starting fresh")
                         else:
                             try:
-                                data = session_store.load(path)
+                                new_store, data = session_store.fork_session(
+                                    path, model=new_model_id, voice=str(voice["tag"]),
+                                    prompt_sha256=psha, character=target["character"],
+                                    persona=target["persona"], sessions_dir=sdir)
                             except Exception as exc:  # noqa: BLE001 — never fail an arm on one bad file
                                 warnings.append(f"resume: {path.name} unreadable "
                                                 f"({type(exc).__name__}) — starting fresh")
-                                data = None
+                                new_store, data = None, None
                             if data is not None:
                                 resume_messages = data.get("messages") or []
                                 if str(data.get("persona") or "default") != target["persona"]:
@@ -311,23 +314,7 @@ class LiveSwitcher:
                                         and data["prompt_sha256"] != psha):
                                     warnings.append(
                                         "persona prompt changed since save (resuming anyway)")
-                                saved_mode = str(data.get("memory_mode") or "full")
-                                if saved_mode != self._memory_mode:
-                                    warnings.append(
-                                        f"session was saved under memory mode "
-                                        f"'{saved_mode}' — this sitting is "
-                                        f"'{self._memory_mode}' (the sitting's mode wins)")
-                                new_store = session_store.SessionStore(
-                                    session_id=path.stem, model=new_model_id,
-                                    voice=str(voice["tag"]), prompt_sha256=psha,
-                                    sessions_dir=sdir, character=target["character"],
-                                    persona=target["persona"],
-                                    started=data.get("started") or session_store._now_iso(),
-                                    name=data.get("name"),
-                                    held=bool(data.get("held", False)),
-                                    memory_mode=self._memory_mode)
-                                descriptor = ((new_store.name or new_store.session_id or "Held")
-                                              if new_store.held else "Restored")
+                                descriptor = new_store.title or data.get("name") or path.stem
                     if new_store is None:
                         new_store = session_store.SessionStore(
                             session_id=session_store.new_session_id(),
