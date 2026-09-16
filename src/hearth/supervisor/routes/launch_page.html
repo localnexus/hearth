@@ -76,6 +76,11 @@
     <div class="row"><label title="the companion opens with what they remember of you — untick for a first meeting"><input type="checkbox" id="pick-recall" checked> remember the past</label></div>
     <div class="row"><label title="kept conversations go on the shelf and are remembered afterwards; unkept ones are deleted when you stop"><input type="checkbox" id="pick-keep"> keep this conversation</label> <input type="text" id="pick-keepname" autocomplete="off" placeholder="name it (optional)" disabled></div>
     <div class="row"><label title="the session comes up warm with the mic closed — open it from the panel when you are ready; you can type in the meantime"><input type="checkbox" id="pick-muted"> start with the mic off</label></div>
+    <div class="row"><label title="where this conversation listens and speaks — fixed when it starts; changing it means a new conversation">Audio</label>
+      <label><input type="radio" name="pick-route" id="pick-route-desk" value="desk" checked> the desk</label>
+      <label><input type="radio" name="pick-route" id="pick-route-remote" value="remote"> a paired device</label>
+      <input type="text" id="pick-device" autocomplete="off" placeholder="device name" class="hidden"></div>
+    <p id="routenote" class="note hidden">Open <a href="/admin/voice">the talk page</a> on that device and press Start there once this conversation is up.</p>
     <div class="row">
       <button id="compactbtn" title="Compact the selected conversation with the local model before starting — pick a session first — while it runs (~2 min) a Start is held and fires when it finishes">Compact selected session</button> <span id="compactstate" class="state"></span></div>
     <div id="compactqueue" class="hidden"></div>
@@ -100,6 +105,7 @@
   <p id="runline"></p>
   <p><a href="/">Open the control panel</a></p>
   <p id="recallline" class="note"></p>
+  <p id="routeline" class="note"></p>
   <div class="row"><label><input type="checkbox" id="stopkeep"> keep this conversation</label></div>
   <p class="note">Kept conversations are remembered and go on the shelf. Unkept ones are deleted when you stop.</p>
   <div class="row"><input type="text" id="stopname" autocomplete="off" placeholder="name" disabled></div>
@@ -184,6 +190,26 @@ function defaultLabel(character, when) {
 // the first turn the start-time switches the state already carries (`switches`
 // null when there is nothing to seed from). `fallback` is the clock-made
 // default label, passed in so this stays pure too.
+// What the Stop card says about where this sitting's audio is. Pure, and cut
+// out by test_voice_page.py: `switches.route` is the word fixed at Start, and
+// `route` is what the running sitting reports about it (null before the first
+// poll answers, or when the companion predates the route).
+function routeLine(switches, route) {
+  const word = (switches && switches.route) || "desk";
+  const where = word === "desk" ? "the desk" : word.replace(/^remote:/, "");
+  let line = "audio: " + where;
+  if (route && route.kind === "remote") {
+    if (route.state === "waiting") line += " — waiting for it to connect";
+    else if (route.state === "lost") line += " — that device dropped off";
+    else if (route.state === "connected") {
+      line += " — connected";
+      if (route.path) line += " (" + route.path + ", " + (route.buffer_ms || 0) + " ms buffer)";
+      if (route.shed_ms) line += "; dropped " + route.shed_ms + " ms it could not keep up with";
+    }
+  }
+  return line;
+}
+
 function stopCardSeed(row, switches, fallback) {
   if (row) {
     const keep = row.retain === true;
@@ -269,6 +295,7 @@ async function refresh() {
     const recall = bot.switches && bot.switches.recall;
     $("recallline").textContent = "Remembering the past: " +
       (recall === true ? "on" : recall === false ? "off" : "—") + " (set at start)";
+    $("routeline").textContent = routeLine(bot.switches, bot.route);
     await updateStopCard(card.character(), bot);
   }
   // Repopulate on each transition in EITHER direction: the verb, the hold row
@@ -356,6 +383,7 @@ const card = window.HearthSwitchCard.mount($("switchmount"), {
     body.retain = $("pick-keep").checked;
     if (body.retain && $("pick-keepname").value.trim()) body.keep_name = $("pick-keepname").value.trim();
     if ($("pick-muted").checked) body.muted = true;
+    body.route = chosenRoute();
     return body;
   },
   onApplied: () => refresh(),
@@ -539,6 +567,31 @@ wireToken(refresh);
 card.onCharacter(() => { loadSessions(); loadSessionsCard(); });
 // ↑ both halves of the shelf follow the chosen companion
 $("compactbtn").addEventListener("click", doCompact);
+// ── the audio route control ─────────────────────────────────────────────────
+// Phase A asks for the device by name; the registry that lists paired devices
+// is a later stroke. The last name typed is remembered in this browser so the
+// usual case is one radio press.
+const DEVICE_KEY = "hearth_device_id";
+
+function chosenRoute() {
+  if (!$("pick-route-remote").checked) return "desk";
+  const id = $("pick-device").value.trim();
+  if (!id) return "desk";
+  remember(DEVICE_KEY, id);
+  return "remote:" + id;
+}
+
+function drawRouteControl() {
+  const remote = $("pick-route-remote").checked;
+  show("pick-device", remote);
+  show("routenote", remote);
+}
+
+$("pick-device").value = remembered(DEVICE_KEY);
+$("pick-route-desk").addEventListener("change", drawRouteControl);
+$("pick-route-remote").addEventListener("change", drawRouteControl);
+drawRouteControl();
+
 $("pick-keep").addEventListener("change", () => {
   $("pick-keepname").disabled = !$("pick-keep").checked;
 });

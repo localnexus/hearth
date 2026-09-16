@@ -27,6 +27,7 @@ import os
 from aiohttp import web
 from loguru import logger
 
+from hearth.audio import route as audio_route
 from hearth.session import maintenance_lock
 
 from .. import compact_watch
@@ -53,6 +54,17 @@ async def _bot_start(request: web.Request) -> web.Response:
                       "try again in a few minutes"),
             "maintenance": busy,
         }, status=409)
+    # The audio route, validated before anything is spawned: a bad word is a
+    # 400 that names the grammar, never a child that dies on its own argv.
+    route = body.get("route")
+    if route is not None:
+        if not isinstance(route, str) or not audio_route.valid(route):
+            return web.json_response(
+                {"ok": False,
+                 "error": "route must be \"desk\" or \"remote:<device-id>\", "
+                          "where a device id is letters, digits, dot, dash or "
+                          "underscore, up to 64 of them"},
+                status=400)
     result = await request.app["bot_child"].start(
         mode=str(body.get("mode") or "new"),
         name=(str(body["name"]) if body.get("name") else None),
@@ -61,6 +73,7 @@ async def _bot_start(request: web.Request) -> web.Response:
         recall=(body["recall"] if isinstance(body.get("recall"), bool) else None),
         retain=(body["retain"] if isinstance(body.get("retain"), bool) else None),
         keep_name=(str(body["keep_name"]) if body.get("keep_name") else None),
+        route=(str(route) if route is not None else None),
     )
     return web.json_response(result, status=200 if result.get("ok") else 409)
 

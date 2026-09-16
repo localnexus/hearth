@@ -4,9 +4,10 @@ Four things that all exist for the same reason: a browser cannot attach an
 Authorization header to a navigation, and nobody types a 64-hex bearer into a
 phone. So —
 
-  the two SHELLS (launch, pairing) are static chrome the middleware exempts,
-  carrying no names, no state and no token; every fact they show arrives by
-  authed fetch afterwards;
+  the three SHELLS (launch, pairing, the phone's talk page) are static chrome
+  the middleware exempts, carrying no names, no state and no token; every fact
+  they show arrives by authed fetch afterwards — or, for the talk page, inside
+  the first frame on its own socket;
 
   the COOKIE carrier is minted from the bearer (never the bearer itself),
   HttpOnly so no page script can read it back, and is what makes the proxied
@@ -51,6 +52,13 @@ _LAUNCH_PAGE = pages.Page(
 # The pairing page takes neither shared script: it is what a device WITHOUT the
 # bearer opens, so the admin shell has nothing to carry for it.
 _PAIR_PAGE = pages.Page(Path(__file__).parent / "pair_page.html", brand.splice)
+# The phone's talk page, for the remote audio route. Same posture as the two
+# above and for the same reason — a browser cannot attach a header to a
+# navigation — with one difference worth stating: it does not fetch anything
+# from this door at all. It reads the key this browser already holds from
+# pairing and spends it once, in the hello on the audio socket (:65021), which
+# is a separate door with its own gate (audio/remote_transport.py).
+_VOICE_PAGE = pages.Page(Path(__file__).parent / "voice_page.html", brand.splice)
 
 # Device pairing. A 64-hex bearer is not something anyone types into a phone,
 # and file transfer to a hardened handset is its own adventure — so the desk
@@ -133,6 +141,11 @@ async def _pair_claim(request: web.Request) -> web.Response:
 async def _pair_ui(request: web.Request) -> web.Response:
     """The pairing shell — static chrome, like the launch page."""
     return web.Response(text=_PAIR_PAGE(), content_type="text/html")
+
+
+async def _voice(request: web.Request) -> web.Response:
+    """The phone's talk page — static chrome, like the other two shells."""
+    return web.Response(text=_VOICE_PAGE(), content_type="text/html")
 
 
 async def _launch(request: web.Request) -> web.Response:

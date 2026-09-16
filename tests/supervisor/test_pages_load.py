@@ -47,6 +47,7 @@ PAGES = {
     "launch": routes_mod._LAUNCH_PAGE,
     "firstrun": firstrun_mod._PAGE,
     "pair": routes_mod._PAIR_PAGE,
+    "voice": routes_mod._VOICE_PAGE,
     "roster": roster_mod._PAGE,
     "settings": settings_mod._PAGE,
     "memory": curation_mod._PAGE,
@@ -83,6 +84,13 @@ global.fetch = async () => ({ status: 200, json: async () => ({}) });
 global.setInterval = () => 0;
 global.setTimeout = () => 0;
 global.navigator = { clipboard: { writeText: async () => {} } };
+global.location = { protocol: "http:", hostname: "example", search: "", href: "",
+                    pathname: "/", replace(){} };
+global.clearTimeout = () => {};
+global.WebSocket = function () {};
+global.URL = { createObjectURL: () => "blob:x" };
+global.Blob = function () {};
+global.AudioContext = function () { throw new TypeError("no audio in node"); };
 
 // A ReferenceError is the whole quarry: it means the page named something that
 // does not exist. Anything else (a TypeError off this dumb stub) is the

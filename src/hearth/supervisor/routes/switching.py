@@ -29,6 +29,7 @@ import aiohttp
 from aiohttp import web
 from loguru import logger
 
+from hearth.audio import route as audio_route
 from hearth.session import maintenance_lock
 
 from ..child import _MEMORY_MODES, _now_iso
@@ -131,6 +132,16 @@ async def _switch_post(request: web.Request) -> web.Response:
             {"ok": False, "errors": ["retain must be true or false"]}, status=400)
     keep_name = str(body["keep_name"]) if body.get("keep_name") else None
     muted = bool(body.get("muted"))
+    # The audio route rides the same start body as the two switches, and is
+    # start-only for the same reason: the transport is built once, at the bind,
+    # and a route change is a new sitting rather than a live handoff.
+    route = body.get("route")
+    if route is not None and (not isinstance(route, str)
+                              or not audio_route.valid(route)):
+        return web.json_response(
+            {"ok": False,
+             "errors": ["route must be \"desk\" or \"remote:<device-id>\""]},
+            status=400)
     current, cur_err = switch_mod.read_selection()
     if cur_err:
         return web.json_response({"ok": False, "errors": [cur_err]}, status=409)
@@ -154,7 +165,8 @@ async def _switch_post(request: web.Request) -> web.Response:
     # path: the sitting's two switches are set at boot and ride a live
     # switch unchanged — only a fresh spawn can honor a different one.
     live_eligible = bool(changed) and memory is None and recall is None \
-        and retain is None and keep_name is None and not muted and all(
+        and retain is None and keep_name is None and route is None \
+        and not muted and all(
         k in switch_mod.live_capable_fields() for k in changed)
     live_result = None
     if apply_mode == "live" and (memory is not None or recall is not None
@@ -164,6 +176,13 @@ async def _switch_post(request: web.Request) -> web.Response:
              "errors": ["a change of the remembering or keeping switch cannot "
                         'ride a live switch — it needs a restart (repost with '
                         '"apply": "auto")'],
+             "wrote": merged}, status=409)
+    if apply_mode == "live" and route is not None:
+        return web.json_response(
+            {"ok": False,
+             "errors": ["a change of the audio route cannot ride a live "
+                        'switch — it needs a restart (repost with "apply": '
+                        '"auto")'],
              "wrote": merged}, status=409)
     if apply_mode == "live" and muted:
         return web.json_response(
@@ -224,6 +243,7 @@ async def _switch_post(request: web.Request) -> web.Response:
             recall=recall,
             retain=retain,
             keep_name=keep_name,
+            route=route,
         ))
     logger.info("[supervisor] switch → {} (restart: {})",
                 {k: merged[k] for k in switch_mod.SELECTION_KEYS}, restart)
@@ -273,7 +293,7 @@ async def _try_live(app: web.Application, merged: dict, body: dict) -> dict:
 
 async def _do_restart(app: web.Application, *, hold, hold_name, mode, name,
                       memory=None, muted=False, recall=None, retain=None,
-                      keep_name=None) -> None:
+                      keep_name=None, route=None) -> None:
     """stop (graceful ladder — the bot's own finalize/hold path runs) → start."""
     child = app["bot_child"]
     status = app["switch_state"]["last"]
@@ -283,7 +303,8 @@ async def _do_restart(app: web.Application, *, hold, hold_name, mode, name,
                       at=_now_iso())
         return
     started = await child.start(mode=mode, name=name, memory=memory, muted=muted,
-                                recall=recall, retain=retain, keep_name=keep_name)
+                                recall=recall, retain=retain, keep_name=keep_name,
+                                route=route)
     if started.get("ok"):
         status.update(phase="done", error=None, at=_now_iso(), pid=started.get("pid"))
     else:

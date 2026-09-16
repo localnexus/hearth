@@ -58,7 +58,7 @@ OWNED = (
     re.compile(r"(?m)^\s*const el ="),
     re.compile(r"(?m)^\s*const TOKEN_KEY ="),
     re.compile(r"(?m)^\s*(async )?function (token|setToken|api|show|report|"
-               r"wireToken|poll)\("),
+               r"wireToken|poll|remembered|remember)\("),
 )
 
 

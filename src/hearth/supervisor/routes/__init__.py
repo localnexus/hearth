@@ -96,9 +96,10 @@ order below is a reading order rather than a dependency chain. build_mount
 stays HERE because the route table IS the map of the surface, and a map worth
 having is one you can read in one place:
 
-    entry.py      the two static shells, the cookie carrier, and device
-                  pairing — everything that exists because a browser cannot
-                  attach an Authorization header
+    entry.py      the three static shells (launch, pairing, the phone's talk
+                  page), the cookie carrier, and device pairing — everything
+                  that exists because a browser cannot attach an
+                  Authorization header
     state.py      /admin/state's reachability probes, and the declared
                   actuators (list + run)
     sessions.py   the resume shelf, plus reveal, download, deposit, the
@@ -136,9 +137,9 @@ from .. import roster as roster_mod
 from .. import settings as settings_mod
 
 from .entry import (
-    _LAUNCH_PAGE, _PAIR_MAX_TRIES, _PAIR_PAGE, _PAIR_TTL_S, _cookie, _launch,
-    _pair_claim, _pair_mint, _pair_ui)
-from .state import _actuator_run, _actuators_get, _http_alive, _state
+    _LAUNCH_PAGE, _PAIR_MAX_TRIES, _PAIR_PAGE, _PAIR_TTL_S, _VOICE_PAGE, _cookie,
+    _launch, _pair_claim, _pair_mint, _pair_ui, _voice)
+from .state import _actuator_run, _actuators_get, _http_alive, _route_of, _state
 from .sessions import (
     DEPOSIT_SUFFIXES, REVEAL_TIMEOUT_S, _already, _archive_request, _confirm_with,
     _destroy_offered, _guarded, _known_character, _move, _read_deposit_upload,
@@ -233,6 +234,9 @@ def build_mount(sup_cfg: dict):
         app.router.add_post("/admin/pair", _pair_mint)
         app.router.add_post("/admin/pair/claim", _pair_claim)
         app.router.add_get("/admin/pair/ui", _pair_ui)
+        # /admin/voice — the phone's end of the remote audio route. A shell
+        # like the two above; the audio itself never touches this door.
+        app.router.add_get("/admin/voice", _voice)
         app.router.add_post("/admin/actuators/{name}/run", _actuator_run)
         # /admin/memory — record-level curation (preview-then-confirm forget +
         # digest views; the CLI's web half, write-layer rule (c)).

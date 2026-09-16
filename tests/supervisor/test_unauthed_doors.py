@@ -39,20 +39,21 @@ class UnauthedDoorsAreDocumented(unittest.TestCase):
             "/admin/pair/ui",
             "/admin/roster",
             "/admin/settings/ui",
+            "/admin/voice",
             "/health",
             "/ui/brand/favicon.png",
             "/ui/brand/mark.png",
         ], "the unauthed set changed — update " + " and ".join(self.DOCS))
 
     def test_the_docs_state_the_right_shell_count(self):
-        """Six static shells; /health and the pairing claim make eight paths."""
+        """Seven static shells; /health and the pairing claim make nine paths."""
         import hearth
         root = Path(hearth.__file__).parents[2]  # src/hearth/__init__.py → repo
         for rel in self.DOCS:
             text = (root / rel).read_text(encoding="utf-8")
             with self.subTest(doc=rel):
-                self.assertIn("six unauthed static shells", text)
-                self.assertNotIn("five unauthed static shells", text)
+                self.assertIn("seven unauthed static shells", text)
+                self.assertNotIn("six unauthed static shells", text)
 
     def test_the_only_unauthed_assets_are_artwork(self):
         """The brand exemption is for two images and must never become a

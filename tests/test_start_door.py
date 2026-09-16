@@ -35,10 +35,15 @@ class _FakeBotChild:
         self.status_result: dict = {"state": "down"}
 
     async def start(self, mode="new", name=None, memory=None, muted=False,
-                    recall=None, retain=None, keep_name=None):
-        self.start_calls.append({"mode": mode, "name": name, "memory": memory,
-                                 "muted": muted, "recall": recall, "retain": retain,
-                                 "keep_name": keep_name})
+                    recall=None, retain=None, keep_name=None, route=None):
+        call = {"mode": mode, "name": name, "memory": memory,
+                "muted": muted, "recall": recall, "retain": retain,
+                "keep_name": keep_name}
+        # The route rides along only when the door passed one, so every
+        # pre-existing assertion about this list stays exactly as it was.
+        if route is not None:
+            call["route"] = route
+        self.start_calls.append(call)
         return self.start_result
 
     async def stop(self, hold=False, name=None, retain=None):

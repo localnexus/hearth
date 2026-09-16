@@ -36,6 +36,19 @@ function setToken(value) {
   try { localStorage.setItem(TOKEN_KEY, value); } catch { /* private mode */ }
 }
 
+// The same guard, for the small per-browser conveniences a page wants to
+// remember between visits (the last device name typed into the audio-route
+// control, say). Storage lives in ONE file on purpose: a page that reaches for
+// localStorage itself is a page that will eventually keep something there that
+// should not be kept in a browser at all.
+function remembered(key) {
+  try { return localStorage.getItem(key) || ""; } catch { return ""; }
+}
+
+function remember(key, value) {
+  try { localStorage.setItem(key, value); } catch { /* private mode */ }
+}
+
 // The authed fetch. `json:` is a convenience: it sets POST + the content type
 // and serializes the body, so callers never hand-roll a JSON request.
 async function api(path, opts) {

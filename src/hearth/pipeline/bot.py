@@ -56,8 +56,6 @@ from pipecat.pipeline.worker import PipelineWorker, PipelineParams
 from pipecat.workers.runner import WorkerRunner
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
-from pipecat.transports.local.audio import LocalAudioTransportParams
-from hearth.audio.recovering_transport import RecoveringLocalAudioTransport
 from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.services.tts_service import TTSService
 from pipecat.services.settings import STTSettings, TTSSettings
@@ -69,6 +67,7 @@ from pipecat.processors.aggregators.llm_response_universal import (
 )
 from loguru import logger
 from hearth.tts.params import SAMPLE_RATE  # engine-owned output rate (backend-neutral module)
+from hearth.audio import route as audio_route  # the route word's grammar (no pipecat, no PortAudio)
 from hearth.stt.stt_service import MLXWhisperSTTService
 from hearth.control.control import start_web_server
 from hearth.control.engine_probe_llamaserver import fetch_engine_info_for
@@ -137,6 +136,11 @@ import hearth.control.features.turn_echo  # noqa: F401
 #                      Hearth that reacts to the conversation. Its PresenceTap is
 #                      wired after the VAD in build_pipeline, which attaches it.
 import hearth.control.features.presence  # noqa: F401
+#   /route           — which audio route this sitting is on (features/audio_route.py):
+#                      desk or a named device, its network path and buffer depth.
+#                      build_pipeline attaches the source at the bind below; the
+#                      launch page reads it through /admin/state's bot.route.
+import hearth.control.features.audio_route  # noqa: F401
 # Already pulled in by config_profiles; imported explicitly because bot core calls its
 # startup override-scrub below (remove that call too if these feature imports ever go).
 import hearth.control.features.config_knobs  # noqa: F401
@@ -226,6 +230,44 @@ def _memory_mode_str(recall: bool, retain: bool) -> str:
             (False, False): "off", (False, True): "keep-only"}[(bool(recall), bool(retain))]
 
 
+# ── The one bind: the sitting's audio route → a transport ─────────────────────
+#
+# TWO paths, and they must stay apart at the IMPORT level, not merely at the
+# call. The desk transport's recovery is a gate over PROCESS-level PortAudio
+# state; a sitting with no local device must never put that state in play, and
+# the cheapest way to be sure is that a remote sitting never imports the
+# modules that hold it. So both the desk imports below sit INSIDE the desk
+# branch — a remote sitting reaches neither `pa_pool`, `device_pin`,
+# `recovering_transport` nor `pyaudio`, and a test proves it by making
+# `import pyaudio` raise and building the remote transport anyway.
+def build_transport(route: str = audio_route.DESK):
+    """``desk`` | ``remote:<device-id>`` → ``(transport, route_state callable)``.
+
+    The second half is what ``GET /route`` reads: one dict, names and numbers
+    only, in the same shape for both routes so one reader serves both.
+    """
+    kind, device = audio_route.parse(route)
+    if kind == audio_route.REMOTE:
+        from hearth.audio.remote_transport import build_remote_transport
+
+        transport = build_remote_transport(device)
+        return transport, transport.route_state
+
+    from pipecat.transports.local.audio import LocalAudioTransportParams
+    from hearth.audio.recovering_transport import RecoveringLocalAudioTransport
+
+    transport = RecoveringLocalAudioTransport(
+        LocalAudioTransportParams(
+            audio_in_enabled=True,
+            audio_out_enabled=True,
+            audio_in_sample_rate=16000,
+            audio_out_sample_rate=SAMPLE_RATE,
+        )
+    )
+
+    return transport, lambda: audio_route.desk_route_state(transport.audio_state())
+
+
 async def build_pipeline(
     dump_dir: Optional[str] = None,
     resume_messages: Optional[list] = None,
@@ -233,6 +275,7 @@ async def build_pipeline(
     recall: bool = True,
     retain: bool = False,
     start_muted: bool = False,
+    route: str = audio_route.DESK,
 ):
     """
     Construct the fully-local v2 voice pipeline.
@@ -251,15 +294,14 @@ async def build_pipeline(
         → speaking_tap (SpeakingTap: tracks BotStarted/StoppedSpeakingFrame for /say)
         → assistant_agg (collects LLM tokens → writes to context after full response)
     """
-    # Transport (mic + speaker)
-    transport = RecoveringLocalAudioTransport(
-        LocalAudioTransportParams(
-            audio_in_enabled=True,
-            audio_out_enabled=True,
-            audio_in_sample_rate=16000,
-            audio_out_sample_rate=SAMPLE_RATE,
-        )
-    )
+    # Transport (mic + speaker) — the desk's pinned device, or one enrolled
+    # device over a WebSocket. build_transport is the whole of the difference;
+    # everything below this line is identical on both routes.
+    transport, route_state = build_transport(route)
+    hearth.control.features.audio_route.attach(route_state)
+    if audio_route.parse(route)[0] == audio_route.REMOTE:
+        print(f"[audio] this sitting listens and speaks on {audio_route.label(route)} "
+              f"— waiting for it to connect", flush=True)
 
     # VAD (single source): a VADProcessor upstream of STT emits
     # VADUserStartedSpeaking/StoppedSpeaking frames. These drive BOTH:
@@ -425,8 +467,11 @@ async def build_pipeline(
 
     # The device pin: recovery re-opens only onto the same device identity it
     # started on, never a substitute. /presence.audio reports, per direction,
-    # when that device is lost and when it comes back.
-    hearth.control.features.presence.attach_audio(transport)
+    # when that device is lost and when it comes back. Desk only — a remote
+    # sitting has no local device to pin, and /presence.audio says so by
+    # reporting the unpinned shape it reports before any pin exists.
+    if audio_route.parse(route)[0] == audio_route.DESK:
+        hearth.control.features.presence.attach_audio(transport)
 
     # Session recording. Two passive taps + a Recorder driven by the panel's Record
     # button. Disarmed →
@@ -552,6 +597,7 @@ async def main(
     recall: bool = True,
     retain: bool = False,
     start_muted: bool = False,
+    route: str = audio_route.DESK,
 ):
     """Entry point for the live-mic voice loop."""
     # Heal any LEAKED output mirror BEFORE the pipeline is constructed.
@@ -579,7 +625,7 @@ async def main(
      recorder, memory_seam, live_switcher, system_instruction,
      memory_prefetch_proc) = await build_pipeline(
         dump_dir, resume_messages=resume_messages, store=store,
-        recall=recall, retain=retain, start_muted=start_muted,
+        recall=recall, retain=retain, start_muted=start_muted, route=route,
     )
 
     # TokenMeter captures LM Studio's own per-turn usage block (ground truth).
@@ -850,6 +896,16 @@ if __name__ == "__main__":
         help="the label a kept conversation carries from its first turn",
     )
     parser.add_argument(
+        "--audio",
+        dest="audio",
+        default=audio_route.DESK,
+        metavar="ROUTE",
+        help="where this sitting listens and speaks: 'desk' (default — the "
+        "pinned local device, exactly as before) or 'remote:<device-id>' — one "
+        "enrolled device over a WebSocket, which must send its hello before "
+        "any audio flows. Fixed at start: a route change is a new sitting.",
+    )
+    parser.add_argument(
         "--muted",
         action="store_true",
         help="start with the mic closed: the session comes up warm, audio is "
@@ -858,6 +914,23 @@ if __name__ == "__main__":
         "meanwhile. Not sticky; the next start is live unless asked again.",
     )
     args = parser.parse_args()
+
+    # The route, checked BEFORE anything expensive: a bad word, or a remote
+    # sitting with nothing to gate the socket on, should cost a line and an
+    # exit rather than a model load. An ungated audio socket on the overlay
+    # network is not a degraded sitting — it is a different thing entirely.
+    try:
+        _route_kind, _route_device = audio_route.parse(args.audio)
+    except ValueError as exc:
+        print(f"[audio] {exc}", flush=True)
+        raise SystemExit(2)
+    if _route_kind == audio_route.REMOTE:
+        from hearth.audio import remote_path as _remote_path
+
+        if not _remote_path.read_serve_token():
+            print("[audio] remote route needs config/serve-token — not starting",
+                  flush=True)
+            raise SystemExit(2)
 
     # Session-store maintenance lock (design: auto-compaction-on-close). The
     # bot holds the active character's lock for the life of the process — the
@@ -892,4 +965,5 @@ if __name__ == "__main__":
         recall=_recall,
         retain=_retain,
         start_muted=args.muted,
+        route=args.audio,
     ))

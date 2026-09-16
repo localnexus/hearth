@@ -31,6 +31,7 @@ from typing import Optional
 
 from loguru import logger
 
+from hearth.audio import route as audio_route
 from hearth.serve import SUPERVISED_ENV
 
 # stop.sh parity: matches python / python3 / python3.12 running the bot module.
@@ -74,10 +75,13 @@ class BotChild:
         self.pid: Optional[int] = None
         self.started_at: Optional[float] = None  # adoption time for adopted (true start unknowable)
         self.last_exit: Optional[dict] = None  # {"code": int|None, "at": iso}
-        self.last_switches: dict = {"recall": None, "retain": None, "keep_name": None}
-        # the last start(...)'s own recall/retain/keep_name; None for all three
-        # before any start (or after an adopt). keep_name rides along so the
-        # Stop card can show the start-time choice before the first turn.
+        self.last_switches: dict = {"recall": None, "retain": None,
+                                    "keep_name": None, "route": None}
+        # the last start(...)'s own recall/retain/keep_name/route; None for all
+        # four before any start (or after an adopt). keep_name rides along so
+        # the Stop card can show the start-time choice before the first turn,
+        # and route so it can state which device the sitting is on — a fact
+        # fixed at Start that nothing later can change.
         self._proc = None
         self._reaper: Optional[asyncio.Task] = None
         self._log_fh = None
@@ -138,7 +142,8 @@ class BotChild:
     async def start(self, mode: str = "new", name: Optional[str] = None,
                     memory: Optional[str] = None, muted: bool = False,
                     recall: Optional[bool] = None, retain: Optional[bool] = None,
-                    keep_name: Optional[str] = None) -> dict:
+                    keep_name: Optional[str] = None,
+                    route: Optional[str] = None) -> dict:
         if self.state in ("starting", "running", "stopping"):
             return {"ok": False, "error": f"the companion is {self.state} — wait a moment", "pid": self.pid}
         if await self.adopt():
@@ -163,6 +168,14 @@ class BotChild:
             args += ["--keep"]
         if keep_name:
             args += ["--keep-name", keep_name]
+        if route is not None:
+            # Validated HERE as well as at the door: this is the last place
+            # before the word becomes argv, and the grammar is one import away.
+            if not audio_route.valid(route):
+                return {"ok": False,
+                        "error": f"unknown audio route {route!r} "
+                                 "(desk | remote:<device-id>)"}
+            args += ["--audio", route]
         if muted:
             args += ["--muted"]
 
@@ -192,12 +205,14 @@ class BotChild:
         self.managed = True
         self.started_at = time.time()
         self.state = "running"
-        self.last_switches = {"recall": recall, "retain": retain, "keep_name": keep_name}
+        self.last_switches = {"recall": recall, "retain": retain,
+                              "keep_name": keep_name, "route": route}
         self._reaper = asyncio.create_task(self._reap(self._proc))
-        logger.info("[supervisor] bot started (pid {}, mode {}{}{}{}{})", self.pid, mode,
+        logger.info("[supervisor] bot started (pid {}, mode {}{}{}{}{}{})", self.pid, mode,
                     f", memory {memory}" if memory else "",
                     f", recall {recall}" if recall is not None else "",
                     f", retain {retain}" if retain is not None else "",
+                    f", audio {route}" if route is not None else "",
                     ", muted" if muted else "")
         result = {"ok": True, "pid": self.pid, "mode": mode}
         if memory is not None:
@@ -206,6 +221,8 @@ class BotChild:
             result["recall"] = recall
         if retain is not None:
             result["retain"] = retain
+        if route is not None:
+            result["route"] = route
         if muted:
             result["muted"] = True
         return result

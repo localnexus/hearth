@@ -196,7 +196,7 @@ class _FakeChild:
         return {"ok": True, "escalated": False, "held": bool(hold)}
 
     async def start(self, mode="new", name=None, memory=None, muted=False,
-                    recall=None, retain=None, keep_name=None):
+                    recall=None, retain=None, keep_name=None, route=None):
         # 3-tuple when no memory rider (keeps existing assertions), 4-tuple
         # with; a 5th element (muted) only when muted. The two switches +
         # keep-name ride as ONE trailing dict, appended only when any of them
@@ -207,8 +207,14 @@ class _FakeChild:
             call = ["start", mode, name, memory]
         else:
             call = ["start", mode, name]
-        if recall is not None or retain is not None or keep_name is not None:
-            call.append({"recall": recall, "retain": retain, "keep_name": keep_name})
+        if (recall is not None or retain is not None or keep_name is not None
+                or route is not None):
+            rider = {"recall": recall, "retain": retain, "keep_name": keep_name}
+            # The route joins the rider only when one was given, so every
+            # pre-existing shape above is untouched.
+            if route is not None:
+                rider["route"] = route
+            call.append(rider)
         self.calls.append(tuple(call))
         self.state = "running"
         self.pid = 4243
@@ -219,6 +225,8 @@ class _FakeChild:
             result["recall"] = recall
         if retain is not None:
             result["retain"] = retain
+        if route is not None:
+            result["route"] = route
         if muted:
             result["muted"] = True
         return result

@@ -135,7 +135,8 @@ def _resolve_lm_token(passed: str, cfg: dict) -> str:
 
 # Unauthed paths: liveness, plus the supervisor's static SHELLS — the launch
 # page, the first-run walk, the roster wizard, the memory review-and-prune
-# pane, and the generated settings forms: contentless chrome (no names, no state, no tokens baked in)
+# pane, the generated settings forms, and the phone's talk page for the remote
+# audio route: contentless chrome (no names, no state, no tokens baked in)
 # whose every data call comes back through this middleware with the bearer.
 # Nothing else is ever exempted; when the supervisor isn't mounted, the /admin
 # pages are 404s.
@@ -153,6 +154,7 @@ _AUTH_EXEMPT = frozenset({"/health", "/admin/launch", "/admin/first-run",
                           "/admin/roster",
                           "/admin/memory/ui", "/admin/settings/ui",
                           "/admin/pair/ui", "/admin/pair/claim",
+                          "/admin/voice",
                           "/ui/brand/favicon.png", "/ui/brand/mark.png"})
 
 

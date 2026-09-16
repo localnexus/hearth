@@ -1,0 +1,381 @@
+<!doctype html>
+<!-- voice_page.html — the phone's end of the remote audio route (/admin/voice).
+
+     SECURITY CONTRACT: served WITHOUT auth, like the other static shells, so it
+     must stay pure chrome. No key is baked in: the access key it sends in the
+     hello is the one THIS browser was given when it paired (localStorage, the
+     same key the pair page stores), and it travels only inside the first frame
+     on the socket — the same trust and the same overlay network the rest of
+     Hearth already rides.
+
+     The socket is a DIFFERENT port from this page (65021 against 65001) and so
+     a different origin. That is deliberate: Hearth checks the Origin header on
+     the handshake against its own list. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hearth — talk from this device</title>
+<link rel="icon" type="image/png" href="/ui/brand/favicon.png">
+<style>
+  /*BRAND_CSS*/
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; max-width: 28em; margin: 2em auto;
+         padding: 0 1em; line-height: 1.5; }
+  h1 { font-size: 1.3em; }
+  button { font: inherit; padding: 0.7em 1.6em; margin: 0.4em 0.4em 0.4em 0;
+           cursor: pointer; font-weight: 600; }
+  #status { font-family: ui-monospace, monospace; font-size: 0.95em;
+            margin: 0.8em 0; min-height: 1.6em; }
+  .note { opacity: 0.75; font-size: 0.9em; }
+  .err { color: #c33; }
+  .ok { color: #3a3; }
+  .counts { font-family: ui-monospace, monospace; font-size: 0.85em; opacity: 0.8; }
+</style>
+</head>
+<body class="brand-adaptive">
+<!--BRANDHEAD:talk from this device-->
+<p>This device becomes the companion's ears and voice. Start a conversation on
+   the launch page first, choosing this device — then press below.</p>
+<button id="start">Start talking</button>
+<button id="stop" disabled>Stop</button>
+<div id="status">idle</div>
+<div id="counts" class="counts"></div>
+<p id="firstrun" class="note"></p>
+<p class="note">Keep this page open and the screen on while you talk. If the
+   page is closed the conversation keeps waiting for you.</p>
+<script>
+"use strict";
+const TOKEN_KEY = "hearth_admin_token";
+const DEVICE_KEY = "hearth_device_id";
+const SOCKET_PORT = 65021;
+const CAPTURE_RATE = 16000;   // what the companion listens at
+const PLAYBACK_RATE = 24000;  // what the companion's voice is made at
+const FRAME_SAMPLES = 320;    // 20 ms at 16 kHz — one message on the wire
+
+// ── the four pure helpers ────────────────────────────────────────────────────
+// Cut out of this page and run under node by test_voice_page.py, so all four
+// stay pure: no DOM, no clock, no socket. The playback worklet is BUILT from
+// ringDrop's own source below, so the rule the test checks is the rule that
+// runs in the audio thread.
+
+// Where the socket lives: the same host as this page, its own port, and wss
+// whenever the page itself is secure (a secure page may not open a plain ws).
+function socketUrl(protocol, host, port) {
+  const scheme = String(protocol) === "https:" ? "wss:" : "ws:";
+  return scheme + "//" + host + ":" + (port || SOCKET_PORT);
+}
+
+// Blocks in, paced frames out. The microphone worklet delivers 128-sample
+// blocks and delivers them BURSTILY (measured on the device: ~19 % of gaps
+// under 1 ms, then a pause), so sending one message per block would push that
+// burstiness straight onto the wire. Accumulate instead, and emit only whole
+// 20 ms frames as int16 little-endian; whatever is left over is carried.
+function pcmFrames(carry, block, frameSamples) {
+  const joined = new Float32Array(carry.length + block.length);
+  joined.set(carry, 0);
+  joined.set(block, carry.length);
+  const frames = [];
+  let at = 0;
+  while (joined.length - at >= frameSamples) {
+    const out = new Int16Array(frameSamples);
+    for (let i = 0; i < frameSamples; i++) {
+      const s = Math.max(-1, Math.min(1, joined[at + i]));
+      out[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+    }
+    frames.push(out);
+    at += frameSamples;
+  }
+  return { frames: frames, carry: joined.slice(at) };
+}
+
+// How much of the OLDEST audio to throw away so the playback queue stays
+// within its depth. This is the requirement measured on 2026-09-15: a queue
+// that only absorbs turns one slow moment into a conversation running behind,
+// without bound. Dropping costs a glitch you hear once.
+function ringDrop(queued, incoming, depth) {
+  const over = queued + incoming - depth;
+  if (over <= 0) return 0;
+  return Math.min(queued, over);
+}
+
+// How long to wait before trying the socket again — doubling, capped at three
+// minutes, so a phone that lost its network keeps trying all through a walk
+// without hammering anything.
+function backoffDelay(attempt) {
+  return Math.min(180000, 500 * Math.pow(2, Math.max(0, attempt)));
+}
+
+// ── the two worklets ─────────────────────────────────────────────────────────
+// Loaded as blob URLs: this page has no second route to serve a script from,
+// and adding one would mean a second unauthed door.
+
+const CAPTURE_WORKLET = `
+class CaptureProcessor extends AudioWorkletProcessor {
+  process(inputs) {
+    const ch = inputs[0] && inputs[0][0];
+    if (ch && ch.length) this.port.postMessage(new Float32Array(ch));
+    return true;
+  }
+}
+registerProcessor("hearth-capture", CaptureProcessor);
+`;
+
+const PLAYBACK_WORKLET = ringDrop.toString() + `
+class PlaybackProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.queue = [];       // Float32Array chunks, oldest first
+    this.queued = 0;       // samples held
+    this.depth = 4800;     // samples; replaced at every hello
+    this.dropped = 0;      // samples thrown away, for the counter on the page
+    this.port.onmessage = (e) => {
+      const m = e.data;
+      if (m.depth) { this.depth = m.depth; return; }
+      if (m.flush) { this.queue = []; this.queued = 0; return; }
+      if (!m.pcm) return;
+      const drop = ringDrop(this.queued, m.pcm.length, this.depth);
+      let left = drop;
+      while (left > 0 && this.queue.length) {
+        const head = this.queue[0];
+        if (head.length <= left) { left -= head.length; this.queued -= head.length; this.queue.shift(); }
+        else { this.queue[0] = head.subarray(left); this.queued -= left; left = 0; }
+      }
+      if (drop > 0) { this.dropped += drop; this.port.postMessage({ dropped: this.dropped }); }
+      this.queue.push(m.pcm);
+      this.queued += m.pcm.length;
+    };
+  }
+  process(_inputs, outputs) {
+    const out = outputs[0][0];
+    let at = 0;
+    while (at < out.length && this.queue.length) {
+      const head = this.queue[0];
+      const take = Math.min(head.length, out.length - at);
+      out.set(head.subarray(0, take), at);
+      at += take;
+      if (take === head.length) this.queue.shift(); else this.queue[0] = head.subarray(take);
+      this.queued -= take;
+    }
+    while (at < out.length) out[at++] = 0;
+    return true;
+  }
+}
+registerProcessor("hearth-playback", PlaybackProcessor);
+`;
+
+// ── page state ───────────────────────────────────────────────────────────────
+
+let socket = null, captureCtx = null, playCtx = null, playNode = null;
+let stream = null, wakeLock = null, carry = new Float32Array(0);
+let attempt = 0, retryTimer = null, running = false, droppedMs = 0, lastSentAt = 0;
+let lastPath = "", lastBuffer = 0;
+
+const $ = (id) => document.getElementById(id);
+function say(text, tone) {
+  $("status").textContent = text;
+  $("status").className = tone || "";
+}
+function counts() {
+  const gap = lastSentAt ? Math.round(performance.now() - lastSentAt) : null;
+  const bits = [];
+  if (droppedMs) bits.push("dropped " + Math.round(droppedMs) + " ms of late audio");
+  if (gap !== null && gap > 1000) bits.push("nothing sent for " + Math.round(gap / 1000) + " s");
+  $("counts").textContent = bits.join(" · ");
+}
+
+function token() { try { return localStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; } }
+function deviceId() {
+  let id = "";
+  try { id = localStorage.getItem(DEVICE_KEY) || ""; } catch {}
+  if (id) return id;
+  id = (window.prompt("Name this device (letters, digits, dot or dash) — the " +
+                      "conversation is started for it by name:") || "").trim();
+  if (!/^[A-Za-z0-9._-]{1,64}$/.test(id)) return "";
+  try { localStorage.setItem(DEVICE_KEY, id); } catch {}
+  return id;
+}
+
+function portOverride() {
+  const q = new URLSearchParams(location.search).get("port");
+  return q && /^[0-9]{1,5}$/.test(q) ? Number(q) : SOCKET_PORT;
+}
+
+// The one thing a person cannot fix from inside the page: on a plain-HTTP
+// address the browser does not offer the microphone at all, and the page looks
+// broken rather than refused.
+function firstRunText() {
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) return "";
+  return "This browser will not offer the microphone on this address. Open " +
+         "Hearth by its secure https address instead — that is the one this " +
+         "page is meant for. If you must use the plain http address, allow " +
+         "insecure origins for exactly this address in the browser's flags, " +
+         "and expect to set it again after clearing browser data.";
+}
+
+// ── wake lock ────────────────────────────────────────────────────────────────
+
+async function holdWake() {
+  try { wakeLock = await navigator.wakeLock.request("screen"); } catch { wakeLock = null; }
+}
+async function dropWake() {
+  try { if (wakeLock) await wakeLock.release(); } catch {}
+  wakeLock = null;
+}
+document.addEventListener("visibilitychange", () => {
+  if (running && document.visibilityState === "visible" && !wakeLock) holdWake();
+});
+
+// ── audio ────────────────────────────────────────────────────────────────────
+
+async function openAudio() {
+  // Every one of these is on for a reason: this is a speakerphone in a room,
+  // and without echo cancellation the companion hears itself and interrupts
+  // its own voice.
+  stream = await navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: true, noiseSuppression: true,
+             autoGainControl: true, channelCount: 1 },
+  });
+  captureCtx = new AudioContext({ sampleRate: CAPTURE_RATE });
+  playCtx = new AudioContext({ sampleRate: PLAYBACK_RATE });
+  await captureCtx.audioWorklet.addModule(blobUrl(CAPTURE_WORKLET));
+  await playCtx.audioWorklet.addModule(blobUrl(PLAYBACK_WORKLET));
+
+  const src = captureCtx.createMediaStreamSource(stream);
+  const cap = new AudioWorkletNode(captureCtx, "hearth-capture");
+  cap.port.onmessage = (e) => onBlock(e.data);
+  src.connect(cap);
+
+  playNode = new AudioWorkletNode(playCtx, "hearth-playback",
+                                  { outputChannelCount: [1] });
+  playNode.port.onmessage = (e) => {
+    if (e.data && e.data.dropped != null) {
+      droppedMs = (e.data.dropped / PLAYBACK_RATE) * 1000;
+      counts();
+    }
+  };
+  playNode.connect(playCtx.destination);
+}
+
+function blobUrl(source) {
+  return URL.createObjectURL(new Blob([source], { type: "application/javascript" }));
+}
+
+// The main thread paces and stamps: a WebSocket sends from here, so this is
+// the clock that decides when a frame actually leaves.
+function onBlock(block) {
+  const paced = pcmFrames(carry, block, FRAME_SAMPLES);
+  carry = paced.carry;
+  if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  for (const frame of paced.frames) {
+    // The stamp that matters is taken HERE, on the main thread: the audio
+    // graph's own clock advances in exact render quanta by definition, so
+    // timing a send by it measures the definition rather than the delivery.
+    lastSentAt = performance.now();
+    socket.send(frame.buffer);
+  }
+}
+
+async function closeAudio() {
+  try { if (stream) stream.getTracks().forEach((t) => t.stop()); } catch {}
+  for (const ctx of [captureCtx, playCtx]) { try { if (ctx) await ctx.close(); } catch {} }
+  stream = null; captureCtx = null; playCtx = null; playNode = null;
+  carry = new Float32Array(0);
+}
+
+// ── the socket, and the hello on it ──────────────────────────────────────────
+
+function connect() {
+  const id = deviceId();
+  if (!id) { say("this device needs a name before it can talk", "err"); return; }
+  if (!token()) { say("this device is not paired yet — pair it first", "err"); return; }
+  say(attempt ? "reconnecting…" : "connecting…");
+  socket = new WebSocket(socketUrl(location.protocol, location.hostname, portOverride()));
+  socket.binaryType = "arraybuffer";
+
+  socket.onopen = () => {
+    socket.send(JSON.stringify({ hello: { device: id, token: token() } }));
+  };
+  socket.onmessage = (e) => {
+    if (typeof e.data === "string") { onControl(e.data); return; }
+    const pcm = new Int16Array(e.data);
+    const floats = new Float32Array(pcm.length);
+    for (let i = 0; i < pcm.length; i++) floats[i] = pcm[i] / 32768;
+    if (playNode) playNode.port.postMessage({ pcm: floats }, [floats.buffer]);
+  };
+  socket.onclose = (e) => {
+    socket = null;
+    if (!running) { say("closed"); return; }
+    if (e.code === 4401) {
+      say("refused — this conversation was started for another device, or " +
+          "this device's key is stale", "err");
+      stopTalking();
+      return;
+    }
+    scheduleRetry();
+  };
+  socket.onerror = () => { /* onclose carries the outcome */ };
+}
+
+function onControl(text) {
+  let doc = null;
+  try { doc = JSON.parse(text); } catch { return; }
+  if (doc.interrupt) { if (playNode) playNode.port.postMessage({ flush: true }); return; }
+  if (doc.ok !== true) return;
+  attempt = 0;
+  lastPath = doc.path || "unknown";
+  lastBuffer = doc.buffer_ms || 0;
+  if (playNode) {
+    playNode.port.postMessage(
+      { depth: Math.max(1, Math.round((lastBuffer / 1000) * PLAYBACK_RATE)) });
+  }
+  const via = lastPath === "relayed" ? " (via a relay — a little more delay)" : "";
+  say("connected — " + lastPath + ", " + lastBuffer + " ms buffer" + via, "ok");
+}
+
+function scheduleRetry() {
+  const wait = backoffDelay(attempt++);
+  say("reconnecting in " + Math.round(wait / 1000) + " s…");
+  clearTimeout(retryTimer);
+  retryTimer = setTimeout(() => { if (running) connect(); }, wait);
+}
+
+// ── the two buttons ──────────────────────────────────────────────────────────
+
+async function startTalking() {
+  $("start").disabled = true;
+  try {
+    await openAudio();
+  } catch (err) {
+    $("start").disabled = false;
+    say("could not open the microphone (" + (err && err.name || "refused") + ")", "err");
+    $("firstrun").textContent = firstRunText();
+    return;
+  }
+  running = true;
+  attempt = 0;
+  droppedMs = 0;
+  counts();
+  $("stop").disabled = false;
+  await holdWake();
+  connect();
+}
+
+async function stopTalking() {
+  running = false;
+  clearTimeout(retryTimer);
+  try { if (socket) socket.close(1000, "stopped"); } catch {}
+  socket = null;
+  await closeAudio();
+  await dropWake();
+  $("start").disabled = false;
+  $("stop").disabled = true;
+  say("idle");
+}
+
+$("start").addEventListener("click", startTalking);
+$("stop").addEventListener("click", stopTalking);
+$("firstrun").textContent = firstRunText();
+</script>
+</body>
+</html>

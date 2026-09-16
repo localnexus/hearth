@@ -312,11 +312,13 @@ class ChildLifecycle(unittest.IsolatedAsyncioTestCase):
     async def test_status_reports_the_last_starts_switches(self):
         c = _fake(GRACEFUL)
         self.assertEqual(c.status()["switches"],
-                         {"recall": None, "retain": None, "keep_name": None})
-        res = await c.start(recall=False, retain=True)
+                         {"recall": None, "retain": None, "keep_name": None,
+                          "route": None})
+        res = await c.start(recall=False, retain=True, route="remote:pixel")
         self.assertTrue(res["ok"], res)
         self.assertEqual(c.status()["switches"],
-                         {"recall": False, "retain": True, "keep_name": None})
+                         {"recall": False, "retain": True, "keep_name": None,
+                          "route": "remote:pixel"})
         await c.stop()
         c.close()
 

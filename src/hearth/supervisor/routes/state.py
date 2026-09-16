@@ -50,6 +50,27 @@ async def _http_alive(session, url: str, headers: Optional[dict] = None):
         return False
 
 
+async def _route_of(session, panel_url: str):
+    """The live sitting's audio route, read from the bot's own ``/route``.
+
+    The bot is the only thing that knows it — the transport that holds the
+    route lives in that process — so the facade fetches it the way it probes
+    everything else it does not own. ``None`` whenever the answer is not a
+    route object: no companion, an older build without the route, a timeout.
+    """
+    if session is None or not panel_url:
+        return None
+    try:
+        async with session.get(panel_url + "/route",
+                               timeout=aiohttp.ClientTimeout(total=2)) as r:
+            if r.status != 200:
+                return None
+            doc = await r.json()
+    except (aiohttp.ClientError, asyncio.TimeoutError, OSError, ValueError):
+        return None
+    return doc if isinstance(doc, dict) and doc.get("kind") else None
+
+
 async def _state(request: web.Request) -> web.Response:
     app = request.app
     # One access-count line per minute for this route: names and numbers
@@ -86,12 +107,20 @@ async def _state(request: web.Request) -> web.Response:
     # earlier close is never mistaken for the current one; null unless the
     # current child wrote one.
     close = await asyncio.to_thread(close_phase.read, pid=app["bot_child"].pid)
+    # Where this sitting listens and speaks. Fetched rather than mirrored: the
+    # taps that hold it are in the bot, and a phase-A change should not stand
+    # up a second mirror to carry six fields the bot can already answer.
+    bot_status = app["bot_child"].status()
+    if bot_status.get("state") in ("starting", "running"):
+        bot_status["route"] = await _route_of(deps.session, app["panel_url"])
+    else:
+        bot_status["route"] = None
     return web.json_response({
         "supervisor": True,
         # What would relaunch the facade after /admin/daemon/restart; None on a
         # terminal run — the launch page draws its Restart button from this.
         "keeper": app.get("keeper"),
-        "bot": app["bot_child"].status(),
+        "bot": bot_status,
         "close": close,
         "panel": {"url": app["panel_url"], "reachable": panel},
         "externals": results,
