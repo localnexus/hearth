@@ -34,11 +34,27 @@ WebRTC). Open `http://<facade-host>:65001/admin/launch`; it asks for the serve a
   file keeps its own id), and the button's label says which it will do
   (**Stop**, or **Stop and keep**). Plus a link into the proxied control panel. A line above
   states where this conversation's audio is, as a fact fixed at the start — `audio: the desk`,
-  or `audio: Pixel — connected (direct, 60 ms buffer)`, with `waiting for it to connect`
-  before the device arrives and `that device dropped off` after it leaves. It is seeded from
-  the start-time choice the same way the keep switch is, so it is right from the moment the
-  companion is up, and filled out from what the running conversation reports.
+  or `audio: Pixel — connected (direct, 120 ms buffer)`, with `waiting for it to connect`
+  before the device arrives. It is seeded from the start-time choice the same way the keep
+  switch is, so it is right from the moment the companion is up, and filled out from what the
+  running conversation reports.
+- **When a device goes away, that line tells you which kind of away it is**, because the two
+  are not the same thing and one word for both would be true and useless:
+  - *the desk* — `the headset is away; waiting, and it will come back on the same device only`.
+    There is no countdown: silence is something you can wait out, and the conversation does.
+    (`the headset came back` after it does; `no device pinned` when there is none.)
+  - *a paired device* — `waiting for Pixel, 2:40 left; then this conversation closes`, counting
+    down each second, and `it did not come back; closing` at the end of it. A phone is a
+    countdown because a conversation left open all night is not waiting, it is stranded. See
+    [the wait](remote-audio-route.md) for what closing means (short version: exactly what your
+    Stop button means, keep switch and all).
+  - While the device is connected but falling behind: `the phone is falling behind (140 ms
+    dropped)` — the audio it could not keep up with, not a fault to hunt.
 - A live state line (companion / pid / uptime / externals / switch phase, polled every few seconds).
+  **With nothing running it also names why the last conversation ended, when it can**: a
+  conversation that closed itself over a device that never came back says so — *the last
+  conversation closed itself: Pixel did not come back within the wait*. That ending is the one
+  nobody witnessed, and it is the only one the page can name this way.
 - **Externals** (only when actuators are declared): one row per
   `[serve.supervisor.actuators.<name>]` with its note, its reachability probe, and the last
   run's outcome — plus a **Run** button. The request holds until the command finishes, so a

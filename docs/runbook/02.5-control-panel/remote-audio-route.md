@@ -87,7 +87,10 @@ remote route's equivalent is the **first message**:
   **does not start at all**. An audio socket nobody can check is not a degraded
   conversation, it is a different thing.
 
-Success is answered with the buffer depth below, and only then does audio move.
+Success is answered with the buffer depth below **and the length of the wait** —
+`{"ok": true, "path": "direct", "buffer_ms": 120, "grace_s": 180}` — and only then
+does audio move. The device needs the second number to count honestly instead of
+retrying into the dark.
 
 ## The depth, and why it is not one number
 
@@ -105,9 +108,17 @@ connection**, from how it actually arrived:
 
 | path | depth | override |
 |---|---|---|
-| `direct` | 60 ms | `HEARTH_AUDIO_BUFFER_DIRECT_MS` |
+| `local` | 120 ms — this machine's own address, or loopback: a page opened here, or a probe | (as direct) |
+| `direct` | 120 ms | `HEARTH_AUDIO_BUFFER_DIRECT_MS` |
 | `relayed` | 200 ms | `HEARTH_AUDIO_BUFFER_RELAYED_MS` |
 | `unknown` | 200 ms — not knowing buys the deeper one | (as relayed) |
+
+**Why 120 and not 60.** Seen in use on 2026-09-16, with a phone on a hotspot going
+straight over the internet: a 60 ms buffer on the device dropped **1189 ms of audio
+over about seven turns**, while this end shed nothing at all. The measurement above
+had already said a direct hotspot ran to 107 ms; the depth had not listened. 120 ms
+is that measurement taken seriously. A device on the same wifi is very likely fine at
+60 and is not measured on the ring, which is what the override is for.
 
 The page's own status line says which is in force, and says plainly when it is
 going through a relay, because that is a little more delay and pretending
@@ -120,16 +131,63 @@ than shedding — 25 ms of planted delay put a one-way trip at 740 ms and climbi
 So the device's playback buffer throws away its oldest audio past its depth and
 shows how much, and Hearth does the same on its own way out.
 
+## The wait — what happens when the device goes away
+
+A socket that goes is not a conversation that is over. A screen sleeps, a network
+flips, a lift has no signal. So the conversation **waits**, and it says how long at
+the hello:
+
+| | how long | what ends it |
+|---|---|---|
+| the desk | indefinitely | nothing; the headset is waited for as long as it takes |
+| a paired device | **180 seconds**, `HEARTH_AUDIO_GRACE_S` | the device comes back, or the conversation closes itself |
+
+- **It comes back inside the wait.** The device sends its hello again and rejoins a
+  conversation that was never torn down — mid-answer, with the answer's tail still
+  coming. The depth is decided again, from whatever network it came back on: a phone
+  that left on wifi and returned on cellular is a different path and is told so.
+- **It does not.** The conversation **closes itself the way the Stop button closes
+  it** — the same signal, from inside. Everything downstream is the ladder that
+  already existed: the capture finalised, the panel down, the memory tail, and the
+  transcript kept or deleted exactly as you left the keep switch (including a late
+  flip from the Stop card). There is no second close path and no file of its own.
+- Afterwards the companion is simply down, and the launch page's status line says
+  why: *the last conversation closed itself: Pixel did not come back within the
+  wait*. Underneath, the process exits with status **3**, which nothing else uses.
+- A device that arrives during the few seconds the socket takes to come down is
+  closed with **4410** and the word `ended` — not a refusal, because nothing was
+  refused: there is nothing left to join. The talk page says so and stops retrying.
+- A wrong `HEARTH_AUDIO_GRACE_S` (a word, a zero, a negative) leaves the 180 standing.
+  A conversation that closes the moment a phone blinks is the expensive mistake.
+
+**On the device**, the page counts the same wait down: `reconnecting in 8 s… (the
+conversation waits 2:14)`. Thirty seconds past the wait it stops trying, releases the
+screen and closes the microphone, and says *the conversation has most likely closed —
+press Start when you are back*. A phone in a pocket must not retry all night.
+
 ## Reading it back
 
 The launch page's Stop card states the route as a fact fixed at the start:
-`audio: the desk`, or `audio: Pixel — connected (direct, 60 ms buffer)`.
+`audio: the desk`, or `audio: Pixel — connected (direct, 120 ms buffer)`. While a
+device is away it counts down — `audio: Pixel — waiting for Pixel, 2:40 left; then
+this conversation closes` — and the count ticks between polls rather than jumping.
 `GET /admin/state` carries the same under `bot.route`:
 
 ```json
-{"kind": "remote", "device": "Pixel", "state": "waiting|connected|lost",
- "path": "direct|relayed|unknown", "buffer_ms": 60, "shed_ms": 0}
+{"kind": "remote", "device": "Pixel", "state": "waiting|connected|lost|ended",
+ "path": "local|direct|relayed|unknown", "buffer_ms": 120, "shed_ms": 0,
+ "grace_left": null}
 ```
+
+| state | means |
+|---|---|
+| `waiting` | started, no device has joined yet — it waits as long as it takes |
+| `connected` | the hello was accepted; audio is moving |
+| `lost` | the device went; `grace_left` is the seconds still to wait |
+| `ended` | the wait ran out; the conversation is closing itself |
+
+`grace_left` is null unless a remote device is actually away, and null always on the
+desk — which is the difference between the two routes, not a gap in one of them.
 
 Names and numbers only — no addresses, no key, and nothing anyone said.
 
@@ -137,7 +195,10 @@ Names and numbers only — no addresses, no key, and nothing anyone said.
 
 | line | means |
 |---|---|
-| `[audio] remote client connected (path=direct, buffer=60ms)` | the hello was accepted, audio is moving |
+| `[audio] remote client connected (path=direct, buffer=120ms)` | the hello was accepted, audio is moving |
+| `[audio] remote client rejoined after 34 s (path=direct, buffer=120ms)` | the same device came back inside the wait; the conversation continued |
+| `[audio] remote client lost — waiting up to 180 s` | the device went; the countdown started |
+| `[audio] remote device did not return within 180 s — closing the sitting` | the wait ran out; the close ladder is running |
 | `[audio] remote client refused` | a first message that was not this conversation's device with the key |
 | `[audio] remote output stalled (N ms shed)` | the far end fell behind; N is the total thrown away so far. At most one line every five seconds |
 | `[audio] remote route needs config/serve-token — not starting` | there was nothing to check the hello against |
@@ -154,11 +215,13 @@ flags (`chrome://flags` → *Insecure origins treated as secure*). It must be se
 again after the browser's data is cleared, and the talk page says so in its own
 words when it finds no microphone interface.
 
-## What this phase does not do yet
+## What this does not do yet
 
-- **No waiting room after a drop.** If the device goes away the conversation stays
-  up and keeps waiting, indefinitely — there is no countdown and no self-stop yet.
-  The page reconnects on its own, backing off up to three minutes.
 - **No list of paired devices.** The launch page asks for the name; it remembers
-  the last one in that browser.
+  the last one in that browser. A registry, a chooser and a re-pair path are the
+  next piece of work.
+- **No timeout on the first wait.** A conversation started from the desk waits for
+  the device to arrive for as long as it takes — only a device that has already been
+  here is waited for on a clock. A start timeout would belong with the chooser, and
+  is an open question rather than an omission.
 - **One device at a time**, by design.
