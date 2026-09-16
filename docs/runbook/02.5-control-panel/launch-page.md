@@ -22,9 +22,10 @@ WebRTC). Open `http://<facade-host>:65001/admin/launch`; it asks for the serve a
 - The **control panel** link (companion up): the page mints the browser carrier once per load, so
   the proxied `:65000` panel opens by clicking rather than answering `401`. Everything else
   here sends the access key as a header and never needs the cookie.
-- **Stop** (companion up): the session is unkept by default; a **keep this conversation** box and an
-  optional name field are the late chance to keep it (the name is a label for the shelf — the file
-  keeps its own id), and the button's label says which it will do
+- **Stop** (companion up): the session is unkept unless this sitting was started keeping it; a
+  **keep this conversation** box and an optional name field show that choice from the moment the
+  companion is up, and are the late chance to change it (the name is a label for the shelf — the
+  file keeps its own id), and the button's label says which it will do
   (**Stop**, or **Stop and keep**). Plus a link into the proxied control panel.
 - A live state line (companion / pid / uptime / externals / switch phase, polled every few seconds).
 - **Externals** (only when actuators are declared): one row per

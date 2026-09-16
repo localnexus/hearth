@@ -311,12 +311,31 @@ class ChildLifecycle(unittest.IsolatedAsyncioTestCase):
 
     async def test_status_reports_the_last_starts_switches(self):
         c = _fake(GRACEFUL)
-        self.assertEqual(c.status()["switches"], {"recall": None, "retain": None})
+        self.assertEqual(c.status()["switches"],
+                         {"recall": None, "retain": None, "keep_name": None})
         res = await c.start(recall=False, retain=True)
         self.assertTrue(res["ok"], res)
-        self.assertEqual(c.status()["switches"], {"recall": False, "retain": True})
+        self.assertEqual(c.status()["switches"],
+                         {"recall": False, "retain": True, "keep_name": None})
         await c.stop()
         c.close()
+
+    async def test_status_carries_the_start_time_keep_name(self):
+        """The name chosen at start rides /admin/state, so the Stop card can
+        show it before the first turn puts a working file on the shelf."""
+        c = _fake(GRACEFUL)
+        res = await c.start(retain=True, keep_name="x")
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(c.status()["switches"]["keep_name"], "x")
+        await c.stop()
+        c.close()
+
+        c2 = _fake(GRACEFUL)
+        res = await c2.start(retain=True)
+        self.assertTrue(res["ok"], res)
+        self.assertIsNone(c2.status()["switches"]["keep_name"])
+        await c2.stop()
+        c2.close()
 
 if __name__ == "__main__":
     unittest.main()

@@ -26,6 +26,8 @@ STOP_BUTTON_LABEL_RE = re.compile(
     r"function stopButtonLabel\(keep, label\) \{.*?\n\}", re.S)
 DEFAULT_LABEL_RE = re.compile(
     r"function defaultLabel\(character, when\) \{.*?\n\}", re.S)
+STOP_CARD_SEED_RE = re.compile(
+    r"function stopCardSeed\(row, switches, fallback\) \{.*?\n\}", re.S)
 
 
 @unittest.skipUnless(NODE, "node not installed — stop-card node tests skipped")
@@ -63,6 +65,38 @@ class StopCardNode(unittest.TestCase):
         self.assertEqual(results["delete"], "Stop and delete")
         self.assertEqual(results["keep"], 'Stop and keep "Example · 2026-09-15 03:10"')
         self.assertEqual(results["label"], "Example · 2026-09-15 03:10")
+
+    def test_stop_card_seed_reads_the_row_then_the_start_switches(self):
+        """Before the first turn there is no working row: the card is seeded
+        from the sitting's own start switches instead."""
+        script = self.dir / "stop_card_seed.js"
+        script.write_text(
+            self._cut(STOP_CARD_SEED_RE, "stopCardSeed") + "\n"
+            "const results = {};\n"
+            'const F = "Example · 2026-09-15 03:10";\n'
+            'results.row_kept = stopCardSeed({retain: true, title: "t"}, null, F);\n'
+            'results.row_unkept = stopCardSeed({retain: false, title: "t"},'
+            ' {retain: true, keep_name: "n"}, F);\n'
+            "results.row_kept_unnamed = stopCardSeed({retain: true}, null, F);\n"
+            'results.boot_named = stopCardSeed(null, {retain: true, keep_name: "n"}, F);\n'
+            "results.boot_unnamed = stopCardSeed(null, {retain: true, keep_name: null}, F);\n"
+            "results.boot_plain = stopCardSeed(null, {retain: false, keep_name: null}, F);\n"
+            "results.nothing = stopCardSeed(null, null, F);\n"
+            "console.log(JSON.stringify(results));\n",
+            encoding="utf-8")
+        r = subprocess.run([NODE, str(script)], capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 0, r.stderr.strip())
+        out = json.loads(r.stdout)
+        label = "Example · 2026-09-15 03:10"
+        # the working row still wins wherever it exists
+        self.assertEqual(out["row_kept"], {"keep": True, "name": "t"})
+        self.assertEqual(out["row_unkept"], {"keep": False, "name": ""})
+        self.assertEqual(out["row_kept_unnamed"], {"keep": True, "name": label})
+        # and before it exists, the start-time choice shows
+        self.assertEqual(out["boot_named"], {"keep": True, "name": "n"})
+        self.assertEqual(out["boot_unnamed"], {"keep": True, "name": label})
+        self.assertEqual(out["boot_plain"], {"keep": False, "name": ""})
+        self.assertEqual(out["nothing"], {"keep": False, "name": ""})
 
 
 if __name__ == "__main__":

@@ -180,6 +180,19 @@ function defaultLabel(character, when) {
   return character + " · " + when.getFullYear() + "-" + p2(when.getMonth() + 1) + "-" +
          p2(when.getDate()) + " " + p2(when.getHours()) + ":" + p2(when.getMinutes());
 }
+// What the Stop card should show: the working row once it exists, and before
+// the first turn the start-time switches the state already carries (`switches`
+// null when there is nothing to seed from). `fallback` is the clock-made
+// default label, passed in so this stays pure too.
+function stopCardSeed(row, switches, fallback) {
+  if (row) {
+    const keep = row.retain === true;
+    return { keep: keep, name: keep ? ((row.title || row.name) || fallback) : "" };
+  }
+  const sw = switches || {};
+  const keep = sw.retain === true;
+  return { keep: keep, name: keep ? (sw.keep_name || fallback) : "" };
+}
 
 function needToken(prompt) {
   show("tokencard", true); show("switchcard", false); show("stopcard", false);
@@ -256,7 +269,7 @@ async function refresh() {
     const recall = bot.switches && bot.switches.recall;
     $("recallline").textContent = "Remembering the past: " +
       (recall === true ? "on" : recall === false ? "off" : "—") + " (set at start)";
-    await updateStopCard(card.character());
+    await updateStopCard(card.character(), bot);
   }
   // Repopulate on each transition in EITHER direction: the verb, the hold row
   // and the current selection all change when the bot comes up or goes down.
@@ -265,27 +278,33 @@ async function refresh() {
 }
 
 // The Stop card's keep switch and name follow the working file — the newest
-// unheld session on the shelf, which exists from the first turn onward (before
-// that the box is unticked and the name empty). A `touched` flag per working
-// id keeps the person's own edit from being overwritten by the next poll; it
-// resets only when a new working file appears (a fresh sitting).
-async function updateStopCard(character) {
+// unheld session on the shelf, which exists only from the first turn onward.
+// Before it appears the card is seeded instead from the sitting's own start
+// switches (`bot.switches`, already in the polled state): a sitting started
+// with keep says "Stop and keep …" from the moment it is up. A `touched` flag
+// keeps the person's own edit from being overwritten by the next poll; it is
+// keyed on the sitting — the working id while there is a working file, and
+// "boot:<pid>" before that — so a fresh sitting resets it either way, and the
+// working row takes over unchanged once it lands.
+async function updateStopCard(character, bot) {
   let row = null;
   try {
     const r = await api("/admin/sessions?character=" + encodeURIComponent(character || ""));
     row = ((r.data && r.data.sessions) || []).find((m) => m.held === false) || null;
   } catch { /* the shelf is a convenience; the card still works without it */ }
-  if (row && row.session_id !== stopWorkingId) {
-    stopWorkingId = row.session_id;
+  const booting = !row && !!bot && (bot.state === "starting" || bot.state === "running");
+  const sittingId = row ? row.session_id : (booting ? "boot:" + bot.pid : null);
+  if (sittingId && sittingId !== stopWorkingId) {
+    stopWorkingId = sittingId;
     stopTouched = false;
   }
   if (!stopTouched) {
-    const keep = !!(row && row.retain === true);
-    $("stopkeep").checked = keep;
-    $("stopname").disabled = !keep;
-    $("stopname").value = keep ?
-      ((row && (row.title || row.name)) || defaultLabel(character, new Date())) : "";
-    $("stopbtn").textContent = stopButtonLabel(keep, $("stopname").value);
+    const seed = stopCardSeed(row, booting ? bot.switches : null,
+                              defaultLabel(character, new Date()));
+    $("stopkeep").checked = seed.keep;
+    $("stopname").disabled = !seed.keep;
+    $("stopname").value = seed.name;
+    $("stopbtn").textContent = stopButtonLabel(seed.keep, seed.name);
   }
   if (row && row.forked_from) {
     $("forkline").textContent = 'Continuing "' + (row.title || row.forked_from) +
