@@ -295,6 +295,45 @@ class TheHelloGateOnARealSocket(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(self.transport.route_state()["state"], "waiting",
                                  "a refusal must leave the sitting waiting")
 
+    async def test_the_companions_voice_goes_out_as_raw_pcm(self):
+        """The direction the parameters alone cannot prove. With no serializer,
+        pipecat's own write path sends nothing at all — both halves of this
+        transport speak PCM themselves, and only a real socket shows it."""
+        from pipecat.frames.frames import OutputAudioRawFrame
+
+        output = self.transport.output()
+        voice = bytes(range(256)) * 4
+        async with websockets.connect(
+                self.url, additional_headers={"X-Forwarded-For": "100.64.0.2"}) as ws:
+            await self._hello(ws)
+            await ws.recv()                      # the hello answer
+            drain = asyncio.create_task(output._drain())
+            self.addCleanup(drain.cancel)
+            sent = await output.write_audio_frame(
+                OutputAudioRawFrame(audio=voice, sample_rate=24000, num_channels=1))
+            self.assertTrue(sent)
+            heard = await asyncio.wait_for(ws.recv(), timeout=2)
+        self.assertEqual(heard, voice, "the bytes on the wire are the audio itself")
+        self.assertEqual(self.transport.route_state()["shed_ms"], 0)
+
+    async def test_a_barge_in_clears_the_queue_and_tells_the_far_end(self):
+        """Raw PCM carries no frame types, so the one control the device needs
+        — stop playing what you have — goes as a message of its own."""
+        from pipecat.frames.frames import InterruptionFrame
+
+        output = self.transport.output()
+        async with websockets.connect(
+                self.url, additional_headers={"X-Forwarded-For": "100.64.0.2"}) as ws:
+            await self._hello(ws)
+            await ws.recv()
+            output.backlog.push(b"\x00" * 4800)
+            await output._write_frame(InterruptionFrame())
+            told = json.loads(await asyncio.wait_for(ws.recv(), timeout=2))
+        self.assertEqual(told, {"interrupt": True})
+        self.assertEqual(output.backlog.queued_ms, 0.0)
+        self.assertEqual(output.backlog.shed_ms, 0.0,
+                         "a deliberate flush is not a stall")
+
     async def test_a_second_device_is_refused_while_one_is_connected(self):
         async with websockets.connect(
                 self.url, additional_headers={"X-Forwarded-For": "100.64.0.2"}) as first:
