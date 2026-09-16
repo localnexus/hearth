@@ -165,7 +165,7 @@ class TheChildTurnsTheWordIntoArgv(unittest.IsolatedAsyncioTestCase):
 class TheStateCarriesWhatTheSittingReports(unittest.IsolatedAsyncioTestCase):
     """`bot.route` is FETCHED from the bot's own `/route`, not mirrored: the
     transport that knows the answer lives in that process, and a phase-A change
-    should not stand up a second mirror to carry six fields."""
+    should not stand up a second mirror to carry seven fields."""
 
     class _Session:
         def __init__(self, answer=None, status=200, boom=None):

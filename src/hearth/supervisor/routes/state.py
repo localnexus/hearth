@@ -109,7 +109,7 @@ async def _state(request: web.Request) -> web.Response:
     close = await asyncio.to_thread(close_phase.read, pid=app["bot_child"].pid)
     # Where this sitting listens and speaks. Fetched rather than mirrored: the
     # taps that hold it are in the bot, and a phase-A change should not stand
-    # up a second mirror to carry six fields the bot can already answer.
+    # up a second mirror to carry seven fields the bot can already answer.
     bot_status = app["bot_child"].status()
     if bot_status.get("state") in ("starting", "running"):
         bot_status["route"] = await _route_of(deps.session, app["panel_url"])
