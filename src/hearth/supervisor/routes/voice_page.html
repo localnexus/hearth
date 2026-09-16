@@ -42,8 +42,9 @@
 <div id="status">idle</div>
 <div id="counts" class="counts"></div>
 <p id="firstrun" class="note"></p>
-<p class="note">Keep this page open and the screen on while you talk. If the
-   page is closed the conversation keeps waiting for you.</p>
+<p class="note">Keep this page open and the screen on while you talk. If this
+   device drops off, the conversation holds your place for a few minutes and
+   this page keeps trying — the line above says how long is left.</p>
 <script>
 "use strict";
 const TOKEN_KEY = "hearth_admin_token";
@@ -53,8 +54,8 @@ const CAPTURE_RATE = 16000;   // what the companion listens at
 const PLAYBACK_RATE = 24000;  // what the companion's voice is made at
 const FRAME_SAMPLES = 320;    // 20 ms at 16 kHz — one message on the wire
 
-// ── the four pure helpers ────────────────────────────────────────────────────
-// Cut out of this page and run under node by test_voice_page.py, so all four
+// ── the six pure helpers ─────────────────────────────────────────────────────
+// Cut out of this page and run under node by test_voice_page.py, so all six
 // stay pure: no DOM, no clock, no socket. The playback worklet is BUILT from
 // ringDrop's own source below, so the rule the test checks is the rule that
 // runs in the audio thread.
@@ -104,6 +105,23 @@ function ringDrop(queued, incoming, depth) {
 // without hammering anything.
 function backoffDelay(attempt) {
   return Math.min(180000, 500 * Math.pow(2, Math.max(0, attempt)));
+}
+
+// Keep trying, or stop? The conversation waits a bounded time for this device
+// and says how long in its answer to the hello; thirty seconds past that it is
+// gone, and a phone in a pocket retrying all night is a flat battery and a
+// warm radio for nothing. When the server never said (an older one), retry the
+// way this page always has — the caution belongs to the side that knows.
+function retryVerdict(elapsedMs, graceS) {
+  const grace = Number(graceS);
+  if (!(grace > 0)) return "retry";
+  return elapsedMs > (grace + 30) * 1000 ? "give-up" : "retry";
+}
+
+// A wait, as a person reads one: 160 → "2:40".
+function graceText(seconds) {
+  const whole = Math.max(0, Math.round(Number(seconds) || 0));
+  return Math.floor(whole / 60) + ":" + String(whole % 60).padStart(2, "0");
 }
 
 // ── the two worklets ─────────────────────────────────────────────────────────
@@ -170,6 +188,11 @@ let socket = null, captureCtx = null, playCtx = null, playNode = null;
 let stream = null, wakeLock = null, carry = new Float32Array(0);
 let attempt = 0, retryTimer = null, running = false, droppedMs = 0, lastSentAt = 0;
 let lastPath = "", lastBuffer = 0;
+// The wait: how long the conversation says it will hold the place open
+// (from the hello answer), when this device lost it, and when the next try is
+// due. The line between tries is drawn from these rather than written once, so
+// it counts down instead of sitting still.
+let graceS = null, lostAt = 0, nextTryAt = 0, waitTimer = null;
 
 const $ = (id) => document.getElementById(id);
 function say(text, tone) {
@@ -307,11 +330,17 @@ function connect() {
     socket = null;
     if (!running) { say("closed"); return; }
     if (e.code === 4401) {
-      say("refused — this conversation was started for another device, or " +
-          "this device's key is stale", "err");
-      stopTalking();
+      standDown("refused — this conversation was started for another device, " +
+                "or this device's key is stale", "err");
       return;
     }
+    if (e.code === 4410) {
+      // Not a refusal and not a network: the conversation waited, the wait ran
+      // out, and it closed itself. Retrying would only find a closing door.
+      standDown("the conversation closed while this device was away", "err");
+      return;
+    }
+    if (!lostAt) lostAt = Date.now();
     scheduleRetry();
   };
   socket.onerror = () => { /* onclose carries the outcome */ };
@@ -323,21 +352,58 @@ function onControl(text) {
   if (doc.interrupt) { if (playNode) playNode.port.postMessage({ flush: true }); return; }
   if (doc.ok !== true) return;
   attempt = 0;
+  if (doc.grace_s) graceS = Number(doc.grace_s) || null;
+  const rejoined = lostAt !== 0;
+  lostAt = 0;
+  clearInterval(waitTimer); waitTimer = null;
   lastPath = doc.path || "unknown";
   lastBuffer = doc.buffer_ms || 0;
   if (playNode) {
     playNode.port.postMessage(
       { depth: Math.max(1, Math.round((lastBuffer / 1000) * PLAYBACK_RATE)) });
+    // Whatever was still in the ring belongs to before the network went. The
+    // conversation has moved on; playing it now would be the companion
+    // answering the question before last.
+    if (rejoined) playNode.port.postMessage({ flush: true });
   }
   const via = lastPath === "relayed" ? " (via a relay — a little more delay)" : "";
   say("connected — " + lastPath + ", " + lastBuffer + " ms buffer" + via, "ok");
 }
 
 function scheduleRetry() {
+  if (retryVerdict(Date.now() - lostAt, graceS) === "give-up") { giveUp(); return; }
   const wait = backoffDelay(attempt++);
-  say("reconnecting in " + Math.round(wait / 1000) + " s…");
+  nextTryAt = Date.now() + wait;
   clearTimeout(retryTimer);
   retryTimer = setTimeout(() => { if (running) connect(); }, wait);
+  drawWaiting();
+  clearInterval(waitTimer);
+  waitTimer = setInterval(drawWaiting, 1000);
+}
+
+// The word this page must never use is the one that means "it is over": the
+// conversation is still there, and saying otherwise makes a person stop trying
+// while it waits for them. What it says instead is how long it has — as a
+// countdown, because a static line through a three-minute backoff reads as a
+// page that has died.
+function drawWaiting() {
+  if (!running || !lostAt) { clearInterval(waitTimer); waitTimer = null; return; }
+  if (retryVerdict(Date.now() - lostAt, graceS) === "give-up") { giveUp(); return; }
+  const inS = Math.max(0, Math.round((nextTryAt - Date.now()) / 1000));
+  let line = "reconnecting in " + inS + " s…";
+  if (graceS) {
+    line += " (the conversation waits " +
+            graceText(graceS - (Date.now() - lostAt) / 1000) + ")";
+  }
+  say(line);
+}
+
+// Past the wait, with no answer. A phone in a pocket must not retry all night:
+// let the screen sleep, let the microphone go, and leave one sentence that
+// says what to do next.
+function giveUp() {
+  standDown("the conversation has most likely closed — press Start when you are back",
+            "err");
 }
 
 // ── the two buttons ──────────────────────────────────────────────────────────
@@ -355,22 +421,35 @@ async function startTalking() {
   running = true;
   attempt = 0;
   droppedMs = 0;
+  lostAt = 0;
+  graceS = null;
   counts();
   $("stop").disabled = false;
   await holdWake();
   connect();
 }
 
-async function stopTalking() {
+// Everything stops the same way — the button, a refusal, a conversation that
+// closed while this device was away, and the end of the wait. Only the last
+// line differs, and it is said AFTER the teardown so it is the one that stays
+// on the screen.
+async function standDown(message, tone) {
   running = false;
   clearTimeout(retryTimer);
+  clearInterval(waitTimer);
+  waitTimer = null;
+  lostAt = 0;
   try { if (socket) socket.close(1000, "stopped"); } catch {}
   socket = null;
   await closeAudio();
   await dropWake();
   $("start").disabled = false;
   $("stop").disabled = true;
-  say("idle");
+  say(message, tone);
+}
+
+async function stopTalking() {
+  await standDown("idle");
 }
 
 $("start").addEventListener("click", startTalking);

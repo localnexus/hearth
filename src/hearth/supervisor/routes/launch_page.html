@@ -190,24 +190,63 @@ function defaultLabel(character, when) {
 // the first turn the start-time switches the state already carries (`switches`
 // null when there is nothing to seed from). `fallback` is the clock-made
 // default label, passed in so this stays pure too.
+// A countdown, as a person reads one: 160 → "2:40". Pure, and clock-free —
+// the seconds are worked out by the caller and handed in.
+function graceText(seconds) {
+  const whole = Math.max(0, Math.round(Number(seconds) || 0));
+  return Math.floor(whole / 60) + ":" + String(whole % 60).padStart(2, "0");
+}
+
 // What the Stop card says about where this sitting's audio is. Pure, and cut
-// out by test_voice_page.py: `switches.route` is the word fixed at Start, and
+// out by test_voice_page.py: `switches.route` is the word fixed at Start,
 // `route` is what the running sitting reports about it (null before the first
-// poll answers, or when the companion predates the route).
-function routeLine(switches, route) {
+// poll answers, or when the companion predates the route), and `graceLeft` is
+// the countdown in seconds, derived from the clock by the caller so this stays
+// clock-free.
+//
+// The two losses are DIFFERENT stories and the card has to tell them apart. A
+// desk headset that is away is silence you can wait out: the conversation
+// waits for it indefinitely, and only that device will do. A device on the far
+// end of a socket is a countdown, at the end of which the conversation closes
+// itself. The same word "waiting" for both would be true and useless.
+function routeLine(switches, route, graceLeft) {
   const word = (switches && switches.route) || "desk";
   const where = word === "desk" ? "the desk" : word.replace(/^remote:/, "");
   let line = "audio: " + where;
-  if (route && route.kind === "remote") {
-    if (route.state === "waiting") line += " — waiting for it to connect";
-    else if (route.state === "lost") line += " — that device dropped off";
+  if (route && route.kind === "desk") {
+    if (route.state === "lost")
+      line += " — the headset is away; waiting, and it will come back on the " +
+              "same device only";
+    else if (route.state === "recovered") line += " — the headset came back";
+    else if (route.state === "unpinned") line += " — no device pinned";
+  } else if (route && route.kind === "remote") {
+    if (route.state === "waiting")
+      line += " — waiting for it to connect (open the talk page on it)";
+    else if (route.state === "lost") {
+      const left = graceLeft == null ? null : graceText(graceLeft);
+      line += " — waiting for " + where + (left ? ", " + left + " left" : "") +
+              "; then this conversation closes";
+    }
+    else if (route.state === "ended") line += " — it did not come back; closing";
     else if (route.state === "connected") {
       line += " — connected";
       if (route.path) line += " (" + route.path + ", " + (route.buffer_ms || 0) + " ms buffer)";
-      if (route.shed_ms) line += "; dropped " + route.shed_ms + " ms it could not keep up with";
+      if (route.shed_ms) line += "; the phone is falling behind (" + route.shed_ms + " ms dropped)";
     }
   }
   return line;
+}
+
+// Why the last conversation ended, when the answer is one the page can give.
+// A sitting that closed itself over a device that never came back exits with
+// status 3 and nothing else does, so that number plus the route word is the
+// whole of the inference. Pure; empty whenever it cannot say.
+function lastExitLine(bot) {
+  const exit = bot && bot.last_exit;
+  const word = (bot && bot.switches && bot.switches.route) || "";
+  if (!exit || exit.code !== 3 || word.indexOf("remote:") !== 0) return "";
+  return "the last conversation closed itself: " + word.replace(/^remote:/, "") +
+         " did not come back within the wait";
 }
 
 function stopCardSeed(row, switches, fallback) {
@@ -225,6 +264,50 @@ function needToken(prompt) {
   show("actuatorcard", false); show("firstrun", false);
   show("modelscard", false); show("sessionscard", false);
   $("statusline").textContent = prompt || "locked — enter your access key";
+}
+
+// ── the countdown between polls ─────────────────────────────────────────────
+// The page polls on its own cadence, so a countdown drawn only on arrival
+// would sit still for seconds at a time and then jump — which reads as a
+// stuck page at exactly the moment a person is watching it closely. So the
+// poll's number is remembered with the moment it arrived, and the seconds
+// shown are derived from the clock, the way the stopping line ticks.
+//
+// It never runs backwards: a later poll is adopted only when it is LOWER than
+// what is already on screen, so a slow answer cannot push the count back up.
+let graceLeft = null, graceAt = 0, graceTimer = null, graceBot = null;
+
+function graceNow() {
+  if (graceLeft == null) return null;
+  return Math.max(0, graceLeft - Math.floor((Date.now() - graceAt) / 1000));
+}
+
+function noteGrace(route) {
+  const counting = route && route.kind === "remote" && route.state === "lost" &&
+                   route.grace_left != null;
+  if (!counting) { graceLeft = null; return; }
+  const showing = graceNow();
+  if (showing === null || route.grace_left < showing) {
+    graceLeft = route.grace_left;
+    graceAt = Date.now();
+  }
+}
+
+function drawRoute(bot) {
+  graceBot = bot;
+  noteGrace(bot.route);
+  $("routeline").textContent = routeLine(bot.switches, bot.route, graceNow());
+  if (graceLeft != null && graceTimer === null) {
+    graceTimer = setInterval(() => {
+      if (graceLeft == null || !graceBot) {
+        clearInterval(graceTimer); graceTimer = null; return;
+      }
+      $("routeline").textContent =
+        routeLine(graceBot.switches, graceBot.route, graceNow());
+    }, 1000);
+  } else if (graceLeft == null && graceTimer !== null) {
+    clearInterval(graceTimer); graceTimer = null;
+  }
 }
 
 // ── state poll ──────────────────────────────────────────────────────────────
@@ -260,6 +343,13 @@ async function refresh() {
   for (const k of Object.keys(ext))
     bits.push(k + (ext[k] === true ? " ✓" : ext[k] === false ? " ✗" : " ?"));
   if (sw && sw.phase) bits.push("switch: " + sw.phase + (sw.error ? " (" + sw.error + ")" : ""));
+  // With nothing running, the status line is where a person looks to find out
+  // what happened — and a conversation that closed ITSELF is the one ending
+  // nobody witnessed. Say why, where the state is already reported.
+  if (bot.state !== "running" && bot.state !== "starting") {
+    const why = lastExitLine(bot);
+    if (why) bits.push(why);
+  }
   // In-progress session maintenance (compaction): visible state instead of a
   // mystery 409 — the page polls, so the start button simply works once free.
   const maint = (st.data && st.data.maintenance) || [];
@@ -295,7 +385,7 @@ async function refresh() {
     const recall = bot.switches && bot.switches.recall;
     $("recallline").textContent = "Remembering the past: " +
       (recall === true ? "on" : recall === false ? "off" : "—") + " (set at start)";
-    $("routeline").textContent = routeLine(bot.switches, bot.route);
+    drawRoute(bot);
     await updateStopCard(card.character(), bot);
   }
   // Repopulate on each transition in EITHER direction: the verb, the hold row

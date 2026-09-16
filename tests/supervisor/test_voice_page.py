@@ -1,8 +1,8 @@
-"""The phone page's four pure helpers, and the launch page's route line.
+"""The phone page's pure helpers, and the launch page's route line.
 
-All five are cut out of the served HTML and run under node, in the same spirit
-as test_stop_card.py — no DOM, no clock, no socket, so a case is a one-line
-assertion about what comes back.
+All of them are cut out of the served HTML and run under node, in the same
+spirit as test_stop_card.py — no DOM, no clock, no socket, so a case is a
+one-line assertion about what comes back.
 
 They are worth this because each carries a measured requirement that a reading
 of the page would not reveal:
@@ -18,7 +18,14 @@ of the page would not reveal:
                lives on its own port.
   backoffDelay a phone that lost its network keeps trying all through a walk,
                without hammering anything.
-  routeLine    what the Stop card says about where the audio is.
+  retryVerdict a phone in a pocket must stop retrying once the conversation it
+               is retrying into has certainly closed — a flat battery and a
+               warm radio otherwise, all night.
+  routeLine    what the Stop card says about where the audio is — and the two
+               losses are different stories, which is the whole reason this
+               one grew.
+  graceText    a countdown as a person reads one.
+  lastExitLine why the last conversation ended, when nobody was there to see.
 
 Run:  .venv/bin/python -m unittest discover -s tests
 """
@@ -42,8 +49,16 @@ CUTS = {
     "pcmFrames": re.compile(r"function pcmFrames\(carry, block, frameSamples\) \{.*?\n\}", re.S),
     "ringDrop": re.compile(r"function ringDrop\(queued, incoming, depth\) \{.*?\n\}", re.S),
     "backoffDelay": re.compile(r"function backoffDelay\(attempt\) \{.*?\n\}", re.S),
+    "retryVerdict": re.compile(
+        r"function retryVerdict\(elapsedMs, graceS\) \{.*?\n\}", re.S),
 }
-ROUTE_LINE = re.compile(r"function routeLine\(switches, route\) \{.*?\n\}", re.S)
+#: The launch page's own, cut from the launch page.
+CARD = {
+    "routeLine": re.compile(
+        r"function routeLine\(switches, route, graceLeft\) \{.*?\n\}", re.S),
+    "graceText": re.compile(r"function graceText\(seconds\) \{.*?\n\}", re.S),
+    "lastExitLine": re.compile(r"function lastExitLine\(bot\) \{.*?\n\}", re.S),
+}
 
 
 class _NodeCase(unittest.TestCase):
@@ -155,6 +170,50 @@ class TheVoicePageHelpers(_NodeCase):
         self.assertEqual(out["empty_queue"], 0,
                          "an incoming chunk larger than the depth is still played")
 
+    def test_it_stops_retrying_once_the_conversation_has_certainly_closed(self):
+        """Thirty seconds past the wait the conversation is gone, and a phone
+        that keeps trying is spending a battery on a door that is shut. When
+        the server never said how long it waits — an older one — retry the way
+        this page always has: the caution belongs to the side that knows."""
+        out = self._run("retry_verdict", self._helpers("retryVerdict") + """
+          const r = {};
+          r.fresh = retryVerdict(0, 180);
+          r.inside = retryVerdict(150000, 180);
+          r.on_the_line = retryVerdict(209000, 180);
+          r.past_it = retryVerdict(211000, 180);
+          r.no_word_from_the_server = retryVerdict(9999999, null);
+          r.nonsense_word = retryVerdict(9999999, 0);
+          r.short_window = retryVerdict(40000, 5);
+          console.log(JSON.stringify(r));
+        """)
+        self.assertEqual(out["fresh"], "retry")
+        self.assertEqual(out["inside"], "retry")
+        self.assertEqual(out["on_the_line"], "retry", "the wait plus thirty")
+        self.assertEqual(out["past_it"], "give-up")
+        self.assertEqual(out["no_word_from_the_server"], "retry")
+        self.assertEqual(out["nonsense_word"], "retry")
+        self.assertEqual(out["short_window"], "give-up")
+
+    def test_the_page_never_says_disconnected_and_says_the_wait_instead(self):
+        """The conversation is still there; a page that says otherwise makes a
+        person stop trying while it waits for them."""
+        for line, why in (
+                ("the conversation waits ", "the wait, on the reconnect line"),
+                ("the conversation closed while this device was away",
+                 "what 4410 means, in words"),
+                ("press Start when you are back", "what to do after giving up")):
+            with self.subTest(line=line):
+                self.assertTrue(line in self.page, why)
+        self.assertFalse("disconnected" in self.page,
+                         "the page must never say the word that means it is over")
+
+    def test_a_rejoin_flushes_the_ring_before_anything_new_is_played(self):
+        """Audio from before the loss is the companion answering the question
+        before last."""
+        self.assertTrue(
+            "if (rejoined) playNode.port.postMessage({ flush: true });" in self.page,
+            "the ring is flushed on a rejoin, before anything new is played")
+
     def test_the_backoff_doubles_and_stops_at_three_minutes(self):
         out = self._run("backoff", self._helpers("backoffDelay") + """
           const waits = [];
@@ -187,35 +246,129 @@ class TheVoicePageHelpers(_NodeCase):
 
 @unittest.skipUnless(NODE, "node not installed — voice-page node tests skipped")
 class TheStopCardsRouteLine(_NodeCase):
+    """One card, two stories.
+
+    A desk headset that is away is silence you can wait out: the conversation
+    waits for it indefinitely, and only that device will do. A device on the
+    far end of a socket is a countdown, at the end of which the conversation
+    closes itself. The same word "waiting" for both would be true and useless,
+    which is what these cases are here to prevent.
+    """
 
     def setUp(self):
         self.page = routes_mod._LAUNCH_PAGE()
 
-    def test_it_states_the_route_fixed_at_start_and_what_became_of_it(self):
-        source = self._cut(self.page, ROUTE_LINE, "routeLine") + """
+    def _helpers(self, *names) -> str:
+        return "\n".join(self._cut(self.page, CARD[name], name)
+                         for name in names) + "\n"
+
+    def test_the_desk_tells_its_own_loss_story(self):
+        out = self._run("route_desk", self._helpers("routeLine", "graceText") + """
           const r = {};
-          r.desk = routeLine({route: "desk"}, {kind: "desk", state: "pinned"});
+          const sw = {route: "desk"};
+          r.pinned = routeLine(sw, {kind: "desk", state: "pinned"});
+          r.lost = routeLine(sw, {kind: "desk", state: "lost"});
+          r.recovered = routeLine(sw, {kind: "desk", state: "recovered"});
+          r.unpinned = routeLine(sw, {kind: "desk", state: "unpinned"});
           r.nothing = routeLine(null, null);
-          r.waiting = routeLine({route: "remote:Pixel"},
-                                {kind: "remote", state: "waiting"});
-          r.connected = routeLine({route: "remote:Pixel"},
-            {kind: "remote", state: "connected", path: "direct", buffer_ms: 60, shed_ms: 0});
-          r.relayed = routeLine({route: "remote:Pixel"},
-            {kind: "remote", state: "connected", path: "relayed", buffer_ms: 200, shed_ms: 140});
-          r.lost = routeLine({route: "remote:Pixel"}, {kind: "remote", state: "lost"});
-          r.no_report_yet = routeLine({route: "remote:Pixel"}, null);
           console.log(JSON.stringify(r));
-        """
-        out = self._run("route_line", source)
-        self.assertEqual(out["desk"], "audio: the desk")
+        """)
+        self.assertEqual(out["pinned"], "audio: the desk")
+        self.assertEqual(out["lost"],
+                         "audio: the desk — the headset is away; waiting, and "
+                         "it will come back on the same device only")
+        self.assertEqual(out["recovered"], "audio: the desk — the headset came back")
+        self.assertEqual(out["unpinned"], "audio: the desk — no device pinned")
         self.assertEqual(out["nothing"], "audio: the desk")
-        self.assertEqual(out["waiting"], "audio: Pixel — waiting for it to connect")
+        self.assertNotIn("left", out["lost"], "the desk never counts down")
+
+    def test_the_remote_route_counts_down_and_says_what_is_at_the_end_of_it(self):
+        out = self._run("route_remote", self._helpers("routeLine", "graceText") + """
+          const r = {};
+          const sw = {route: "remote:Pixel"};
+          r.waiting = routeLine(sw, {kind: "remote", state: "waiting"});
+          r.connected = routeLine(sw,
+            {kind: "remote", state: "connected", path: "direct", buffer_ms: 120, shed_ms: 0});
+          r.behind = routeLine(sw,
+            {kind: "remote", state: "connected", path: "relayed", buffer_ms: 200, shed_ms: 140});
+          r.local = routeLine(sw,
+            {kind: "remote", state: "connected", path: "local", buffer_ms: 120, shed_ms: 0});
+          r.lost = routeLine(sw, {kind: "remote", state: "lost", grace_left: 160}, 160);
+          r.nearly = routeLine(sw, {kind: "remote", state: "lost", grace_left: 5}, 5);
+          r.lost_unknown = routeLine(sw, {kind: "remote", state: "lost"}, null);
+          r.ended = routeLine(sw, {kind: "remote", state: "ended"});
+          r.no_report_yet = routeLine(sw, null);
+          console.log(JSON.stringify(r));
+        """)
+        self.assertEqual(out["waiting"], "audio: Pixel — waiting for it to "
+                                         "connect (open the talk page on it)")
         self.assertEqual(out["connected"],
-                         "audio: Pixel — connected (direct, 60 ms buffer)")
-        self.assertIn("relayed, 200 ms buffer", out["relayed"])
-        self.assertIn("dropped 140 ms", out["relayed"])
-        self.assertEqual(out["lost"], "audio: Pixel — that device dropped off")
+                         "audio: Pixel — connected (direct, 120 ms buffer)")
+        self.assertIn("relayed, 200 ms buffer", out["behind"])
+        self.assertIn("the phone is falling behind (140 ms dropped)", out["behind"])
+        self.assertIn("(local, 120 ms buffer)", out["local"])
+        self.assertEqual(out["lost"], "audio: Pixel — waiting for Pixel, 2:40 "
+                                      "left; then this conversation closes")
+        self.assertIn("0:05 left", out["nearly"])
+        self.assertEqual(out["lost_unknown"], "audio: Pixel — waiting for "
+                                              "Pixel; then this conversation closes")
+        self.assertEqual(out["ended"], "audio: Pixel — it did not come back; closing")
         self.assertEqual(out["no_report_yet"], "audio: Pixel")
+
+    def test_the_countdown_reads_as_a_clock(self):
+        out = self._run("grace_text", self._helpers("graceText") + """
+          const r = {};
+          for (const s of [160, 180, 60, 59, 5, 0, -30]) r[String(s)] = graceText(s);
+          r.nothing = graceText(null);
+          r.words = graceText("soon");
+          console.log(JSON.stringify(r));
+        """)
+        self.assertEqual(out["160"], "2:40")
+        self.assertEqual(out["180"], "3:00")
+        self.assertEqual(out["60"], "1:00")
+        self.assertEqual(out["59"], "0:59")
+        self.assertEqual(out["5"], "0:05", "two digits, always")
+        self.assertEqual(out["0"], "0:00")
+        self.assertEqual(out["-30"], "0:00", "never below zero")
+        self.assertEqual(out["nothing"], "0:00")
+        self.assertEqual(out["words"], "0:00")
+
+    def test_a_conversation_that_closed_itself_says_so_afterwards(self):
+        """Nobody was there to see it. The exit status is the only witness, and
+        3 means exactly one thing — but only on a remote route, and only once
+        the conversation is actually down."""
+        out = self._run("last_exit", self._helpers("lastExitLine") + """
+          const r = {};
+          r.gone = lastExitLine({last_exit: {code: 3}, switches: {route: "remote:Pixel"}});
+          r.desk = lastExitLine({last_exit: {code: 3}, switches: {route: "desk"}});
+          r.stopped = lastExitLine({last_exit: {code: 0}, switches: {route: "remote:Pixel"}});
+          r.crashed = lastExitLine({last_exit: {code: 1}, switches: {route: "remote:Pixel"}});
+          r.unknowable = lastExitLine({last_exit: {code: null}, switches: {route: "remote:Pixel"}});
+          r.never_ran = lastExitLine({last_exit: null, switches: {route: "remote:Pixel"}});
+          r.nothing = lastExitLine(null);
+          console.log(JSON.stringify(r));
+        """)
+        self.assertEqual(out["gone"], "the last conversation closed itself: "
+                                      "Pixel did not come back within the wait")
+        self.assertEqual(out["desk"], "", "the desk waits forever; it cannot be this")
+        for quiet in ("stopped", "crashed", "unknowable", "never_ran", "nothing"):
+            with self.subTest(case=quiet):
+                self.assertEqual(out[quiet], "")
+
+    def test_the_countdown_is_derived_from_the_clock_not_from_the_poll(self):
+        """The page polls on its own cadence; a count drawn only on arrival
+        would sit still and then jump, which reads as a stuck page at exactly
+        the moment a person is watching it closely. And it must never run
+        backwards — a slow answer cannot push the count back up."""
+        for line, why in (
+                ("function graceNow()", "the seconds come from the clock"),
+                ("Math.floor((Date.now() - graceAt) / 1000)",
+                 "counted from when the poll's number arrived"),
+                ("route.grace_left < showing",
+                 "a later poll is adopted only when it is lower"),
+                ("setInterval(", "and it is redrawn between polls")):
+            with self.subTest(line=line):
+                self.assertTrue(line in self.page, why)
 
 
 if __name__ == "__main__":
