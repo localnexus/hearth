@@ -369,20 +369,6 @@ def fork_session(source: Path, *, model: str, voice: str, prompt_sha256: str,
     return store, data
 
 
-def inherit_memory_mode(flag_value: Optional[str], store: "SessionStore") -> str:
-    """Resolve the sitting's memory mode and stamp the store with it.
-
-    An explicit --memory value wins; with the flag absent, a resumed session's
-    own stamp is inherited — a crashed recall-only sitting must not get banked
-    just because the resume forgot the flag — and a fresh session is "full".
-    The store is stamped either way, so every later snapshot carries the
-    sitting's CURRENT posture."""
-    mode = flag_value if flag_value is not None else (
-        getattr(store, "memory_mode", None) or "full")
-    store.memory_mode = str(mode)
-    return store.memory_mode
-
-
 @dataclass
 class SessionMeta:
     """Metadata-ONLY view for the picker/guard — NEVER carries message content."""

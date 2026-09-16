@@ -152,7 +152,7 @@ class BotChild:
             return {"ok": False, "error": f"unknown mode {mode!r} (new | resume)"}
         if memory is not None:
             # Forwarded even for an explicit "full": the flag wins over a resumed
-            # session's stamp (inherit_memory_mode); None = absent = inherit.
+            # session's stamp; None = absent = inherit.
             if memory not in _MEMORY_MODES:
                 return {"ok": False,
                         "error": f"unknown memory mode {memory!r} (full | recall-only | off)"}
