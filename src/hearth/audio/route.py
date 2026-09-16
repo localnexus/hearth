@@ -39,7 +39,7 @@ def parse(route: str | None) -> tuple[str, str | None]:
     Raises ``ValueError`` — with the word in it, never a guess at what was
     meant — on anything else.
     """
-    word = (route or DESK).strip()
+    word = (route or DESK).strip() or DESK
     if not ROUTE_RE.fullmatch(word):
         raise ValueError(
             f"unknown audio route {word!r} (desk | remote:<device-id>, "
