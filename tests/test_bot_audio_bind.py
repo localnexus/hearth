@@ -117,6 +117,31 @@ class TheFlagAndTheGuard(unittest.TestCase):
         self.assertIn("hearth.control.features.audio_route.attach(route_state)",
                       self.source)
 
+    def test_the_reason_a_sitting_closed_itself_survives_the_close_ladder(self):
+        """The seam, read where it has to be true: `main()` answers the status
+        AFTER its `finally` — so the whole close runs first, exactly as the
+        Stop button's does — and the entry point turns that into the exit. A
+        sitting that closed itself over a device that never came back is the
+        only completed run that exits non-zero.
+        """
+        main = _func("main")
+        returns = [node for node in main.body if isinstance(node, ast.Return)]
+        self.assertEqual(len(returns), 1,
+                         "one answer, and it is the last thing main does")
+        self.assertEqual(ast.unparse(returns[0]),
+                         "return audio_route.exit_status()")
+        self.assertIs(main.body[-1], returns[0],
+                      "after the ladder, not inside it")
+        self.assertIn("_status = asyncio.run(main(", self.source)
+        self.assertIn("raise SystemExit(_status)", self.source)
+
+    def test_nothing_in_the_bot_writes_the_number_out(self):
+        """Three is named once, in the module with no imports, because the
+        supervisor has to read it without loading a pipeline. A literal here
+        would be the second place it is written down and the first place it
+        would go stale."""
+        self.assertNotIn("SystemExit(3)", self.source)
+
     def test_the_device_pin_tap_is_attached_only_on_the_desk(self):
         """`/presence.audio` reads the desk transport's per-direction device
         state; a WebSocket has none, and handing it over would be a status

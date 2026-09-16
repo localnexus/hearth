@@ -25,9 +25,11 @@ from hearth.control.control_routes import PanelContext
 from hearth.control.features import audio_route
 
 RESTING = {"kind": "desk", "device": None, "state": "pinned", "path": None,
-           "buffer_ms": None, "shed_ms": 0}
+           "buffer_ms": None, "shed_ms": 0, "grace_left": None}
 REMOTE = {"kind": "remote", "device": "pixel", "state": "connected",
-          "path": "direct", "buffer_ms": 60, "shed_ms": 120}
+          "path": "direct", "buffer_ms": 120, "shed_ms": 120, "grace_left": None}
+LOST = {"kind": "remote", "device": "pixel", "state": "lost", "path": "direct",
+        "buffer_ms": 120, "shed_ms": 0, "grace_left": 160}
 
 
 def _ctx() -> PanelContext:
@@ -66,14 +68,28 @@ class TheSnapshot(unittest.TestCase):
         audio_route.attach(lambda: {"kind": "remote", "device": "pixel"})
         self.assertEqual(audio_route.snapshot(),
                          {"kind": "remote", "device": "pixel", "state": "pinned",
-                          "path": None, "buffer_ms": None, "shed_ms": 0})
+                          "path": None, "buffer_ms": None, "shed_ms": 0,
+                          "grace_left": None})
+
+    def test_the_countdown_rides_the_object_and_is_null_unless_it_is_running(self):
+        """The one field the Stop card cannot work out for itself: only the
+        sitting knows how long it has been waiting, and for how long more."""
+        audio_route.attach(lambda: dict(LOST))
+        self.assertEqual(audio_route.snapshot()["grace_left"], 160)
+        audio_route.attach(lambda: dict(REMOTE))
+        self.assertIsNone(audio_route.snapshot()["grace_left"],
+                          "a device that is here is not being waited for")
+        audio_route.attach(None)
+        self.assertIsNone(audio_route.snapshot()["grace_left"],
+                          "and the desk never counts down at all")
 
     def test_a_reporter_cannot_smuggle_extra_fields_onto_the_object(self):
-        """The route object is read from outside this process; it says the six
-        things it says and nothing a future caller quietly adds."""
+        """The route object is read from outside this process; it says the
+        seven things it says and nothing a future caller quietly adds."""
         audio_route.attach(lambda: dict(REMOTE, address="100.64.0.2",
                                         token="a-key"))
         self.assertEqual(set(audio_route.snapshot()), set(RESTING))
+        self.assertEqual(len(RESTING), 7, "seven keys, and a device can add none")
 
 
 class TheRoute(AioHTTPTestCase):

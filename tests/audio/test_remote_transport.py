@@ -15,6 +15,12 @@ the same factory `bot.py` calls.
 what make this transport carry Hearth's audio untouched; they are parameters,
 so they can be read back rather than believed.
 
+**The wait, end to end.** A device that goes away is waited for, a device that
+comes back inside the window rejoins a conversation that was never torn down,
+and a window that runs out closes the conversation by taking the Stop button's
+own path. The clock is injected and the stop is handed in, so three minutes of
+waiting costs milliseconds and the close can be asserted rather than performed.
+
 **The gate, end to end, over a real loopback WebSocket.** The refusal cases are
 the whole security story of the route, and a mock of a socket would prove
 nothing about a socket. `tailscale status` is the one thing stubbed — a canned
@@ -34,7 +40,8 @@ from unittest import mock
 
 import websockets
 
-from hearth.audio import remote_path, remote_transport
+from hearth.audio import remote_grace, remote_path, remote_transport
+from hearth.audio import route as audio_route
 from hearth.audio.remote_output import MIN_BACKLOG_MS, OutputBacklog
 
 DESK_MODULES = ("hearth.audio.pa_pool", "hearth.audio.device_pin",
@@ -103,7 +110,7 @@ class TheTransportShape(unittest.TestCase):
         self.assertEqual(params.audio_out_sample_rate, 24000)
         self.assertIsNone(params.serializer, "raw PCM: no serializer")
         self.assertFalse(params.add_wav_header, "raw PCM: no WAV header")
-        self.assertIsNone(params.session_timeout, "the grace window is phase B")
+        self.assertIsNone(params.session_timeout, "the wait is ours, not pipecat's")
         self.assertTrue(params.audio_in_enabled and params.audio_out_enabled)
 
     def test_the_socket_binds_to_loopback_only(self):
@@ -132,7 +139,8 @@ class TheTransportShape(unittest.TestCase):
         transport = remote_transport.build_remote_transport("pixel", token=secret)
         self.assertEqual(transport.route_state(),
                          {"kind": "remote", "device": "pixel", "state": "waiting",
-                          "path": None, "buffer_ms": None, "shed_ms": 0})
+                          "path": None, "buffer_ms": None, "shed_ms": 0,
+                          "grace_left": None})
         self.assertNotIn(secret, json.dumps(transport.route_state()))
 
 
@@ -238,7 +246,8 @@ class TheHelloGateOnARealSocket(unittest.IsolatedAsyncioTestCase):
                 self.url, additional_headers={"X-Forwarded-For": "100.64.0.2"}) as ws:
             await self._hello(ws)
             answer = json.loads(await ws.recv())
-            self.assertEqual(answer, {"ok": True, "path": "direct", "buffer_ms": 60})
+            self.assertEqual(answer, {"ok": True, "path": "direct",
+                                      "buffer_ms": 120, "grace_s": 180})
             await ws.send(b"\x01\x02" * 160)
             await asyncio.sleep(0.2)
             self.assertEqual(len(self.pushed), 1)
@@ -246,7 +255,8 @@ class TheHelloGateOnARealSocket(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(self.transport.route_state(),
                              {"kind": "remote", "device": "pixel",
                               "state": "connected", "path": "direct",
-                              "buffer_ms": 60, "shed_ms": 0})
+                              "buffer_ms": 120, "shed_ms": 0,
+                              "grace_left": None})
         await asyncio.sleep(0.2)
         self.assertEqual(self.transport.route_state()["state"], "lost")
 
@@ -258,7 +268,8 @@ class TheHelloGateOnARealSocket(unittest.IsolatedAsyncioTestCase):
                     additional_headers={"X-Forwarded-For": "100.64.0.3"}) as ws:
                 await self._hello(ws)
                 answer = json.loads(await ws.recv())
-        self.assertEqual(answer, {"ok": True, "path": "relayed", "buffer_ms": 200})
+        self.assertEqual(answer, {"ok": True, "path": "relayed",
+                                  "buffer_ms": 200, "grace_s": 180})
 
     async def _closed_on_connect(self):
         """Connect and read nothing — pipecat closes a second device before it
@@ -345,6 +356,265 @@ class TheHelloGateOnARealSocket(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(0.2)
             self.assertEqual(len(self.pushed), 1)
             self.assertEqual(self.transport.route_state()["state"], "connected")
+
+
+class _Clock:
+    """A clock that only moves when a test says so."""
+
+    def __init__(self, now: float = 1000.0) -> None:
+        self.now = now
+
+    def __call__(self) -> float:
+        return self.now
+
+    def tick(self, seconds: float) -> None:
+        self.now += seconds
+
+
+class TheWaitForADeviceThatWentAway(unittest.IsolatedAsyncioTestCase):
+    """Loss, return, and the end of the wait — on the same real socket as the
+    gate above, because a device going away IS a socket closing and a mock of
+    one would prove nothing about it.
+
+    Two things are handed in rather than performed: the clock (so a
+    three-minute window costs milliseconds) and the self-stop (so the close is
+    a recorded call rather than a signal at the test runner's own process).
+    """
+
+    async def asyncSetUp(self):
+        patch = mock.patch.object(remote_path, "tailscale_status",
+                                  return_value=STATUS)
+        patch.start()
+        self.addCleanup(patch.stop)
+        audio_route.clear_device_gone()
+        self.addCleanup(audio_route.clear_device_gone)
+        self.clock = _Clock()
+        self.stops = []
+        self.transport = remote_transport.build_remote_transport(
+            "pixel", token="key", clock=self.clock,
+            stop_sitting=lambda: self.stops.append("stop"))
+        self.addCleanup(self.transport.note_shutdown)   # no task outlives a case
+        self.input = self.transport.input()
+        self.transport.output()
+        self.input.push_audio_frame = self._swallow
+        self.input.push_frame = lambda *a, **k: asyncio.sleep(0)
+        self.server = await websockets.serve(
+            self.input._client_handler, "127.0.0.1", 0)
+        self.url = f"ws://127.0.0.1:{self.server.sockets[0].getsockname()[1]}"
+        self.addAsyncCleanup(self._close_server)
+
+    async def _swallow(self, frame):
+        pass
+
+    async def _close_server(self):
+        self.server.close()
+        await self.server.wait_closed()
+
+    def _state(self) -> dict:
+        return self.transport.route_state()
+
+    async def _settle(self, ready, timeout=3.0) -> None:
+        """Wait for the transport to catch up with the socket, without a sleep
+        long enough to be a guess."""
+        end = asyncio.get_running_loop().time() + timeout
+        while asyncio.get_running_loop().time() < end:
+            if ready():
+                return
+            await asyncio.sleep(0.02)
+        self.fail(f"the transport never got there: {self._state()}")
+
+    async def _join(self):
+        socket = await websockets.connect(
+            self.url, additional_headers={"X-Forwarded-For": "100.64.0.2"})
+        await socket.send(json.dumps({"hello": {"device": "pixel",
+                                                "token": "key"}}))
+        answer = json.loads(await socket.recv())
+        await self._settle(lambda: self._state()["state"] == "connected")
+        return socket, answer
+
+    async def _lose(self, socket) -> None:
+        await socket.close()
+        await self._settle(lambda: self._state()["state"] == "lost")
+
+    # ── the loss ──────────────────────────────────────────────────────────
+    async def test_a_connected_device_that_goes_is_lost_and_the_count_runs(self):
+        socket, _ = await self._join()
+        self.assertIsNone(self._state()["grace_left"],
+                          "nothing is counting while it is here")
+        with mock.patch.object(remote_transport, "logger") as log:
+            await self._lose(socket)
+        self.assertEqual(self._state()["state"], "lost")
+        self.assertEqual(self._state()["grace_left"], 180)
+        self.clock.tick(20)
+        self.assertEqual(self._state()["grace_left"], 160, "2:40 on the card")
+        said = [call[0][0] for call in log.info.call_args_list]
+        self.assertIn("[audio] remote client lost — waiting up to {} s", said)
+
+    async def test_a_device_refused_at_the_door_is_not_a_device_that_was_lost(self):
+        """A stranger knocking is not the sitting's device going away: no
+        window opens, and the conversation is exactly where it was."""
+        async with websockets.connect(self.url) as ws:
+            await ws.send(json.dumps({"hello": {"device": "pixel",
+                                                "token": "wrong"}}))
+            with self.assertRaises(websockets.ConnectionClosed):
+                await ws.recv()
+        await asyncio.sleep(0.2)
+        self.assertEqual(self._state()["state"], "waiting")
+        self.assertIsNone(self._state()["grace_left"])
+        self.assertFalse(self.transport._grace.active)
+        self.assertEqual(self.stops, [])
+
+    async def test_a_client_that_leaves_before_its_hello_is_not_a_loss_either(self):
+        async with websockets.connect(self.url):
+            pass
+        await asyncio.sleep(0.2)
+        self.assertEqual(self._state()["state"], "waiting")
+        self.assertFalse(self.transport._grace.active)
+
+    # ── the return ────────────────────────────────────────────────────────
+    async def test_a_device_back_inside_the_window_rejoins_with_a_new_depth(self):
+        socket, _ = await self._join()
+        await self._lose(socket)
+        self.clock.tick(12)
+        relayed = {"Peer": {"k": {"TailscaleIPs": ["100.64.0.3"], "CurAddr": ""}}}
+        with mock.patch.object(remote_transport, "logger") as log, \
+             mock.patch.object(remote_path, "tailscale_status", return_value=relayed):
+            async with websockets.connect(
+                    self.url,
+                    additional_headers={"X-Forwarded-For": "100.64.0.3"}) as back:
+                await back.send(json.dumps({"hello": {"device": "pixel",
+                                                      "token": "key"}}))
+                answer = json.loads(await back.recv())
+                await self._settle(lambda: self._state()["state"] == "connected")
+                said = [call[0] for call in log.info.call_args_list]
+                self.assertIn(
+                    ("[audio] remote client rejoined after {} s "
+                     "(path={}, buffer={}ms)", 12, "relayed", 200), said)
+                self.assertEqual(answer["buffer_ms"], 200,
+                                 "a new network is a newly decided depth")
+                self.assertIsNone(self._state()["grace_left"])
+                self.assertTrue(self.transport._grace_task is None
+                                or self.transport._grace_task.cancelled())
+        self.clock.tick(600)
+        await asyncio.sleep(0.4)
+        self.assertEqual(self.stops, [], "a rejoin cancels the close")
+
+    # ── the end of the wait ───────────────────────────────────────────────
+    async def test_the_window_running_out_closes_the_sitting_once(self):
+        socket, _ = await self._join()
+        await self._lose(socket)
+        with mock.patch.object(remote_transport, "logger") as log:
+            self.clock.tick(181)
+            await self._settle(lambda: self._state()["state"] == "ended")
+            await asyncio.sleep(0.6)     # several more poll turns
+        self.assertEqual(self.stops, ["stop"], "exactly once, however long")
+        self.assertEqual(self._state()["state"], "ended")
+        self.assertIsNone(self._state()["grace_left"])
+        log.warning.assert_called_once_with(
+            "[audio] remote device did not return within {} s — "
+            "closing the sitting", 180)
+
+    async def test_the_reason_is_set_before_the_signal_so_it_survives_the_close(self):
+        socket, _ = await self._join()
+        await self._lose(socket)
+        seen = []
+        self.transport._stop_sitting = lambda: seen.append(audio_route.device_gone())
+        self.clock.tick(181)
+        await self._settle(lambda: bool(seen))
+        self.assertEqual(seen, [True], "the flag is set BEFORE the signal")
+        self.assertEqual(audio_route.exit_status(), audio_route.EXIT_DEVICE_GONE)
+
+    async def test_a_device_arriving_after_the_end_is_told_it_is_over(self):
+        socket, _ = await self._join()
+        await self._lose(socket)
+        self.clock.tick(181)
+        await self._settle(lambda: self._state()["state"] == "ended")
+        with mock.patch.object(remote_transport, "logger") as log:
+            async with websockets.connect(self.url) as late:
+                # The door shuts on arrival, so the hello may not even land —
+                # which is the same answer, arriving sooner.
+                try:
+                    await late.send(json.dumps({"hello": {"device": "pixel",
+                                                          "token": "key"}}))
+                except websockets.ConnectionClosed:
+                    pass
+                with self.assertRaises(websockets.ConnectionClosed) as caught:
+                    await late.recv()
+        closed = caught.exception
+        self.assertEqual(closed.rcvd.code, 4410)
+        self.assertEqual(closed.rcvd.reason, "ended")
+        self.assertEqual(log.warning.call_args_list, [],
+                         "nothing was refused here")
+
+    # ── the button, during the wait ───────────────────────────────────────
+    async def test_a_stop_during_the_window_cancels_the_wait(self):
+        """The button and the countdown can land together. The button wins:
+        one close, and an exit status that does not blame the device for a
+        conversation the person ended."""
+        socket, _ = await self._join()
+        await self._lose(socket)
+        task = self.transport._grace_task
+        self.transport.note_shutdown()
+        self.clock.tick(600)
+        await asyncio.sleep(0.5)
+        self.assertTrue(task.cancelled() or task.done())
+        self.assertEqual(self.stops, [])
+        self.assertFalse(audio_route.device_gone())
+        self.assertEqual(audio_route.exit_status(), 0)
+
+    async def test_the_cancel_and_end_frames_are_what_tell_it_so(self):
+        """The runner's own words for a conversation coming down reach the
+        transport as these two calls, and both must stand the wait down."""
+        base = remote_transport.SingleClientWebsocketServerInputTransport
+        for word in ("stop", "cancel"):
+            with self.subTest(word=word):
+                with mock.patch.object(self.transport, "note_shutdown") as told, \
+                     mock.patch.object(base, word, new=mock.AsyncMock()) as parent:
+                    await getattr(self.input, word)(object())
+                    told.assert_called_once_with()
+                    self.assertEqual(parent.await_count, 1,
+                                     "and the transport still does its own part")
+
+    async def test_a_socket_closing_during_a_stop_never_opens_a_window(self):
+        socket, _ = await self._join()
+        self.transport.note_shutdown()
+        await socket.close()
+        await asyncio.sleep(0.3)
+        self.assertEqual(self._state()["state"], "connected",
+                         "the shutdown is the story, not a loss")
+        self.assertFalse(self.transport._grace.active)
+        self.assertEqual(self.stops, [])
+
+    # ── what the far end is told ──────────────────────────────────────────
+    async def test_the_hello_answer_says_how_long_it_will_be_waited_for(self):
+        transport = remote_transport.build_remote_transport(
+            "pixel", token="key", grace_s=45)
+        self.assertEqual(transport.grace_s, 45)
+        _socket, answer = await self._join()
+        self.assertEqual(answer["grace_s"], 180)
+        self.assertEqual(set(answer), {"ok", "path", "buffer_ms", "grace_s"})
+
+    async def test_the_window_length_follows_the_environment(self):
+        with mock.patch.dict("os.environ",
+                             {remote_grace.GRACE_ENV: "300"}):
+            transport = remote_transport.build_remote_transport("pixel", token="k")
+        self.assertEqual(transport.grace_s, 300)
+
+
+class TheSelfStopTakesTheButtonsOwnPath(unittest.TestCase):
+    """No second close path, no new file, no marker of its own: the sitting
+    sends itself the signal the button sends, and everything downstream of it
+    is the ladder that already exists."""
+
+    def test_it_is_the_stop_buttons_signal_sent_from_inside(self):
+        with mock.patch.object(remote_transport.os, "kill") as kill, \
+             mock.patch.object(remote_transport.os, "getpid", return_value=4242):
+            remote_transport.stop_this_sitting()
+        kill.assert_called_once_with(4242, remote_transport.signal.SIGINT)
+
+    def test_it_is_the_default_and_bot_py_passes_nothing(self):
+        transport = remote_transport.build_remote_transport("pixel", token="k")
+        self.assertIs(transport._stop_sitting, remote_transport.stop_this_sitting)
 
 
 if __name__ == "__main__":

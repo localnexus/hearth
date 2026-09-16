@@ -84,7 +84,8 @@ class TheDeskSideOfTheRouteObject(unittest.TestCase):
         state = audio_route.desk_route_state(
             {"input": {"state": "ok"}, "output": {"state": "ok"}})
         self.assertEqual(state, {"kind": "desk", "device": None, "state": "pinned",
-                                 "path": None, "buffer_ms": None, "shed_ms": 0})
+                                 "path": None, "buffer_ms": None, "shed_ms": 0,
+                                 "grace_left": None})
 
     def test_one_half_lost_wins_over_the_other_half_healthy(self):
         for halves in ({"input": {"state": "lost"}, "output": {"state": "ok"}},
@@ -110,6 +111,63 @@ class TheDeskSideOfTheRouteObject(unittest.TestCase):
             with self.subTest(nothing=nothing):
                 self.assertEqual(audio_route.desk_route_state(nothing)["state"], "pinned")
                 self.assertEqual(audio_route.desk_route_state(nothing)["kind"], "desk")
+
+    def test_the_desk_never_counts_down_however_lost_its_headset_is(self):
+        """The difference between the two routes, as a field: a desk
+        conversation waits for its headset for as long as it takes."""
+        for halves in (None, {"input": {"state": "lost"}},
+                       {"input": {"state": "unpinned"}}):
+            with self.subTest(halves=halves):
+                self.assertIsNone(audio_route.desk_route_state(halves)["grace_left"])
+
+
+class TheReasonASittingClosedItself(unittest.TestCase):
+    """A conversation that closes ITSELF has one thing to say afterwards and
+    one place to say it: the status it exits with. The supervisor names the
+    reason from that number, and it must be able to do so without importing a
+    pipeline — which is why the number lives in this module, the one with no
+    imports at all.
+    """
+
+    def setUp(self):
+        audio_route.clear_device_gone()
+        self.addCleanup(audio_route.clear_device_gone)
+
+    def test_the_status_is_three_and_it_is_named_rather_than_written_out(self):
+        self.assertEqual(audio_route.EXIT_DEVICE_GONE, 3)
+
+    def test_every_other_ending_exits_zero(self):
+        self.assertFalse(audio_route.device_gone())
+        self.assertEqual(audio_route.exit_status(), 0)
+
+    def test_the_flag_is_what_carries_the_reason_through_the_close_ladder(self):
+        """The transport sets it before it signals; the entry point reads it
+        after the ladder has run. Nothing in between has to know."""
+        audio_route.mark_device_gone()
+        self.assertTrue(audio_route.device_gone())
+        self.assertEqual(audio_route.exit_status(), audio_route.EXIT_DEVICE_GONE)
+        audio_route.clear_device_gone()
+        self.assertEqual(audio_route.exit_status(), 0)
+
+    def test_saying_it_twice_says_it_once(self):
+        audio_route.mark_device_gone()
+        audio_route.mark_device_gone()
+        self.assertEqual(audio_route.exit_status(), 3)
+
+    def test_the_module_still_imports_nothing_but_the_grammar_needs(self):
+        """The whole point of the number living here: four places read this
+        module, and none of them should have to load pipecat or PortAudio."""
+        import ast
+        from pathlib import Path as _Path
+
+        tree = ast.parse(_Path(audio_route.__file__).read_text(encoding="utf-8"))
+        imported = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                imported.add(node.module or "")
+        self.assertEqual(imported, {"re", "__future__"})
 
 
 if __name__ == "__main__":

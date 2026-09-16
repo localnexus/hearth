@@ -813,6 +813,12 @@ async def main(
             phase=phase.advance,
         )
         live_switcher.close_pending()
+    # AFTER the ladder, deliberately. A sitting that closed itself because the
+    # device it was speaking on never came back still runs every step the Stop
+    # button runs — keep-or-delete as it was left, the capture, the memory tail
+    # — and only then says WHY it closed, in the one place that survives the
+    # process: its exit status. Every other path answers 0, exactly as before.
+    return audio_route.exit_status()
 
 
 # ── Session resolution ─────────────────────────────────────────────────────────
@@ -957,7 +963,7 @@ if __name__ == "__main__":
     if args.keep_name:
         _store.title = args.keep_name
 
-    asyncio.run(main(
+    _status = asyncio.run(main(
         dump_dir=args.dump_dir if args.dump_tts else None,
         store=_store,
         resume_messages=_resume_messages,
@@ -967,3 +973,8 @@ if __name__ == "__main__":
         start_muted=args.muted,
         route=args.audio,
     ))
+    # The only non-zero exit a completed sitting has: audio_route.EXIT_DEVICE_GONE
+    # (3), when the conversation closed itself over a device that did not come
+    # back. The supervisor records it and the launch page names the reason.
+    if _status:
+        raise SystemExit(_status)

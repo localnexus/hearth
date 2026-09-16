@@ -8,16 +8,20 @@ device's are genuinely different — the desk can wait out a lost device
 indefinitely, a phone is a countdown — so the object says which is in force
 rather than reporting both with one word:
 
-    GET /route → {kind, device, state, path, buffer_ms, shed_ms}
+    GET /route → {kind, device, state, path, buffer_ms, shed_ms, grace_left}
 
     kind       "desk" | "remote"
     device     the enrolled device's id, or null on the desk
     state      desk:   "pinned" | "recovered" | "lost" | "unpinned"
-               remote: "waiting" (no device yet) | "connected" | "lost"
-    path       remote only: "direct" | "relayed" | "unknown" — how the device
-               reached us, which is what sets the buffer depth below
+               remote: "waiting" (no device yet) | "connected" | "lost" |
+                       "ended" (the wait ran out; the sitting is closing)
+    path       remote only: "local" | "direct" | "relayed" | "unknown" — how
+               the device reached us, which is what sets the buffer depth below
     buffer_ms  the depth the device was told to hold at its last hello
     shed_ms    audio dropped on the way out because the far end fell behind
+    grace_left seconds left of the wait for a device that is away — null
+               unless a remote device is actually lost, and null always on the
+               desk, which waits for its headset for as long as it takes
 
 **Names and numbers only.** No address, no access key, no audio, nothing said.
 The launch page reads it through the facade's ``/admin/state`` as ``bot.route``;
@@ -25,7 +29,7 @@ the bot is the only thing that knows any of it, because the transport that
 holds it lives in this process.
 
 Before ``attach`` — and on any route that has nothing to say — the object is
-the desk's resting shape, so a reader always sees the same six keys.
+the desk's resting shape, so a reader always sees the same seven keys.
 """
 
 from __future__ import annotations
@@ -38,7 +42,7 @@ from hearth.control.control_routes import PanelContext, register
 _SOURCE = None
 
 _RESTING = {"kind": "desk", "device": None, "state": "pinned", "path": None,
-            "buffer_ms": None, "shed_ms": 0}
+            "buffer_ms": None, "shed_ms": 0, "grace_left": None}
 
 
 def attach(source) -> None:

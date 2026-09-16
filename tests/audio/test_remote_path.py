@@ -141,6 +141,27 @@ class TheClassification(unittest.TestCase):
     def test_a_malformed_peer_entry_does_not_stop_the_search(self):
         self.assertEqual(remote_path.classify("100.64.0.2", STATUS), "direct")
 
+    def test_this_machines_own_address_is_local_rather_than_relayed(self):
+        """Self is not a peer, so before 2026-09-16 the search fell through to
+        the last word and the desk's own probe was told to hold 200 ms for a
+        hop of nothing. `Self` carries no `CurAddr` either, which is why the
+        peer rule alone would have called it relayed."""
+        self.assertEqual(remote_path.classify("100.64.0.1", STATUS), "local")
+
+    def test_loopback_is_local_even_with_no_status_document_at_all(self):
+        """A page opened on the machine itself does not need the overlay
+        network's opinion, and may arrive when it cannot be asked."""
+        for address in ("127.0.0.1", "::1"):
+            for doc in (STATUS, None, {}):
+                with self.subTest(address=address, doc=bool(doc)):
+                    self.assertEqual(remote_path.classify(address, doc), "local")
+
+    def test_a_peer_is_still_read_as_a_peer_with_self_checked_first(self):
+        """The order is local, then peers — and it changes nothing for one."""
+        self.assertEqual(remote_path.classify("100.64.0.2", STATUS), "direct")
+        self.assertEqual(remote_path.classify("100.64.0.3", STATUS), "relayed")
+        self.assertEqual(remote_path.classify("100.64.0.99", STATUS), "unknown")
+
 
 class TheBufferDepth(unittest.TestCase):
 
@@ -150,8 +171,18 @@ class TheBufferDepth(unittest.TestCase):
             os.environ.pop(name, None)
 
     def test_the_measured_leans_are_the_defaults(self):
-        self.assertEqual(remote_path.buffer_ms("direct"), 60)
+        """120, not the 60 this shipped with: on 2026-09-16 a 60 ms ring on a
+        direct hotspot path dropped 1189 ms over about seven turns while this
+        end shed nothing. The measurement had said 26–107 ms; the depth had
+        not listened."""
+        self.assertEqual(remote_path.buffer_ms("direct"), 120)
         self.assertEqual(remote_path.buffer_ms("relayed"), 200)
+
+    def test_a_connection_from_this_machine_holds_the_direct_depth(self):
+        self.assertEqual(remote_path.buffer_ms("local"), 120)
+        os.environ["HEARTH_AUDIO_BUFFER_DIRECT_MS"] = "90"
+        self.assertEqual(remote_path.buffer_ms("local"), 90,
+                         "local follows the direct override, being the same hop")
 
     def test_an_unknown_path_is_charged_the_relayed_depth(self):
         self.assertEqual(remote_path.buffer_ms("unknown"), 200)
@@ -166,10 +197,11 @@ class TheBufferDepth(unittest.TestCase):
         for bad in ("", "  ", "soon", "0", "-5"):
             with self.subTest(bad=bad):
                 os.environ["HEARTH_AUDIO_BUFFER_DIRECT_MS"] = bad
-                self.assertEqual(remote_path.buffer_ms("direct"), 60)
+                self.assertEqual(remote_path.buffer_ms("direct"), 120)
 
     def test_describe_pairs_the_word_with_the_depth(self):
-        self.assertEqual(remote_path.describe("100.64.0.2", STATUS), ("direct", 60))
+        self.assertEqual(remote_path.describe("100.64.0.2", STATUS), ("direct", 120))
+        self.assertEqual(remote_path.describe("127.0.0.1", STATUS), ("local", 120))
         self.assertEqual(remote_path.describe("100.64.0.3", STATUS), ("relayed", 200))
         self.assertEqual(remote_path.describe("100.64.0.9", STATUS), ("unknown", 200))
 

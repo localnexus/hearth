@@ -15,6 +15,10 @@ dragging in the supervisor.
     desk                 the local device (default)
     remote:<device-id>   the enrolled device with that id
 
+One more thing lives here for the same reason: the exit status a sitting uses
+when it closed itself because its device never came back. The supervisor has to
+be able to name that reason, and it must not import a pipeline to do it.
+
 ``<device-id>`` is ``[A-Za-z0-9._-]{1,64}`` — the same shape the session and
 character ids already use, so nothing in a route can ever be a path segment,
 a shell word, or a header.
@@ -26,6 +30,41 @@ import re
 
 DESK = "desk"
 REMOTE = "remote"
+
+#: The status a sitting exits with when it closed itself because the device it
+#: was speaking on never came back. The supervisor reads it off the child and
+#: names the reason on the launch page; it lives HERE, in the module with no
+#: imports, so nothing has to load pipecat to know what a 3 means.
+EXIT_DEVICE_GONE = 3
+
+#: Set once, by the transport, just before it sends itself the Stop signal. The
+#: close ladder then runs exactly as the button's does, and the reason survives
+#: it: the entry point reads this flag AFTER the ladder and exits on it.
+_DEVICE_GONE = False
+
+
+def mark_device_gone() -> None:
+    """The device never came back; this sitting is closing because of it."""
+    global _DEVICE_GONE
+    _DEVICE_GONE = True
+
+
+def device_gone() -> bool:
+    """Whether this process is closing for that reason."""
+    return _DEVICE_GONE
+
+
+def clear_device_gone() -> None:
+    """Forget it again — for a test that sets it, and nothing else."""
+    global _DEVICE_GONE
+    _DEVICE_GONE = False
+
+
+def exit_status() -> int:
+    """The status the bot exits with: ``EXIT_DEVICE_GONE`` when the sitting
+    closed itself over a device that did not return, else 0 (which is every
+    other path, including the Stop button's)."""
+    return EXIT_DEVICE_GONE if _DEVICE_GONE else 0
 
 #: A device id: word characters, dot, dash, at most 64 of them.
 DEVICE_RE = re.compile(r"[A-Za-z0-9._-]{1,64}")
@@ -77,6 +116,10 @@ def desk_route_state(audio_state: dict | None) -> dict:
     The desk transport already reports per-direction device state; the route
     line takes the worst of the two, because a sitting with one half lost is a
     sitting that is not working.
+
+    ``grace_left`` is always null here, and that is the difference between the
+    two routes rather than a gap in this one: a desk conversation waits for its
+    headset for as long as it takes.
     """
     words = []
     for half in ("input", "output"):
@@ -90,4 +133,4 @@ def desk_route_state(audio_state: dict | None) -> dict:
     else:
         state = "pinned"
     return {"kind": "desk", "device": None, "state": state, "path": None,
-            "buffer_ms": None, "shed_ms": 0}
+            "buffer_ms": None, "shed_ms": 0, "grace_left": None}

@@ -16,16 +16,21 @@ Three questions, in the order the hello asks them:
    failure is one word — ``refused`` — and never says which half was wrong.
 
 2. **Which way did they come?** The socket arrives through ``tailscale serve``,
-   so the peer's real address is in ``X-Forwarded-For``. A peer whose overlay
-   address matches and that has a ``CurAddr`` is **direct**; one without is
-   **relayed**; a peer we cannot find, or a status document we cannot read, is
-   **unknown** — three words, never a guess dressed as a fourth.
+   so the peer's real address is in ``X-Forwarded-For``. This machine's own
+   overlay address, and a loopback address, are **local** — a page opened on
+   the machine itself, or a probe, which is as close as a connection gets. A
+   peer whose overlay address matches and that has a ``CurAddr`` is **direct**;
+   one without is **relayed**; a peer we cannot find, or a status document we
+   cannot read, is **unknown** — four words, never a guess dressed as a fifth.
 
 3. **How much jitter must the far end absorb?** Measured 2026-09-15: a direct
    hop needed up to 35 ms across the room and up to 107 ms on a hotspot; a
-   relayed one needed 141–188 ms. So **direct 60 ms, relayed or unknown
-   200 ms**, both overridable by environment. The buffer DROPS when it
-   overflows, which is why 60 is a reasonable bet rather than a promise.
+   relayed one needed 141–188 ms. **Seen in use 2026-09-16:** a 60 ms ring on a
+   direct hotspot path dropped 1189 ms over about seven turns while this end
+   shed nothing at all — the measurement had said so and the depth had not
+   listened. So **direct (and local) 120 ms, relayed or unknown 200 ms**, both
+   overridable by environment. The buffer DROPS when it overflows, which is why
+   a depth is a reasonable bet rather than a promise.
 """
 
 from __future__ import annotations
@@ -38,13 +43,19 @@ import socket
 import subprocess
 from pathlib import Path
 
+LOCAL = "local"
 DIRECT = "direct"
 RELAYED = "relayed"
 UNKNOWN = "unknown"
 
-#: Leans from the 2026-09-15 measurements; environment wins where it speaks.
-DEFAULT_DIRECT_MS = 60
+#: The 2026-09-15 measurements, corrected by what 2026-09-16 saw in use: a
+#: 60 ms ring on a direct hotspot path dropped 1189 ms over about seven turns.
+#: Environment wins where it speaks.
+DEFAULT_DIRECT_MS = 120
 DEFAULT_RELAYED_MS = 200
+
+#: Addresses that mean "this machine" whatever the overlay network says.
+LOOPBACK = ("127.0.0.1", "::1")
 
 #: Where ``tailscale`` lives on this machine, in the order we look.
 TAILSCALE_PATHS = ("/usr/local/bin/tailscale",
@@ -54,6 +65,13 @@ TAILSCALE_TIMEOUT_S = 3.0
 #: The close code and the single word a refused client is told.
 REFUSED_CODE = 4401
 REFUSED_REASON = "refused"
+
+#: And the pair for a device that arrives after the conversation has already
+#: closed itself over its absence. A different code because it is a different
+#: story: nothing was refused, there is simply nothing here any more, and the
+#: page must say so rather than reconnecting into a socket that is winding down.
+ENDED_CODE = 4410
+ENDED_REASON = "ended"
 
 
 # ── the key ───────────────────────────────────────────────────────────────────
@@ -174,29 +192,43 @@ def tailscale_status() -> dict | None:
     return doc if isinstance(doc, dict) else None
 
 
-def classify(address: str | None, status: dict | None) -> str:
-    """``(peer address, status document)`` → ``direct`` | ``relayed`` | ``unknown``.
+def _addresses_of(entry) -> list:
+    """One status entry's overlay addresses, as strings."""
+    if not isinstance(entry, dict):
+        return []
+    ips = entry.get("TailscaleIPs")
+    if not isinstance(ips, (list, tuple)):
+        return []
+    return [str(ip) for ip in ips]
 
-    The rule is the one the survey measured: find the peer whose
+
+def classify(address: str | None, status: dict | None) -> str:
+    """``(peer address, status document)`` →
+    ``local`` | ``direct`` | ``relayed`` | ``unknown``.
+
+    **This machine first.** A socket from one of our own overlay addresses, or
+    from loopback, is a page or a probe opened here — there is no network under
+    it at all. Before 2026-09-16 it read ``relayed``, because self is not a
+    peer and the search fell through to the last word; the desk's own probe
+    was told to hold 200 ms for a hop of nothing.
+
+    Then the peers, by the rule the survey measured: find the one whose
     ``TailscaleIPs`` carry this address; a populated ``CurAddr`` means the
     packets go straight there, an empty one means they go through a relay.
     A peer we cannot find is ``unknown`` — not ``direct`` — because the
     expensive mistake is a shallow buffer on a long path.
     """
-    if not address or not isinstance(status, dict):
+    if not address:
         return UNKNOWN
+    if address in LOOPBACK:
+        return LOCAL
+    if not isinstance(status, dict):
+        return UNKNOWN
+    if address in _addresses_of(status.get("Self")):
+        return LOCAL
     peers = status.get("Peer")
-    candidates = list(peers.values()) if isinstance(peers, dict) else []
-    myself = status.get("Self")
-    if isinstance(myself, dict):
-        candidates.append(myself)
-    for peer in candidates:
-        if not isinstance(peer, dict):
-            continue
-        ips = peer.get("TailscaleIPs")
-        if not isinstance(ips, (list, tuple)):
-            continue
-        if address not in [str(ip) for ip in ips]:
+    for peer in (peers.values() if isinstance(peers, dict) else []):
+        if address not in _addresses_of(peer):
             continue
         return DIRECT if str(peer.get("CurAddr") or "").strip() else RELAYED
     return UNKNOWN
@@ -259,12 +291,14 @@ def facade_origins(status: dict | None = None) -> list:
 def buffer_ms(path: str) -> int:
     """The far end's ring-buffer depth for this path, in milliseconds.
 
-    ``unknown`` is charged the relayed depth: not knowing is a reason to be
-    generous, not a reason to guess cheap.
+    ``local`` holds the direct depth — it is the shortest path there is, and it
+    has the same small jitter a direct hop does. ``unknown`` is charged the
+    relayed depth: not knowing is a reason to be generous, not a reason to
+    guess cheap.
     """
     direct = _env_ms("HEARTH_AUDIO_BUFFER_DIRECT_MS", DEFAULT_DIRECT_MS)
     relayed = _env_ms("HEARTH_AUDIO_BUFFER_RELAYED_MS", DEFAULT_RELAYED_MS)
-    return direct if path == DIRECT else relayed
+    return direct if path in (DIRECT, LOCAL) else relayed
 
 
 def _env_ms(name: str, fallback: int) -> int:
