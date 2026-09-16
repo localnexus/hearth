@@ -19,6 +19,12 @@ WebRTC). Open `http://<facade-host>:65001/admin/launch`; it asks for the serve a
   shelf, and this sitting's remember-the-past / keep-this-conversation switches (default = remember,
   don't keep; a resumed conversation keeps its own switches). Both are start-only — the switches
   cannot ride a live switch, so Hearth refuses that pairing.
+- **Audio** (companion down only): **the desk** (default) or **a paired device**, with a short
+  name field for which device. The desk is exactly what it always was — the pinned local
+  microphone and speaker. A paired device takes the conversation's audio over the overlay
+  network instead, and the device opens [`/admin/voice`](remote-audio-route.md) to join. The
+  browser remembers the last name typed. Like the two switches this is **start-only**: the
+  route is fixed when a conversation begins, and changing it means starting a new one.
 - The **control panel** link (companion up): the page mints the browser carrier once per load, so
   the proxied `:65000` panel opens by clicking rather than answering `401`. Everything else
   here sends the access key as a header and never needs the cookie.
@@ -26,7 +32,12 @@ WebRTC). Open `http://<facade-host>:65001/admin/launch`; it asks for the serve a
   **keep this conversation** box and an optional name field show that choice from the moment the
   companion is up, and are the late chance to change it (the name is a label for the shelf — the
   file keeps its own id), and the button's label says which it will do
-  (**Stop**, or **Stop and keep**). Plus a link into the proxied control panel.
+  (**Stop**, or **Stop and keep**). Plus a link into the proxied control panel. A line above
+  states where this conversation's audio is, as a fact fixed at the start — `audio: the desk`,
+  or `audio: Pixel — connected (direct, 60 ms buffer)`, with `waiting for it to connect`
+  before the device arrives and `that device dropped off` after it leaves. It is seeded from
+  the start-time choice the same way the keep switch is, so it is right from the moment the
+  companion is up, and filled out from what the running conversation reports.
 - A live state line (companion / pid / uptime / externals / switch phase, polled every few seconds).
 - **Externals** (only when actuators are declared): one row per
   `[serve.supervisor.actuators.<name>]` with its note, its reachability probe, and the last

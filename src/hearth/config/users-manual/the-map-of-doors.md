@@ -23,6 +23,7 @@ table carries both, plus who owns the process and how to check it's up — all *
 | **:8080** | **Your model server** — `llama-server`'s default port. Not Hearth's: you run it, Hearth is its client | yours (`llama-server`, or LM Studio on `:1234`) | yours to choose | yours to choose. `LM_BASE_URL` / `LM_API_TOKEN` tell Hearth where and how |
 | **:65001** | **Hearth** itself (optional) — one OpenAI-compatible `/v1` door (chat, voice-out, opt-in STT-in), plus the `/admin` launch page when that switch is on | `python -m hearth.serve` (or the companion's in-process attach) | **loopback** `127.0.0.1` by default | **Access key, always on** — there is no unauthenticated mode. Only `/health` answers without it |
 | **no port of its own** | The **service unit that keeps your model server up** — on a Mac, a launchd job (`com.hearth.llm` by default) whose whole command line is the model server's flags. `python -m hearth.weights render <model>` builds it from your config and `apply` puts it in place; the two lines that stop and start it are printed for you to run | the system's service manager — it owns the process on `:8080`, and brings it back after a reboot | n/a — it opens nothing itself | You: the unit file, and the two `launchctl` lines. Hearth writes the file and never runs them |
+| **:65021** | The **audio socket for a paired device** — raw sound to and from a phone, when a conversation is started on one instead of the desk. Silent and unopened otherwise | the voice companion — it lives inside that process and dies with it | **loopback** `127.0.0.1`, always | The published line that puts it on your private network (`tailscale serve --https=65021`), which you run by hand. The first message on it must carry the access key and the device's own name, or it is closed |
 | **:8555** | A **speech server** (`mlx_audio.server`) — what *Hearth* proxies to for voice notes and transcription. The desk loop needs none of this: its TTS and STT run in-process | yours to run | **loopback** `127.0.0.1` | The loopback bind. Personal voices never leave the machine |
 
 Memory sidecars, if you enable the richer backend, are **children of Hearth's own process** on loopback
@@ -49,13 +50,14 @@ file edit and a restart. This table says *what each one is for*;
 | `/admin/settings/ui` | **Every config file, as a form** — the selection pointer, model facts, voice descriptors, the listening calibration, the switches. Generated from the same schema that validates them, so a bad value is refused before it's written |
 | `/admin/memory/ui` | Review what a companion remembers and prune it — read what a record says, forget one, clear a companion |
 | `/admin/pair/ui` | Hand a device a pairing code, so a phone can reach the door without you typing a token into it |
+| `/admin/voice` | **Talk from a paired device** — the page that turns a phone into the microphone and speaker for a conversation started on it. Needs a secure `https` address, and the `:65021` socket above |
 
 > **The panel links across to these.** The `:65000` page's *Manage the roster*, *Settings* and *review &
 > prune* links are these same pages — they work when you're viewing the panel through Hearth, because
 > then both are behind the one door.
 
 The settings page is the general answer to "where do I change this without opening a file" — and
-[The pages behind the door](the-pages-behind-the-door.md) is the chapter for all six. The rest of
+[The pages behind the door](the-pages-behind-the-door.md) is the chapter for all six of the standing ones. The rest of
 this manual names the files anyway, because they're **yours** and you should know what you own — but
 naming a file is not the same as being told to open it.
 
