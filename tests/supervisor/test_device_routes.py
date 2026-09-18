@@ -251,6 +251,26 @@ class TheListIsBehindTheDoor(_DoorCase):
         self.assertEqual(data["devices"][0]["label"], "Pixel")
 
 
+class TheDoorTheLaunchPageActuallyPresses(_DoorCase):
+    """Start rides POST /admin/switch, not /admin/bot/start. The paired-device
+    check has to be on BOTH or it is missing from the one a person uses."""
+
+    async def test_a_device_nobody_paired_is_refused_there_too(self):
+        resp = await self.client.post("/admin/switch", headers=self.BEARER,
+                                      json={"start": True, "route": "remote:nobody"})
+        self.assertEqual(resp.status, 400)
+        body = await resp.json()
+        self.assertFalse(body["ok"])
+        self.assertIn("no paired device nobody", body["errors"][0])
+        self.assertIn("/admin/pair/ui", body["errors"][0])
+
+    async def test_a_route_that_is_not_even_a_route_is_still_refused_first(self):
+        resp = await self.client.post("/admin/switch", headers=self.BEARER,
+                                      json={"start": True, "route": "remote:pix el"})
+        self.assertEqual(resp.status, 400)
+        self.assertIn("remote:<device-id>", (await resp.json())["errors"][0])
+
+
 # ── forget ───────────────────────────────────────────────────────────────────
 
 class Forgetting(_DoorCase):
