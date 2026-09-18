@@ -15,7 +15,10 @@ phone. So —
 
   PAIRING trades a six-digit code for the key, once. What keeps a short secret
   on an unauthed route honest: one code at a time, minutes of life, burned on
-  first use, and burned again after three wrong guesses.
+  first use, and burned again after three wrong guesses. A correct claim also
+  ENROLS the device — a row in config/devices.toml with the label the person
+  typed — which is what turns "a paired device" on the launch page from a text
+  field into a list.
 
 One part of the /admin surface; the package __init__ carries the map of the
 whole, mounts the routes, and re-exports every name defined here.
@@ -23,6 +26,7 @@ whole, mounts the routes, and re-exports every name defined here.
 
 from __future__ import annotations
 
+import asyncio
 import hmac
 import secrets
 import time
@@ -31,6 +35,7 @@ from pathlib import Path
 from aiohttp import web
 from loguru import logger
 
+from hearth.audio import devices as devices_mod
 from hearth.ui import (
     admin_shell, brand, compact_queue, first_run_offer, hearth_restart, key_help,
     launch_actuators, launch_models, launch_sessions, pages, switch_card)
@@ -115,7 +120,15 @@ async def _pair_claim(request: web.Request) -> web.Response:
 
     Every failure answers the same way and says nothing about which part was
     wrong. A correct claim burns the code before returning; so does the third
-    wrong guess.
+    wrong guess. The body may also carry `label` (what to call this device) and
+    `device_id` (what it already is, on a re-pair) — BOTH are read only after
+    the code has been found correct, so nothing about them can be learned by
+    guessing, and neither can change a refusal in any way, including its shape
+    and the work it does.
+
+    The answer carries the id the device is now known by. That id is what the
+    talk page sends in its hello and what a route word names, so a device that
+    paired before this registry existed needs exactly one re-pair.
     """
     pair = request.app["pair"]
     refused = web.json_response({"error": "that code was refused"}, status=401)
@@ -123,9 +136,12 @@ async def _pair_claim(request: web.Request) -> web.Response:
         pair["code"] = ""
         return refused
     try:
-        supplied = str((await request.json()).get("code") or "")
+        body = await request.json()
+        if not isinstance(body, dict):
+            body = {}
     except Exception:  # noqa: BLE001 — a malformed body is just a bad claim
-        supplied = ""
+        body = {}
+    supplied = str(body.get("code") or "")
     if not hmac.compare_digest(supplied.encode(), pair["code"].encode()):
         pair["tries"] += 1
         if pair["tries"] >= _PAIR_MAX_TRIES:
@@ -134,8 +150,29 @@ async def _pair_claim(request: web.Request) -> web.Response:
                            _PAIR_MAX_TRIES)
         return refused
     pair["code"] = ""       # single use, burned before the answer leaves
-    logger.info("[supervisor] device paired")
-    return web.json_response({"token": request.app["deps"].bearer})
+    label = body.get("label")
+    wanted = body.get("device_id")
+    device = None
+    try:
+        device = await asyncio.to_thread(
+            devices_mod.enrol,
+            str(label) if isinstance(label, str) else "device",
+            str(wanted) if isinstance(wanted, str) else None)
+    except OSError as exc:
+        # The key is what the device came for, and a file that would not write
+        # is not a reason to refuse it. Say so in the log and answer anyway.
+        logger.warning("[supervisor] device registry write failed ({})",
+                       type(exc).__name__)
+    if device is not None:
+        # The id, never the label: a label is the person's own words.
+        logger.info("[supervisor] device paired ({})", device.id)
+    else:
+        logger.info("[supervisor] device paired")
+    return web.json_response({
+        "token": request.app["deps"].bearer,
+        "device_id": device.id if device else None,
+        "label": device.label if device else None,
+    })
 
 
 async def _pair_ui(request: web.Request) -> web.Response:

@@ -63,6 +63,12 @@ does. All four sit behind the live-session guard: while a companion is up its
 whole shelf is read-only, because the supervisor cannot know which single file
 the running bot holds.
 
+A pair now ENROLS: the claim writes a row into config/devices.toml (label,
+minted id, the two stamps) and the launch page lists those rows as the audio
+route's choices. GET /admin/devices is that list, /admin/state carries it too,
+and POST /admin/devices/forget removes one after a confirming press. Both start
+doors refuse a remote route naming a device nobody paired.
+
 /admin/memory is the record-level curation surface (curation.py): digest views + a
 preview-then-confirm forget — the memory CLI's web half, living here because
 the write-layer rule (c) puts every memory mutation behind this door.
@@ -91,8 +97,10 @@ stays the default everywhere; a cold model stop happens only as a declared,
 deliberately pressed actuator (§4).
 
 ── the package layout ───────────────────────────────────────────────────────
-The handlers sit one group per file; none of them imports another, so the
-order below is a reading order rather than a dependency chain. build_mount
+The handlers sit one group per file, and the order below is a reading order.
+One file is imported by two others and says so: both start doors take the
+paired-device check and the last_seen stamp from devices.py, because a check
+written twice is a check that will one day only be written once. build_mount
 stays HERE because the route table IS the map of the surface, and a map worth
 having is one you can read in one place:
 
@@ -100,6 +108,9 @@ having is one you can read in one place:
                   page), the cookie carrier, and device pairing — everything
                   that exists because a browser cannot attach an
                   Authorization header
+    devices.py    the paired-device registry's read side: the list, the
+                  forget verb, and the two helpers both start doors use
+                  (refuse an unpaired device, stamp last_seen on a start)
     state.py      /admin/state's reachability probes, and the declared
                   actuators (list + run)
     sessions.py   the resume shelf, plus reveal, download, deposit, the
@@ -139,6 +150,9 @@ from .. import settings as settings_mod
 from .entry import (
     _LAUNCH_PAGE, _PAIR_MAX_TRIES, _PAIR_PAGE, _PAIR_TTL_S, _VOICE_PAGE, _cookie,
     _launch, _pair_claim, _pair_mint, _pair_ui, _voice)
+from .devices import (
+    CONFIRM, _device_forget, _devices_get, _running_on, note_started,
+    unknown_device)
 from .state import _actuator_run, _actuators_get, _http_alive, _route_of, _state
 from .sessions import (
     DEPOSIT_SUFFIXES, REVEAL_TIMEOUT_S, _already, _archive_request, _confirm_with,
@@ -237,6 +251,11 @@ def build_mount(sup_cfg: dict):
         # /admin/voice — the phone's end of the remote audio route. A shell
         # like the two above; the audio itself never touches this door.
         app.router.add_get("/admin/voice", _voice)
+        # The devices a pair enrolled: the launch page's selector reads this
+        # (and the same list rides /admin/state), and forget is the one verb
+        # that takes a row away — preview, then a confirmed press.
+        app.router.add_get("/admin/devices", _devices_get)
+        app.router.add_post("/admin/devices/forget", _device_forget)
         app.router.add_post("/admin/actuators/{name}/run", _actuator_run)
         # /admin/memory — record-level curation (preview-then-confirm forget +
         # digest views; the CLI's web half, write-layer rule (c)).

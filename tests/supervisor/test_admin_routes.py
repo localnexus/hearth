@@ -17,7 +17,9 @@ from types import SimpleNamespace
 import aiohttp
 from aiohttp import web
 from aiohttp.test_utils import AioHTTPTestCase
+from unittest import mock
 from hearth import supervisor
+from hearth.audio import devices as devices_mod
 from hearth.supervisor import actuators as actuators_mod
 from hearth.supervisor import routes as routes_mod
 from hearth.supervisor.child import BotChild
@@ -86,6 +88,13 @@ class AdminRoutes(AioHTTPTestCase):
             {"echo-ok": {"command": [_PY, "-c", "print('actuated')"],
                          "note": "test echo"}},
             log_dir=Path(self._acts_tmp.name) / "actuators")
+        # A correct pairing claim ENROLS a device, so the registry lands in a
+        # scratch dir too — a test must never write into the real data folder.
+        self._devices = Path(self._acts_tmp.name) / "devices.toml"
+        patch = mock.patch.object(devices_mod, "devices_toml", lambda: self._devices)
+        patch.start()
+        self.addCleanup(patch.stop)
+        devices_mod.forget_cache()
 
     async def asyncTearDown(self):
         await self.app["bot_child"].stop()
@@ -275,6 +284,8 @@ class AdminRoutes(AioHTTPTestCase):
         resp = await self._claim(code)
         self.assertEqual(resp.status, 200)
         self.assertEqual((await resp.json())["token"], "test-bearer")
+        # …and the claim enrolled the device it came from.
+        self.assertEqual(len(devices_mod.load(self._devices)), 1)
 
         # Burned on use: the same code never works twice.
         self.assertEqual((await self._claim(code)).status, 401)

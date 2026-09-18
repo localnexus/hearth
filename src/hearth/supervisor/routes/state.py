@@ -30,6 +30,7 @@ import aiohttp
 from aiohttp import web
 from loguru import logger
 
+from hearth.audio import devices as devices_mod
 from hearth.session import close_phase, maintenance_lock
 
 from .. import actuators as actuators_mod
@@ -137,6 +138,11 @@ async def _state(request: web.Request) -> web.Response:
         # the tree is too broken to say. The launch page offers the walk on
         # either and parks Start on the first.
         "first_run": first_run,
+        # The paired devices, so the launch page's audio-route selector draws
+        # itself from the same poll everything else here rides — a device
+        # paired on a phone appears at the desk within one tick. Read through
+        # the registry's stat cache, so this costs a stat and not a parse.
+        "devices": devices_mod.listed(),
     })
 
 

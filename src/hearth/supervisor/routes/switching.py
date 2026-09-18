@@ -34,6 +34,7 @@ from hearth.session import maintenance_lock
 
 from ..child import _MEMORY_MODES, _now_iso
 from .. import switch as switch_mod
+from .devices import note_started, unknown_device
 
 _FACADE_NOTE = ("untouched — a [serve.identity] pin keeps its own voice; unpinned "
                 "LLM-leg params follow at the next Hearth restart")
@@ -142,6 +143,13 @@ async def _switch_post(request: web.Request) -> web.Response:
             {"ok": False,
              "errors": ["route must be \"desk\" or \"remote:<device-id>\""]},
             status=400)
+    # The launch page's Start rides THIS door, so the paired-device check has
+    # to sit here as well as on /admin/bot/start — otherwise the one place a
+    # person actually presses Start is the one place the check is missing.
+    if route is not None:
+        unpaired = await asyncio.to_thread(unknown_device, route)
+        if unpaired:
+            return web.json_response({"ok": False, "errors": [unpaired]}, status=400)
     current, cur_err = switch_mod.read_selection()
     if cur_err:
         return web.json_response({"ok": False, "errors": [cur_err]}, status=409)
@@ -306,6 +314,8 @@ async def _do_restart(app: web.Application, *, hold, hold_name, mode, name,
                                 recall=recall, retain=retain, keep_name=keep_name,
                                 route=route)
     if started.get("ok"):
+        if route is not None:
+            await asyncio.to_thread(note_started, str(route))
         status.update(phase="done", error=None, at=_now_iso(), pid=started.get("pid"))
     else:
         status.update(phase="failed", error=started.get("error") or "start failed",

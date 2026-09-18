@@ -17,14 +17,37 @@ Run:  .venv/bin/python -m unittest discover -s tests
 
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from aiohttp import web
 from aiohttp.test_utils import AioHTTPTestCase
 
+from hearth.audio import devices as devices_mod
 from hearth.supervisor import child as child_mod
 from hearth.supervisor.routes import lifecycle, state
+
+
+def use_a_scratch_registry(case, *device_ids: str) -> Path:
+    """Point the device registry at a temporary file and enrol the given ids.
+
+    The start door now refuses a route naming a device nobody paired, so every
+    case that starts one has to say which devices exist. It says so here rather
+    than by patching the check away, because the check IS half of what these
+    cases are about.
+    """
+    tmp = tempfile.TemporaryDirectory()
+    case.addCleanup(tmp.cleanup)
+    path = Path(tmp.name) / "devices.toml"
+    patch = mock.patch.object(devices_mod, "devices_toml", lambda: path)
+    patch.start()
+    case.addCleanup(patch.stop)
+    devices_mod.forget_cache()
+    for device_id in device_ids:
+        devices_mod.enrol(device_id, device_id)
+    return path
 
 
 class _FakeChild:
@@ -59,6 +82,7 @@ class TheStartDoorChecksTheRoute(AioHTTPTestCase):
                                   return_value=[])
         patch.start()
         self.addCleanup(patch.stop)
+        self.registry = use_a_scratch_registry(self, "pixel", "Pixel-9.pro_2")
         await super().asyncSetUp()
 
     async def test_both_good_shapes_pass_through_untouched(self):
@@ -82,6 +106,33 @@ class TheStartDoorChecksTheRoute(AioHTTPTestCase):
                 self.assertIn("remote:<device-id>", body["error"])
                 self.assertEqual(self.child.calls, [],
                                  "a refused route must never reach the child")
+
+    async def test_a_device_nobody_paired_is_refused_before_anything_spawns(self):
+        """A typo in a device name used to start a conversation that waited for
+        ever for something that cannot exist. It is a sentence now."""
+        resp = await self.client.post("/admin/bot/start",
+                                      json={"route": "remote:nobody"})
+        self.assertEqual(resp.status, 400)
+        body = await resp.json()
+        self.assertFalse(body["ok"])
+        self.assertIn("no paired device nobody", body["error"])
+        self.assertIn("/admin/pair/ui", body["error"])
+        self.assertEqual(self.child.calls, [])
+
+    async def test_a_start_on_a_paired_device_stamps_last_seen(self):
+        before = devices_mod.get("pixel", self.registry).last_seen
+        resp = await self.client.post("/admin/bot/start",
+                                      json={"route": "remote:pixel"})
+        self.assertEqual(resp.status, 200)
+        row = devices_mod.get("pixel", self.registry)
+        self.assertGreaterEqual(row.last_seen, before)
+        self.assertEqual(row.paired_at, before, "paired_at is not a heartbeat")
+
+    async def test_a_desk_start_touches_no_device_at_all(self):
+        before = self.registry.read_text(encoding="utf-8")
+        resp = await self.client.post("/admin/bot/start", json={"route": "desk"})
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(self.registry.read_text(encoding="utf-8"), before)
 
     async def test_no_route_at_all_stays_the_absence_it_was(self):
         """The door must not invent 'desk': absence means the child decides,

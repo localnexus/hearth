@@ -32,6 +32,7 @@ from hearth.session import maintenance_lock
 
 from .. import compact_watch
 from .. import switch as switch_mod
+from .devices import note_started, unknown_device
 
 
 async def _bot_start(request: web.Request) -> web.Response:
@@ -65,6 +66,12 @@ async def _bot_start(request: web.Request) -> web.Response:
                           "where a device id is letters, digits, dot, dash or "
                           "underscore, up to 64 of them"},
                 status=400)
+        # And the id has to be one somebody actually paired. Without this a
+        # typo starts a conversation that waits for a device that cannot
+        # exist — the socket would refuse every hello and say nothing useful.
+        unpaired = await asyncio.to_thread(unknown_device, route)
+        if unpaired:
+            return web.json_response({"ok": False, "error": unpaired}, status=400)
     result = await request.app["bot_child"].start(
         mode=str(body.get("mode") or "new"),
         name=(str(body["name"]) if body.get("name") else None),
@@ -75,6 +82,10 @@ async def _bot_start(request: web.Request) -> web.Response:
         keep_name=(str(body["keep_name"]) if body.get("keep_name") else None),
         route=(str(route) if route is not None else None),
     )
+    if result.get("ok") and route is not None:
+        # One write per conversation, on the control path, after the child is
+        # up: last_seen is "a conversation was started for this device".
+        await asyncio.to_thread(note_started, str(route))
     return web.json_response(result, status=200 if result.get("ok") else 409)
 
 

@@ -250,6 +250,12 @@ def load_cached(path: Path | str | None = None) -> list[Device]:
     return rows
 
 
+def listed(path: Path | str | None = None) -> list[dict]:
+    """Every enrolled device as JSON, through the stat cache — what
+    /admin/devices answers and what /admin/state carries on every poll."""
+    return [device.as_dict() for device in load_cached(path)]
+
+
 def forget_cache() -> None:
     """Drop what is remembered about every file — for a test, and for a write."""
     _CACHE.clear()
@@ -375,15 +381,17 @@ def touch(device_id: str, now: datetime | None = None,
     return hit
 
 
-def forget(device_id: str, path: Path | str | None = None) -> bool:
-    """Remove a device's row; the file is copied beside itself FIRST. → True
-    when a row went, False when there was none. The archive is made only when
-    there is something to lose, and is never overwritten."""
+def forget(device_id: str, path: Path | str | None = None) -> Path | None:
+    """Remove a device's row; the file is copied beside itself FIRST.
+
+    → the archive it left (truthy) when a row went, None when there was none.
+    The copy is made only when there is something to lose, and never
+    overwrites one. The caller answers with the path rather than predicting it,
+    so what it names is the file that exists."""
     target = _path(path)
     rows = load(target)
     if not any(device.id == device_id for device in rows):
-        return False
-    if target.exists():
-        archive_copy(target)
+        return None
+    archived = archive_copy(target) if target.exists() else None
     save([device for device in rows if device.id != device_id], target)
-    return True
+    return archived
