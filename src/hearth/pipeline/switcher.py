@@ -463,6 +463,8 @@ class LiveSwitcher:
             ei["session"] = p["descriptor"]
             ei["reliable"] = p["reliable_context"]
             ei["model_id"] = p["model_id"]  # provisional; next probe refreshes
+            ei["configured_model"] = p["model_id"]
+            ei["model_match"] = None        # unknown until the next probe — not a mismatch
         rec = self.recorder
         if rec is not None and not getattr(rec, "armed", False):
             try:

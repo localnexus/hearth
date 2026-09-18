@@ -13,11 +13,28 @@
 // growth / cumulative input) ride the polled /usage snapshot.
 const DASH = '—';
 const fmt = n => (n === null || n === undefined) ? DASH : Number(n).toLocaleString();
-let engine = {provider: null, model_id: null, allotted: null, model_max: null, reliable: null, session: null, character: null, voice: null, memory_mode: null};
+let engine = {provider: null, model_id: null, allotted: null, model_max: null, reliable: null, session: null, character: null, voice: null, memory_mode: null, served_model: null, configured_model: null, model_match: null};
+
+// The model server serves ONE model, and nothing refuses a sitting whose
+// configured model is not that one (bot.py warns and proceeds). Until
+// 2026-09-16 the fact rode /engine as `model_match` and showed nowhere: a
+// conversation on the wrong model looked exactly like the right one. Pure:
+// the sentence, or null when there is nothing to say (matched, or unknown).
+function engineMismatch(eng) {
+  if (!eng || eng.model_match !== false) return null;
+  return `⚠ The model server is serving ${eng.served_model || 'something else'} — this conversation was set up for ${eng.configured_model || DASH}. To put the one you chose behind it: on the launch page's Models card, Apply its row, then press Load.`;
+}
 
 function renderEngine() {
+  const mismatch = engineMismatch(engine);
   $('s-engine').textContent =
-    `Engine | Inference Provider: ${engine.provider || DASH} · Model ID: ${engine.model_id || DASH}`;
+    `Engine | Inference Provider: ${engine.provider || DASH} · Model ID: ${engine.model_id || DASH}`
+    + (mismatch ? ' · ⚠ not the configured model' : '');
+  const w = $('enginewarn');
+  if (w) {
+    w.textContent = mismatch || '';
+    w.classList.toggle('hidden', !mismatch);
+  }
 }
 
 // The active persona: character + voice. Baseline rides /engine (the SESSION's

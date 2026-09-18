@@ -71,6 +71,7 @@ from hearth.audio import route as audio_route  # the route word's grammar (no pi
 from hearth.stt.stt_service import MLXWhisperSTTService
 from hearth.control.control import start_web_server
 from hearth.control.engine_probe_llamaserver import fetch_engine_info_for
+from hearth.pipeline.switcher import fetch_resident_ids
 from hearth.pipeline import model_residency
 from hearth.control.control_taps import LevelTap, MuteGate, SpeakingTap
 from hearth.session.session_cli import resolve_session
@@ -696,10 +697,13 @@ async def main(
     # Gauge the panel against the MEASURED reliable-context line, not the advertised
     # window. None → the panel falls back to `allotted` (advertised) — see control.py.
     engine_info["reliable"] = _CFG.reliable_context
-    # Startup identity facts — the re-poll below only .update()s the probe's own
-    # keys, so these ride untouched for the life of the session.
-    engine_info["served_model"] = (identity.get("served") or [None])[0]
-    engine_info["model_match"] = identity.get("match")
+    # Startup identity facts: what the door serves vs what this sitting was
+    # configured for. The re-poll below refreshes them (a door reloaded under
+    # a sitting, or a live switch to another row, shows within a minute), and
+    # the panel flags a mismatch in words — a session that runs on the wrong
+    # model otherwise looks exactly like one that does not.
+    engine_info.update(model_residency.identity_facts(identity.get("served"), LM_MODEL))
+    engine_info["configured_model"] = LM_MODEL
 
     # Hand the switcher its late-bound deps and expose it on
     # the panel — features/live_switch.py routes answer 503 until this attach.
@@ -728,6 +732,23 @@ async def main(
             # switches; it starts equal to LM_MODEL.
             engine_info.update(await fetch_engine_info_for(
                 LM_PROVIDER, LM_BASE_URL, LM_API_TOKEN, live_switcher.lm_model))
+            # …and the identity facts, against the same live target. One line
+            # in the log when the match FLIPS, never on every tick.
+            try:
+                ids = await fetch_resident_ids(LM_PROVIDER, LM_BASE_URL, LM_API_TOKEN)
+            except Exception:  # noqa: BLE001 — a probe never ends the sitting
+                ids = None
+            was = engine_info.get("model_match")
+            engine_info.update(model_residency.identity_facts(ids, live_switcher.lm_model))
+            engine_info["configured_model"] = live_switcher.lm_model
+            now = engine_info["model_match"]
+            if now is False and was is not False:
+                logger.warning("[probe] the model server serves {} — this session is "
+                               "configured for {}", engine_info["served_model"],
+                               live_switcher.lm_model)
+            elif now is True and was is False:
+                logger.info("[probe] the model server now serves the configured model ({})",
+                            live_switcher.lm_model)
 
     engine_repoll_task = asyncio.create_task(_engine_repoll())
 

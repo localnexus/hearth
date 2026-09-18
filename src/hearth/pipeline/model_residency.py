@@ -117,6 +117,18 @@ async def ensure_resident(
     return {"action": "failed", "ok": False, "seconds": secs}
 
 
+def identity_facts(ids, model_id: str) -> dict:
+    """The two panel facts from one residency answer: what the door serves
+    (its first id, or None) and whether the configured model is among them
+    (None when the door did not answer — unknown is not a mismatch). Pure,
+    so start-up and the slow re-poll compute them the same way."""
+    if ids is None:
+        return {"served_model": None, "model_match": None}
+    ids = list(ids)
+    return {"served_model": ids[0] if ids else None,
+            "model_match": model_id in ids}
+
+
 async def check_identity(
     provider: Optional[str], base_url: str, token: str, model_id: str, *,
     probe: Callable = fetch_resident_ids,
