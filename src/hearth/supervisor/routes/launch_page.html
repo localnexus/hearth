@@ -77,10 +77,9 @@
     <div class="row"><label title="kept conversations go on the shelf and are remembered afterwards; unkept ones are deleted when you stop"><input type="checkbox" id="pick-keep"> keep this conversation</label> <input type="text" id="pick-keepname" autocomplete="off" placeholder="name it (optional)" disabled></div>
     <div class="row"><label title="the session comes up warm with the mic closed — open it from the panel when you are ready; you can type in the meantime"><input type="checkbox" id="pick-muted"> start with the mic off</label></div>
     <div class="row"><label title="where this conversation listens and speaks — fixed when it starts; changing it means a new conversation">Audio</label>
-      <label><input type="radio" name="pick-route" id="pick-route-desk" value="desk" checked> the desk</label>
-      <label><input type="radio" name="pick-route" id="pick-route-remote" value="remote"> a paired device</label>
-      <input type="text" id="pick-device" autocomplete="off" placeholder="device name" class="hidden"></div>
+      <span id="routechoices" class="row grow"></span></div>
     <p id="routenote" class="note hidden">Open <a href="/admin/voice">the talk page</a> on that device and press Start there once this conversation is up.</p>
+    <div id="routeforget"></div>
     <div class="row">
       <button id="compactbtn" title="Compact the selected conversation with the local model before starting — pick a session first — while it runs (~2 min) a Start is held and fires when it finishes">Compact selected session</button> <span id="compactstate" class="state"></span></div>
     <div id="compactqueue" class="hidden"></div>
@@ -161,6 +160,7 @@ let deferredTimer = null;  // the 1s ticker that keeps the amber line counting
 let reissuing = false;     // a re-issue POST is in flight — polls must not double-fire it
 let stopWorkingId = null;  // the working file currently shown on the Stop card
 let stopTouched = false;   // the person's own edit outranks the next poll, until the working id changes
+let devices = [];          // the enrolled devices, as of the last poll
 
 // Each action speaks beside its own button, in one of three tones:
 // "warn" (working or waiting, amber), "err" (failed, red), "ok" (done, green).
@@ -192,6 +192,10 @@ function defaultLabel(character, when) {
 // default label, passed in so this stays pure too.
 // A countdown, as a person reads one: 160 → "2:40". Pure, and clock-free —
 // the seconds are worked out by the caller and handed in.
+//
+// `devices` is the enrolled list, so `remote:pixel-3f4a` reads back as the name
+// its owner gave it. An id nobody has a row for is its own label — which is
+// what a conversation started before the device was forgotten looks like.
 function graceText(seconds) {
   const whole = Math.max(0, Math.round(Number(seconds) || 0));
   return Math.floor(whole / 60) + ":" + String(whole % 60).padStart(2, "0");
@@ -209,9 +213,17 @@ function graceText(seconds) {
 // waits for it indefinitely, and only that device will do. A device on the far
 // end of a socket is a countdown, at the end of which the conversation closes
 // itself. The same word "waiting" for both would be true and useless.
-function routeLine(switches, route, graceLeft) {
+function deviceLabel(devices, id) {
+  for (const device of devices || []) {
+    if (device && device.id === id) return device.label || id;
+  }
+  return id;
+}
+
+function routeLine(switches, route, graceLeft, devices) {
   const word = (switches && switches.route) || "desk";
-  const where = word === "desk" ? "the desk" : word.replace(/^remote:/, "");
+  const where = word === "desk" ? "the desk"
+              : deviceLabel(devices, word.replace(/^remote:/, ""));
   let line = "audio: " + where;
   if (route && route.kind === "desk") {
     if (route.state === "lost")
@@ -296,14 +308,15 @@ function noteGrace(route) {
 function drawRoute(bot) {
   graceBot = bot;
   noteGrace(bot.route);
-  $("routeline").textContent = routeLine(bot.switches, bot.route, graceNow());
+  $("routeline").textContent = routeLine(bot.switches, bot.route, graceNow(),
+                                        devices);
   if (graceLeft != null && graceTimer === null) {
     graceTimer = setInterval(() => {
       if (graceLeft == null || !graceBot) {
         clearInterval(graceTimer); graceTimer = null; return;
       }
       $("routeline").textContent =
-        routeLine(graceBot.switches, graceBot.route, graceNow());
+        routeLine(graceBot.switches, graceBot.route, graceNow(), devices);
     }, 1000);
   } else if (graceLeft == null && graceTimer !== null) {
     clearInterval(graceTimer); graceTimer = null;
@@ -337,6 +350,11 @@ async function refresh() {
   const bot = (st.data && st.data.bot) || {};
   const sw = st.data && st.data.switch;
   const ext = (st.data && st.data.externals) || {};
+  // The enrolled devices ride the same poll: a phone that pairs in the next
+  // room shows up in the selector here within a few seconds, and one that is
+  // forgotten leaves it the same way.
+  devices = (st.data && st.data.devices) || [];
+  drawRouteControl(devices, (bot.switches && bot.switches.route) || "");
   const bits = ["bot: " + (bot.state || "?")];
   if (bot.pid) bits.push("pid " + bot.pid);
   if (bot.uptime_s != null) bits.push("up " + Math.round(bot.uptime_s) + "s");
@@ -658,29 +676,149 @@ card.onCharacter(() => { loadSessions(); loadSessionsCard(); });
 // ↑ both halves of the shelf follow the chosen companion
 $("compactbtn").addEventListener("click", doCompact);
 // ── the audio route control ─────────────────────────────────────────────────
-// Phase A asks for the device by name; the registry that lists paired devices
-// is a later stroke. The last name typed is remembered in this browser so the
-// usual case is one radio press.
-const DEVICE_KEY = "hearth_device_id";
+// One radio for the desk, one for every device that has PAIRED. The list comes
+// from the /admin/state poll, so pairing a phone in the next room adds a choice
+// here without touching this page, and forgetting one takes it away again.
+//
+// Two rules the drawing obeys, both about not moving under somebody's hand:
+// the checked radio survives a redraw, and a redraw happens only when the ids
+// or the labels actually changed.
+const ROUTE_KEY = "hearth_route_choice";
+
+// Pure, and cut out by test_voice_page.py. → {rows, checked}: what the control
+// should hold, and which radio should be on, given the enrolled devices, what
+// this browser remembers, what is checked right now, and the route a live
+// conversation is using (that device's forget link is held — the server says
+// the same with a 409; this is only the courtesy of not offering it).
+function routeChoices(devices, stored, checkedNow, liveRoute) {
+  const list = Array.isArray(devices) ? devices : [];
+  const rows = [{value: "desk", label: "the desk", title: "", forget: ""}];
+  if (!list.length) {
+    rows.push({value: "", label: "a paired device — pair one first",
+               title: "", forget: "", disabled: true});
+  }
+  for (const device of list) {
+    const day = String(device.paired_at || "").slice(0, 10);
+    rows.push({
+      value: "remote:" + device.id,
+      label: device.label || device.id,
+      title: device.id + (day ? " · paired " + day : ""),
+      forget: liveRoute === "remote:" + device.id ? "held" : device.id,
+    });
+  }
+  const want = stored === "desk" ? "desk" : (stored ? "remote:" + stored : "");
+  const usable = (v) => !!v && rows.some((r) => r.value === v && !r.disabled);
+  return {rows: rows,
+          checked: usable(checkedNow) ? checkedNow : usable(want) ? want : "desk"};
+}
+
+// What a redraw would change. Equal signatures mean there is nothing to draw.
+function routeSignature(devices, liveRoute) {
+  return (devices || []).map((d) => d.id + "\u0000" + (d.label || "")).join("|") +
+         "\u0001" + (liveRoute || "");
+}
+
+let routeDrawn = null;
+
+function checkedRoute() {
+  const on = document.querySelector('input[name="pick-route"]:checked');
+  return on ? on.value : "";
+}
 
 function chosenRoute() {
-  if (!$("pick-route-remote").checked) return "desk";
-  const id = $("pick-device").value.trim();
-  if (!id) return "desk";
-  remember(DEVICE_KEY, id);
-  return "remote:" + id;
+  const value = checkedRoute() || "desk";
+  remember(ROUTE_KEY, value === "desk" ? "desk" : value.replace(/^remote:/, ""));
+  return value;
 }
 
-function drawRouteControl() {
-  const remote = $("pick-route-remote").checked;
-  show("pick-device", remote);
-  show("routenote", remote);
+function noteRoute() {
+  const value = checkedRoute();
+  show("routenote", !!value && value !== "desk");
 }
 
-$("pick-device").value = remembered(DEVICE_KEY);
-$("pick-route-desk").addEventListener("change", drawRouteControl);
-$("pick-route-remote").addEventListener("change", drawRouteControl);
-drawRouteControl();
+function drawRouteControl(list, liveRoute) {
+  const signature = routeSignature(list, liveRoute);
+  if (signature === routeDrawn) return;
+  routeDrawn = signature;
+  const plan = routeChoices(list, remembered(ROUTE_KEY), checkedRoute(), liveRoute);
+  const box = $("routechoices");
+  while (box.firstChild) box.removeChild(box.firstChild);
+  for (const row of plan.rows) {
+    const label = el("label");
+    if (row.title) label.title = row.title;
+    const radio = document.createElement("input");
+    radio.type = "radio";
+    radio.name = "pick-route";
+    radio.value = row.value;
+    radio.disabled = !!row.disabled;
+    radio.checked = row.value === plan.checked;
+    radio.addEventListener("change", noteRoute);
+    label.appendChild(radio);
+    label.appendChild(document.createTextNode(" " + row.label));
+    box.appendChild(label);
+    if (row.disabled) {
+      const pair = el("a", "note", "pair one");
+      pair.href = "/admin/pair/ui";
+      box.appendChild(pair);
+    } else if (row.forget === "held") {
+      box.appendChild(el("span", "note", "(in use)"));
+    } else if (row.forget) {
+      const link = el("button", "linky", "forget");
+      link.addEventListener("click", () => offerForget(row.forget, row.label));
+      box.appendChild(link);
+    }
+  }
+  noteRoute();
+}
+
+// Forget: the same preview-then-confirm the Models card runs. The preview is
+// the server's own words, including the name of the copy it leaves behind.
+function offerForget(id, label) {
+  const pane = $("routeforget");
+  const clear = () => { while (pane.firstChild) pane.removeChild(pane.firstChild); };
+  clear();
+  pane.appendChild(el("div", "note", "reading…"));
+  api("/admin/devices/forget", {json: {id: id}}).then((r) => {
+    clear();
+    const d = r.data || {};
+    if (r.status !== 200 || !d.ok) {
+      pane.appendChild(el("div", "err", d.error || ("refused (" + r.status + ")")));
+      return;
+    }
+    pane.appendChild(el("div", "note", d.confirm));
+    if (d.archives) pane.appendChild(el("div", "state", "copied to " + d.archives));
+    const go = el("button", "primary", "Confirm");
+    const no = el("button", "", "Cancel");
+    const row = el("div", "row");
+    row.appendChild(go); row.appendChild(no);
+    pane.appendChild(row);
+    no.addEventListener("click", clear);
+    go.addEventListener("click", () => {
+      go.disabled = true; no.disabled = true;
+      api("/admin/devices/forget", {json: {id: id, yes: true}}).then((done) => {
+        clear();
+        const dd = done.data || {};
+        if (done.status !== 200 || !dd.ok) {
+          pane.appendChild(el("div", "err", dd.error || "refused"));
+          return;
+        }
+        pane.appendChild(el("div", "note", label + " is off the list"));
+        routeDrawn = null;   // the list changed under us — draw it again
+        refresh();
+      }).catch((e) => {
+        clear();
+        pane.appendChild(el("div", "err",
+          e.message === "401" ? "key refused" : "failed: " + e.message));
+      });
+    });
+  }).catch((e) => {
+    clear();
+    pane.appendChild(el("div", "err",
+      e.message === "401" ? "key refused" : "failed: " + e.message));
+  });
+}
+
+drawRouteControl(devices, "");
 
 $("pick-keep").addEventListener("change", () => {
   $("pick-keepname").disabled = !$("pick-keep").checked;

@@ -31,6 +31,7 @@
   .err { color: #c33; }
   .ok { color: #3a3; }
   .counts { font-family: ui-monospace, monospace; font-size: 0.85em; opacity: 0.8; }
+  .hidden { display: none; }
 </style>
 </head>
 <body class="brand-adaptive">
@@ -41,6 +42,9 @@
 <button id="stop" disabled>Stop</button>
 <div id="status">idle</div>
 <div id="counts" class="counts"></div>
+<p id="pairnote" class="note hidden">This device has not paired with Hearth on
+   this address. <a href="/admin/pair/ui">Pair it now</a> — it takes a code and
+   about half a minute, and it is also what gives this device its name.</p>
 <p id="firstrun" class="note"></p>
 <p class="note">Keep this page open and the screen on while you talk. If this
    device drops off, the conversation holds your place for a few minutes and
@@ -208,15 +212,27 @@ function counts() {
 }
 
 function token() { try { return localStorage.getItem(TOKEN_KEY) || ""; } catch { return ""; } }
+
+// Who this device IS, as far as Hearth is concerned: the id the pairing page
+// stored beside the key. It is never asked for here and never invented here —
+// a name this page made up would match nothing in the list the launch page
+// chooses from, which is exactly the confusion the registry exists to end.
 function deviceId() {
-  let id = "";
-  try { id = localStorage.getItem(DEVICE_KEY) || ""; } catch {}
-  if (id) return id;
-  id = (window.prompt("Name this device (letters, digits, dot or dash) — the " +
-                      "conversation is started for it by name:") || "").trim();
-  if (!/^[A-Za-z0-9._-]{1,64}$/.test(id)) return "";
-  try { localStorage.setItem(DEVICE_KEY, id); } catch {}
-  return id;
+  try { return localStorage.getItem(DEVICE_KEY) || ""; } catch { return ""; }
+}
+
+const NOT_PAIRED = "not paired on this device — open the pairing page first";
+
+// A device with no key, or no name, has nothing to say in a hello. Say so
+// plainly, point at the one page that fixes it, and hold Start down.
+function drawPairing() {
+  const paired = !!(deviceId() && token());
+  document.getElementById("pairnote").classList.toggle("hidden", paired);
+  if (!paired) {
+    $("start").disabled = true;
+    say(NOT_PAIRED, "err");
+  }
+  return paired;
 }
 
 function portOverride() {
@@ -310,8 +326,7 @@ async function closeAudio() {
 
 function connect() {
   const id = deviceId();
-  if (!id) { say("this device needs a name before it can talk", "err"); return; }
-  if (!token()) { say("this device is not paired yet — pair it first", "err"); return; }
+  if (!id || !token()) { drawPairing(); return; }
   say(attempt ? "reconnecting…" : "connecting…");
   socket = new WebSocket(socketUrl(location.protocol, location.hostname, portOverride()));
   socket.binaryType = "arraybuffer";
@@ -409,6 +424,7 @@ function giveUp() {
 // ── the two buttons ──────────────────────────────────────────────────────────
 
 async function startTalking() {
+  if (!drawPairing()) return;
   $("start").disabled = true;
   try {
     await openAudio();
@@ -455,6 +471,7 @@ async function stopTalking() {
 $("start").addEventListener("click", startTalking);
 $("stop").addEventListener("click", stopTalking);
 $("firstrun").textContent = firstRunText();
+drawPairing();
 </script>
 </body>
 </html>

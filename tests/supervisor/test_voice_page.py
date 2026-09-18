@@ -24,6 +24,13 @@ of the page would not reveal:
   routeLine    what the Stop card says about where the audio is — and the two
                losses are different stories, which is the whole reason this
                one grew.
+  routeChoices what the audio-route control should hold, from the enrolled
+               devices: the selector must not move under somebody's hand when
+               a poll arrives, and it must not offer to forget the device a
+               live conversation is speaking on.
+  guessLabel   what to call a device, guessed from what its browser says it
+               is — a Pixel says Android too, and an iPhone says Mac OS X, so
+               the order of the questions is the whole of the answer.
   graceText    a countdown as a person reads one.
   lastExitLine why the last conversation ended, when nobody was there to see.
 
@@ -55,9 +62,20 @@ CUTS = {
 #: The launch page's own, cut from the launch page.
 CARD = {
     "routeLine": re.compile(
-        r"function routeLine\(switches, route, graceLeft\) \{.*?\n\}", re.S),
+        r"function routeLine\(switches, route, graceLeft, devices\) \{.*?\n\}",
+        re.S),
+    "deviceLabel": re.compile(r"function deviceLabel\(devices, id\) \{.*?\n\}", re.S),
     "graceText": re.compile(r"function graceText\(seconds\) \{.*?\n\}", re.S),
     "lastExitLine": re.compile(r"function lastExitLine\(bot\) \{.*?\n\}", re.S),
+    "routeChoices": re.compile(
+        r"function routeChoices\(devices, stored, checkedNow, liveRoute\) \{.*?\n\}",
+        re.S),
+    "routeSignature": re.compile(
+        r"function routeSignature\(devices, liveRoute\) \{.*?\n\}", re.S),
+}
+#: The pairing page's one pure helper, cut from the pairing page.
+PAIR = {
+    "guessLabel": re.compile(r"function guessLabel\(userAgent\) \{.*?\n\}", re.S),
 }
 
 
@@ -259,8 +277,13 @@ class TheStopCardsRouteLine(_NodeCase):
         self.page = routes_mod._LAUNCH_PAGE()
 
     def _helpers(self, *names) -> str:
+        """routeLine reads a device's label out of the list, so it never cuts
+        alone — the helper it calls comes with it."""
+        wanted = list(names)
+        if "routeLine" in wanted and "deviceLabel" not in wanted:
+            wanted.append("deviceLabel")
         return "\n".join(self._cut(self.page, CARD[name], name)
-                         for name in names) + "\n"
+                         for name in wanted) + "\n"
 
     def test_the_desk_tells_its_own_loss_story(self):
         out = self._run("route_desk", self._helpers("routeLine", "graceText") + """
@@ -355,6 +378,38 @@ class TheStopCardsRouteLine(_NodeCase):
             with self.subTest(case=quiet):
                 self.assertEqual(out[quiet], "")
 
+    def test_an_enrolled_device_is_named_the_way_its_owner_named_it(self):
+        """`remote:pixel-3f4a` is a route word, not something to read. The Stop
+        card says the label the person typed when they paired the thing — and
+        falls back to the id, which is what a conversation on a device that has
+        since been forgotten looks like."""
+        out = self._run("route_label",
+                        self._helpers("routeLine", "graceText", "deviceLabel") + """
+          const r = {};
+          const sw = {route: "remote:pixel-3f4a"};
+          const list = [{id: "pixel-3f4a", label: "Pixel"}, {id: "ipad", label: "iPad"}];
+          const live = {kind: "remote", state: "connected", path: "direct", buffer_ms: 120};
+          r.labelled = routeLine(sw, live, null, list);
+          r.forgotten = routeLine(sw, live, null, [{id: "ipad", label: "iPad"}]);
+          r.no_list = routeLine(sw, live, null, null);
+          r.unlabelled = routeLine(sw, live, null, [{id: "pixel-3f4a", label: ""}]);
+          r.waiting = routeLine(sw, {kind: "remote", state: "waiting"}, null, list);
+          r.desk = routeLine({route: "desk"}, {kind: "desk", state: "pinned"}, null, list);
+          console.log(JSON.stringify(r));
+        """)
+        self.assertEqual(out["labelled"],
+                         "audio: Pixel — connected (direct, 120 ms buffer)")
+        self.assertEqual(out["forgotten"],
+                         "audio: pixel-3f4a — connected (direct, 120 ms buffer)")
+        self.assertEqual(out["no_list"],
+                         "audio: pixel-3f4a — connected (direct, 120 ms buffer)")
+        self.assertEqual(out["unlabelled"],
+                         "audio: pixel-3f4a — connected (direct, 120 ms buffer)")
+        self.assertEqual(out["waiting"],
+                         "audio: Pixel — waiting for it to connect "
+                         "(open the talk page on it)")
+        self.assertEqual(out["desk"], "audio: the desk")
+
     def test_the_countdown_is_derived_from_the_clock_not_from_the_poll(self):
         """The page polls on its own cadence; a count drawn only on arrival
         would sit still and then jump, which reads as a stuck page at exactly
@@ -369,6 +424,154 @@ class TheStopCardsRouteLine(_NodeCase):
                 ("setInterval(", "and it is redrawn between polls")):
             with self.subTest(line=line):
                 self.assertTrue(line in self.page, why)
+
+
+@unittest.skipUnless(NODE, "node not installed — voice-page node tests skipped")
+class TheAudioRouteSelector(_NodeCase):
+    """The control a person picks a device with, before there is a device.
+
+    The list arrives on a poll, which means it can arrive while somebody is
+    halfway through choosing — so what is checked must survive a redraw, and a
+    redraw must not happen at all unless something actually changed.
+    """
+
+    def setUp(self):
+        self.page = routes_mod._LAUNCH_PAGE()
+
+    def _helpers(self, *names) -> str:
+        return "\n".join(self._cut(self.page, CARD[name], name)
+                          for name in names) + "\n"
+
+    def test_with_nothing_paired_the_only_remote_choice_is_held_shut(self):
+        out = self._run("route_empty", self._helpers("routeChoices") + """
+          const r = {};
+          r.empty = routeChoices([], "", "", "");
+          r.missing = routeChoices(null, "", "", "");
+          console.log(JSON.stringify(r));
+        """)
+        for case in ("empty", "missing"):
+            with self.subTest(case=case):
+                rows = out[case]["rows"]
+                self.assertEqual(len(rows), 2)
+                self.assertEqual(rows[0]["value"], "desk")
+                self.assertTrue(rows[1]["disabled"])
+                self.assertIn("pair one first", rows[1]["label"])
+                self.assertEqual(out[case]["checked"], "desk")
+
+    def test_every_paired_device_is_a_radio_named_the_way_it_was_named(self):
+        out = self._run("route_two", self._helpers("routeChoices") + """
+          const list = [
+            {id: "pixel-3f4a", label: "Pixel", paired_at: "2026-09-18T04:10:11-07:00"},
+            {id: "ipad", label: "the kitchen iPad", paired_at: "2026-09-01T09:00:00-07:00"}];
+          console.log(JSON.stringify(routeChoices(list, "", "", "")));
+        """)
+        rows = out["rows"]
+        self.assertEqual([row["value"] for row in rows],
+                         ["desk", "remote:pixel-3f4a", "remote:ipad"])
+        self.assertEqual(rows[1]["label"], "Pixel")
+        self.assertEqual(rows[1]["title"], "pixel-3f4a · paired 2026-09-18")
+        self.assertEqual(rows[2]["label"], "the kitchen iPad")
+        self.assertEqual(out["checked"], "desk", "the desk is the default")
+
+    def test_the_last_choice_comes_back_when_that_device_still_exists(self):
+        out = self._run("route_remembered", self._helpers("routeChoices") + """
+          const r = {};
+          const list = [{id: "pixel", label: "Pixel"}, {id: "ipad", label: "iPad"}];
+          r.remembered = routeChoices(list, "ipad", "", "").checked;
+          r.desk = routeChoices(list, "desk", "", "").checked;
+          r.forgotten = routeChoices(list, "nobody", "", "").checked;
+          r.none_yet = routeChoices(list, "", "", "").checked;
+          r.gone_entirely = routeChoices([], "ipad", "", "").checked;
+          console.log(JSON.stringify(r));
+        """)
+        self.assertEqual(out["remembered"], "remote:ipad")
+        self.assertEqual(out["desk"], "desk")
+        self.assertEqual(out["forgotten"], "desk",
+                         "a remembered device that is gone falls back")
+        self.assertEqual(out["none_yet"], "desk")
+        self.assertEqual(out["gone_entirely"], "desk")
+
+    def test_a_poll_never_moves_the_radio_under_somebodys_hand(self):
+        out = self._run("route_stable", self._helpers("routeChoices") + """
+          const r = {};
+          const list = [{id: "pixel", label: "Pixel"}, {id: "ipad", label: "iPad"}];
+          // remembered says one thing, the person has already clicked another
+          r.kept = routeChoices(list, "ipad", "remote:pixel", "").checked;
+          // …unless what they clicked has just been forgotten elsewhere
+          r.vanished = routeChoices([{id: "ipad", label: "iPad"}], "ipad",
+                                    "remote:pixel", "").checked;
+          console.log(JSON.stringify(r));
+        """)
+        self.assertEqual(out["kept"], "remote:pixel")
+        self.assertEqual(out["vanished"], "remote:ipad")
+
+    def test_the_device_in_use_is_not_offered_for_forgetting(self):
+        out = self._run("route_held", self._helpers("routeChoices") + """
+          const list = [{id: "pixel", label: "Pixel"}, {id: "ipad", label: "iPad"}];
+          console.log(JSON.stringify(routeChoices(list, "", "", "remote:pixel")));
+        """)
+        rows = out["rows"]
+        self.assertEqual(rows[1]["forget"], "held")
+        self.assertEqual(rows[2]["forget"], "ipad")
+
+    def test_a_redraw_happens_only_when_something_actually_changed(self):
+        out = self._run("route_signature",
+                        self._helpers("routeSignature") + """
+          const r = {};
+          const a = [{id: "pixel", label: "Pixel"}];
+          r.same = routeSignature(a, "") === routeSignature([{id: "pixel", label: "Pixel"}], "");
+          r.relabelled = routeSignature(a, "") === routeSignature([{id: "pixel", label: "P"}], "");
+          r.added = routeSignature(a, "") ===
+                    routeSignature([{id: "pixel", label: "Pixel"}, {id: "x", label: "X"}], "");
+          r.in_use = routeSignature(a, "") === routeSignature(a, "remote:pixel");
+          console.log(JSON.stringify(r));
+        """)
+        self.assertTrue(out["same"], "an unchanged list must not redraw")
+        self.assertFalse(out["relabelled"])
+        self.assertFalse(out["added"])
+        self.assertFalse(out["in_use"])
+
+    def test_the_text_field_is_gone(self):
+        """Phase A asked for the device by name and two people had to spell the
+        same short word the same way. There is a list now."""
+        self.assertNotIn('id="pick-device"', self.page)
+        self.assertNotIn("window.prompt", routes_mod._VOICE_PAGE())
+
+
+@unittest.skipUnless(NODE, "node not installed — voice-page node tests skipped")
+class ThePairingPagesGuess(_NodeCase):
+
+    def setUp(self):
+        self.page = routes_mod._PAIR_PAGE()
+
+    def test_a_device_is_named_from_what_its_browser_says_it_is(self):
+        out = self._run("guess_label",
+                        self._cut(self.page, PAIR["guessLabel"], "guessLabel") + """
+          const r = {};
+          r.pixel = guessLabel("Mozilla/5.0 (Linux; Android 16; Pixel 9) Chrome/1");
+          r.iphone = guessLabel("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)");
+          r.ipad = guessLabel("Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X)");
+          r.android = guessLabel("Mozilla/5.0 (Linux; Android 14; SM-S911B)");
+          r.mac = guessLabel("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)");
+          r.windows = guessLabel("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+          r.nothing = guessLabel("");
+          r.missing = guessLabel(null);
+          console.log(JSON.stringify(r));
+        """)
+        self.assertEqual(out["pixel"], "Pixel", "a Pixel says Android too")
+        self.assertEqual(out["iphone"], "iPhone", "an iPhone says Mac OS X too")
+        self.assertEqual(out["ipad"], "iPad")
+        self.assertEqual(out["android"], "Android")
+        self.assertEqual(out["mac"], "Mac")
+        self.assertEqual(out["windows"], "Windows")
+        self.assertEqual(out["nothing"], "phone")
+        self.assertEqual(out["missing"], "phone")
+
+    def test_the_page_sends_the_label_and_keeps_the_id_it_gets_back(self):
+        """The two halves the re-pair path needs: what this device is called
+        goes up, and the name it is known by afterwards is kept beside the key."""
+        self.assertIn('JSON.stringify({ code, label, device_id: deviceId })', self.page)
+        self.assertIn('localStorage.setItem(DEVICE_KEY, data.device_id)', self.page)
 
 
 if __name__ == "__main__":

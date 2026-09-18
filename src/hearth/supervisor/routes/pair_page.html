@@ -5,7 +5,11 @@
      must stay pure chrome. It carries no token and no state; the six digits are
      typed by the operator, and the bearer only ever arrives in the response to
      a correct claim. The code is single-use, expires in minutes, and dies after
-     three wrong guesses — see routes.py for the store. -->
+     three wrong guesses — see routes.py for the store.
+
+     A correct claim also ENROLS this device: the label field's text goes up
+     with the code, and the answer carries the name this device is known by
+     from then on, which is stored beside the key. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -20,6 +24,8 @@
   h1 { font-size: 1.3em; }
   input { font: inherit; font-size: 1.6em; letter-spacing: 0.25em; width: 100%;
           padding: 0.3em 0.4em; text-align: center; }
+  input#label { font-size: 1.1em; letter-spacing: normal; text-align: left; }
+  label { display: block; font-size: 0.9em; opacity: 0.8; margin-top: 0.9em; }
   button { font: inherit; padding: 0.5em 1.4em; margin-top: 0.8em; cursor: pointer;
            font-weight: 600; }
   #msg { min-height: 1.5em; margin-top: 0.8em; font-size: 0.9em; }
@@ -30,6 +36,9 @@
 <!--BRANDHEAD:pair this device-->
 <p>Enter the six-digit code shown on the machine running Hearth. It is good for
    a few minutes, works once, and this device then remembers the key itself.</p>
+<label for="label">What to call this device</label>
+<input id="label" maxlength="40" autocomplete="off" placeholder="Pixel">
+<label for="code">The six-digit code</label>
 <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6"
        placeholder="000000" autofocus>
 <button id="go">Pair</button>
@@ -37,20 +46,48 @@
 <script>
 "use strict";
 const TOKEN_KEY = "hearth_admin_token";
+const DEVICE_KEY = "hearth_device_id";
+
+// What to call this device, guessed from what the browser says it is. Pure, and
+// cut out by test_voice_page.py: the field is prefilled with this and is
+// entirely editable — a guess is a courtesy, never a claim about the hardware.
+// Order matters: a Pixel's own words say Android too, and an iPhone says Mac
+// OS X, so the more specific answer has to be asked for first.
+function guessLabel(userAgent) {
+  const ua = String(userAgent || "");
+  if (/Pixel/i.test(ua)) return "Pixel";
+  if (/iPhone/i.test(ua)) return "iPhone";
+  if (/iPad/i.test(ua)) return "iPad";
+  if (/Android/i.test(ua)) return "Android";
+  if (/Macintosh|Mac OS X/i.test(ua)) return "Mac";
+  if (/Windows/i.test(ua)) return "Windows";
+  return "phone";
+}
 
 async function claim() {
   const code = document.getElementById("code").value.replace(/\D/g, "");
+  const label = document.getElementById("label").value.trim();
   const msg = document.getElementById("msg");
   msg.className = ""; msg.textContent = "pairing…";
+  // What this device already is, when it has been here before: the claim then
+  // refreshes that row instead of adding a second one, and a device that
+  // paired before the list existed keeps the name its conversations use.
+  let deviceId = "";
+  try { deviceId = localStorage.getItem(DEVICE_KEY) || ""; } catch {}
   try {
     const r = await fetch("/admin/pair/claim", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ code, label, device_id: deviceId }),
     });
     const data = await r.json().catch(() => null);
     if (r.status === 200 && data && data.token) {
       try { localStorage.setItem(TOKEN_KEY, data.token); } catch {}
+      // Beside the key, the name this device is known by from now on. The talk
+      // page sends it in its hello; the launch page lists it as a choice.
+      if (data.device_id) {
+        try { localStorage.setItem(DEVICE_KEY, data.device_id); } catch {}
+      }
       // Mint the browser carrier too, so links (the control panel) work here.
       await fetch("/admin/cookie", {
         method: "POST", headers: { "Authorization": "Bearer " + data.token },
@@ -67,9 +104,12 @@ async function claim() {
   }
 }
 
+document.getElementById("label").value = guessLabel(navigator.userAgent);
 document.getElementById("go").addEventListener("click", claim);
-document.getElementById("code").addEventListener("keydown",
-  (e) => { if (e.key === "Enter") claim(); });
+for (const id of ["code", "label"]) {
+  document.getElementById(id).addEventListener("keydown",
+    (e) => { if (e.key === "Enter") claim(); });
+}
 </script>
 </body>
 </html>
