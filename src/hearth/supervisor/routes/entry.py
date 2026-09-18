@@ -38,7 +38,8 @@ from loguru import logger
 from hearth.audio import devices as devices_mod
 from hearth.ui import (
     admin_shell, brand, compact_queue, first_run_offer, hearth_restart, key_help,
-    launch_actuators, launch_models, launch_sessions, pages, switch_card)
+    launch_actuators, launch_models, launch_sections, launch_sessions, pages,
+    switch_card)
 
 # The standing launch surface: pure static chrome (no names, no state, no
 # tokens baked in — the serve middleware exempts this ONE page from auth, so
@@ -48,12 +49,16 @@ from hearth.ui import (
 # spliced into both pages at import. A static route would have needed its own
 # auth exemption (a <script src> cannot carry the bearer); splicing keeps the
 # door count where it is and guarantees both surfaces run the same bytes.
+#
+# `launch_sections` is the other kind: the page's OWN four files (the poll, the
+# deferred start, the route control, the Stop card), spliced back into its one
+# <script> block. See ui/launch_sections.py.
 _LAUNCH_PAGE = pages.Page(
     Path(__file__).parent / "launch_page.html",
     pages.chain(switch_card.splice, compact_queue.splice, first_run_offer.splice,
                 key_help.splice, hearth_restart.splice, launch_actuators.splice,
                 launch_models.splice, launch_sessions.splice,
-                admin_shell.splice, brand.splice))
+                launch_sections.splice, admin_shell.splice, brand.splice))
 # The pairing page takes neither shared script: it is what a device WITHOUT the
 # bearer opens, so the admin shell has nothing to carry for it.
 _PAIR_PAGE = pages.Page(Path(__file__).parent / "pair_page.html", brand.splice)
