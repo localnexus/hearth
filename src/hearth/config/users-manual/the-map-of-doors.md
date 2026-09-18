@@ -49,7 +49,7 @@ file edit and a restart. This table says *what each one is for*;
 | `/admin/roster` | Bring in a new companion, add a voice to an existing one, edit a persona, or branch their memory onto a new track |
 | `/admin/settings/ui` | **Every config file, as a form** — the selection pointer, model facts, voice descriptors, the listening calibration, the switches. Generated from the same schema that validates them, so a bad value is refused before it's written |
 | `/admin/memory/ui` | Review what a companion remembers and prune it — read what a record says, forget one, clear a companion |
-| `/admin/pair/ui` | Hand a device a pairing code, so a phone can reach the door without you typing a token into it |
+| `/admin/pair/ui` | Hand a device a pairing code, so a phone can reach the door without you typing a token into it — and name it, which is what puts it on the list of devices a conversation can be started on |
 | `/admin/voice` | **Talk from a paired device** — the page that turns a phone into the microphone and speaker for a conversation started on it. Needs a secure `https` address, and the `:65021` socket above |
 
 > **The panel links across to these.** The `:65000` page's *Manage the roster*, *Settings* and *review &

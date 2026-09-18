@@ -49,6 +49,15 @@ to open it with `HEARTH_AUDIO_ORIGINS` (comma-separated, replacing the list whol
 By default the allowed addresses are looked up from this machine's own names, so a
 renamed machine needs no edit.
 
+## Paired devices
+
+Pairing **enrols** a device: one row in `HEARTH_DATA/config/devices.toml`, which
+is what the launch page's **Audio** control lists, what `remote:<id>` names, and
+what **forget** takes away. It has a page of its own:
+**[Paired devices](paired-devices.md)** — the file and its fields, the claim's
+body and answer, forget and its archive, the refusals, and the one re-pair a
+device paired before the list needs.
+
 ## The talk page
 
 `GET /admin/voice` on `:65001`, on the device itself. Like the launch page it is
@@ -56,16 +65,17 @@ served without the access key and carries nothing: it uses the key that device
 already holds from pairing, and spends it once, inside the first message on the
 audio socket.
 
-1. Start a conversation on the launch page, choosing **a paired device** and
-   naming it.
+1. Start a conversation on the launch page, choosing the device from the
+   **Audio** list.
 2. Open `/admin/voice` on that device and press **Start talking**. The first press
    is what lets the browser open the microphone, which is why it is a button and
    not automatic.
 3. The status line walks `idle → connecting → connected (path, buffer) → …`. The
    page holds the screen awake until you press Stop.
 
-If the device has never been named, the page asks for a short name once and keeps
-it. It must match the name the conversation was started for.
+The page never asks for a name. A browser that has not paired on this address
+has no name to send, and says so — *not paired on this device — open the pairing
+page first* — with **Start** held down until it has.
 
 ## The hello — how the socket knows who it is talking to
 
@@ -202,6 +212,10 @@ Names and numbers only — no addresses, no key, and nothing anyone said.
 | `[audio] remote client refused` | a first message that was not this conversation's device with the key |
 | `[audio] remote output stalled (N ms shed)` | the far end fell behind; N is the total thrown away so far. At most one line every five seconds |
 | `[audio] remote route needs config/serve-token — not starting` | there was nothing to check the hello against |
+| `[supervisor] device paired (pixel-3f4a)` | a claim was correct and enrolled a device. The **id**, never the label — a label is your own words |
+| `[supervisor] device forgotten (pixel-3f4a)` | a confirmed forget removed a row (the list was copied beside itself first) |
+| `[supervisor] device registry write failed (OSError)` | the list could not be written. Pairing still handed over the key; a start still ran |
+| `[devices] devices.toml is malformed (…) — no devices listed` | the file could not be parsed. Nothing refuses to start; pair a device again to rebuild it |
 
 ## The secure address, and the fallback if you cannot have one
 
@@ -217,11 +231,13 @@ words when it finds no microphone interface.
 
 ## What this does not do yet
 
-- **No list of paired devices.** The launch page asks for the name; it remembers
-  the last one in that browser. A registry, a chooser and a re-pair path are the
-  next piece of work.
 - **No timeout on the first wait.** A conversation started from the desk waits for
   the device to arrive for as long as it takes — only a device that has already been
-  here is waited for on a clock. A start timeout would belong with the chooser, and
-  is an open question rather than an omission.
+  here is waited for on a clock. Now that the chooser exists, this is the place the
+  question belongs: choosing a device that is switched off is the case a clock would
+  be for. Still an open question rather than an omission.
+- **The list is not consulted on the socket.** The hello compares the id the
+  conversation was started for against the id on the wire, and the start door is
+  what checks that id against the list. One check each, in the place that can make
+  it — a device that is forgotten mid-conversation does not lose its socket.
 - **One device at a time**, by design.

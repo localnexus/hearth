@@ -151,8 +151,14 @@ which is why that link only resolves when you're viewing the panel through Heart
 
 For handing a phone the key without typing 64 characters into it.
 
-At the desk you open a pairing window; on the device you open this page and enter **six digits**. The device
-trades them for the key, keeps it, and lands on the launch page ready to use.
+At the desk you open a pairing window; on the device you open this page, say **what to call this device**
+(already filled in with a guess — "Pixel", "iPhone", "Mac" — and entirely yours to change), and enter **six
+digits**. The device trades them for the key, keeps it, and lands on the launch page ready to use.
+
+Pairing is also what puts a device **on the list**. That name is what the launch page's **Audio** control
+offers when you start a conversation somewhere other than the desk, and what the talk page sends when it
+joins one. A device that pairs again keeps the same row — a new name, the same place in the list — and one
+that paired before the list existed needs one re-pair, about half a minute, to appear on it.
 
 What keeps six digits honest on a page that necessarily accepts them *without* a key: exactly **one** code
 exists at a time, it lives for about **five minutes** after you deliberately ask for it, it's **burned the

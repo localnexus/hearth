@@ -19,12 +19,20 @@ WebRTC). Open `http://<facade-host>:65001/admin/launch`; it asks for the serve a
   shelf, and this sitting's remember-the-past / keep-this-conversation switches (default = remember,
   don't keep; a resumed conversation keeps its own switches). Both are start-only — the switches
   cannot ride a live switch, so Hearth refuses that pairing.
-- **Audio** (companion down only): **the desk** (default) or **a paired device**, with a short
-  name field for which device. The desk is exactly what it always was — the pinned local
+- **Audio** (companion down only): **the desk** (default), then one radio per
+  [paired device](paired-devices.md), named the way you named it when you paired it (the hover
+  carries its id and the date). The desk is exactly what it always was — the pinned local
   microphone and speaker. A paired device takes the conversation's audio over the overlay
-  network instead, and the device opens [`/admin/voice`](remote-audio-route.md) to join. The
-  browser remembers the last name typed. Like the two switches this is **start-only**: the
-  route is fixed when a conversation begins, and changing it means starting a new one.
+  network instead, and the device opens [`/admin/voice`](remote-audio-route.md) to join.
+  With nothing paired the remote choice is shown held shut, with a link to the pairing page.
+  The list is drawn from the same poll as everything else here, so a phone paired in the next
+  room appears within a few seconds — and the radio you have already clicked is never moved by
+  a redraw. Your last choice comes back next time, by device rather than by position. Like the
+  two switches this is **start-only**: the route is fixed when a conversation begins, and
+  changing it means starting a new one.
+- **Forget** sits beside each device: a preview of what would go, then a confirming press — the
+  same habit the Models card has. The list is copied beside itself first. The device a running
+  conversation is speaking on is refused, and says so; stop the conversation first.
 - The **control panel** link (companion up): the page mints the browser carrier once per load, so
   the proxied `:65000` panel opens by clicking rather than answering `401`. Everything else
   here sends the access key as a header and never needs the cookie.
@@ -34,7 +42,9 @@ WebRTC). Open `http://<facade-host>:65001/admin/launch`; it asks for the serve a
   file keeps its own id), and the button's label says which it will do
   (**Stop**, or **Stop and keep**). Plus a link into the proxied control panel. A line above
   states where this conversation's audio is, as a fact fixed at the start — `audio: the desk`,
-  or `audio: Pixel — connected (direct, 120 ms buffer)`, with `waiting for it to connect`
+  or `audio: Pixel — connected (direct, 120 ms buffer)`, naming the device the way the list
+  names it (and falling back to its id, which is what a device forgotten mid-conversation looks
+  like), with `waiting for it to connect`
   before the device arrives. It is seeded from the start-time choice the same way the keep
   switch is, so it is right from the moment the companion is up, and filled out from what the
   running conversation reports.
