@@ -1,10 +1,10 @@
-"""Four pages are split into their own files now, and the seams have to hold.
+"""Five pages are split into their own files now, and the seams have to hold.
 
-The control panel (6 sections), the roster page (3) and the settings page (4)
-were each one file with several unrelated jobs sharing one scope. Their sections
-live under `ui/` and are spliced back in at render, so the SERVED pages are what
-they always were — only the sources are separable. The first-run page (2) was
-born split, on the same pattern.
+The control panel (6 sections), the roster page (3), the settings page (4) and
+the launch page (4) were each one file with several unrelated jobs sharing one
+scope. Their sections live under `ui/` and are spliced back in at render, so the
+SERVED pages are what they always were — only the sources are separable. The
+first-run page (2) was born split, on the same pattern.
 
 These are NOT the shared layer. `brand.css`, `switch_card.js` and
 `admin_shell.js` are spliced into several pages BECAUSE they must not drift
@@ -43,7 +43,8 @@ from hearth.supervisor import roster as roster_mod
 from hearth.supervisor import routes as routes_mod
 from hearth.supervisor import settings as settings_mod
 from hearth.ui import (
-    firstrun_sections, panel, pages, roster_sections, settings_sections)
+    firstrun_sections, launch_sections, panel, pages, roster_sections,
+    settings_sections)
 
 #: A top-level declaration in a spliced file: these become the PAGE's bindings.
 DECL = re.compile(r"(?m)^(?:async function|function|const|let|var)\s+(\w+)")
@@ -58,11 +59,12 @@ SETS = {
                  Path(settings_mod.__file__).parent / "settings_page.html"),
     "firstrun": (firstrun_sections.SECTIONS, firstrun_mod._PAGE,
                  Path(firstrun_mod.__file__).parent / "first_run_page.html"),
+    "launch": (launch_sections.SECTIONS, routes_mod._LAUNCH_PAGE,
+               Path(routes_mod.__file__).parent / "launch_page.html"),
 }
 
 #: Pages with no sections of their own — nothing here may reach them.
 SECTIONLESS = {
-    "launch": routes_mod._LAUNCH_PAGE,
     "pair": routes_mod._PAIR_PAGE,
     "memory": curation_mod._PAGE,
 }
@@ -83,6 +85,11 @@ ORDER = {
     "settings": ("settings_schema.js", "settings_files.js",
                  "settings_form.js", "settings_confirm.js"),
     "firstrun": ("firstrun_check.js", "firstrun_listen.js"),
+    # The launch page's four sit where their code sat, which is what kept the
+    # split from moving anything: the route control above the one load-time
+    # call into it, the Stop card's wiring in the page's wiring section.
+    "launch": ("launch_poll.js", "launch_deferred.js", "launch_devices.js",
+               "launch_stop.js"),
 }
 
 #: The `let`/`const` bindings one section declares and ANOTHER reads — the
@@ -96,6 +103,10 @@ COUPLINGS = {
                ("roster", "roster_edit.js", "roster_fork.js")),
     "settings": (),  # the four `let`s live in the page, above every placeholder
     "firstrun": (),  # the two sections meet only through hoisted functions
+    # The four `let`s the launch page keeps for itself (choices, botUp, busy,
+    # devices) are the page's, not a section's. This one is section to section:
+    # the poll reads it to know whether a finished Start line has gone stale.
+    "launch": (("deferred", "launch_deferred.js", "launch_poll.js"),),
 }
 
 
@@ -190,8 +201,9 @@ class PageSections(unittest.TestCase):
 
     def test_every_split_page_is_under_the_working_size_limit(self):
         """The point of the split. 16 KiB is the line a file has to justify
-        crossing; these three were 41.6, 21.5 and 19.9 KiB. Re-growth is the
-        expected failure — a section added inline instead of as a new file."""
+        crossing; these four were 41.6, 21.5, 19.9 and 38.0 KiB. Re-growth is
+        the expected failure — a section added inline instead of as a new
+        file."""
         for page_name, (_, _, src) in SETS.items():
             size = src.stat().st_size
             with self.subTest(page=page_name):
