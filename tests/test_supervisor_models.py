@@ -362,6 +362,10 @@ class UnenrollPreviewThenConfirm(_Surface):
         self.assertEqual(status, 200)
         self.assertFalse(body["unenrolled"])
         self.assertIsNotNone(enroll_mod.load_enrolled(self.MODEL))
+        target = enroll_mod.data_model_toml(self.MODEL)
+        self.assertTrue(body["preview"]["archives"].startswith(str(target) + ".prev-"))
+        self.assertEqual([], list(target.parent.glob("model.toml.prev-*")))  # preview copies nothing
+        was = target.read_text(encoding="utf-8")
 
         status, body, _ = await self.post("/admin/models/unenroll",
                                           {"model": self.MODEL, "yes": True})
@@ -369,6 +373,9 @@ class UnenrollPreviewThenConfirm(_Surface):
         self.assertTrue(body["unenrolled"])
         self.assertIsNone(enroll_mod.load_enrolled(self.MODEL))
         self.assertTrue(self.weights.is_file())   # never the file
+        archived = Path(body["archived"])
+        self.assertTrue(archived.is_file())
+        self.assertEqual(was, archived.read_text(encoding="utf-8"))
 
     async def test_nothing_enrolled_is_a_404(self):
         status, _, _ = await self.post("/admin/models/unenroll", {"model": self.MODEL})

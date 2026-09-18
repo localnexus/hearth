@@ -157,8 +157,12 @@ window.LaunchModels = (function () {
   function drawUnenroll(pane, d) {
     const p = d.preview || {};
     pane.appendChild(mk("div", "note", "drops the reference to " + p.weights));
+    if (p.archives) pane.appendChild(mk("div", "note", "the file is copied beside itself first, as " + p.archives));
     pane.appendChild(mk("div", "note", p.keeps || ""));
-    if (d.unenrolled) pane.appendChild(mk("div", "note", "wrote " + d.wrote));
+    if (d.unenrolled) {
+      if (d.archived) pane.appendChild(mk("div", "note", "archived " + d.archived));
+      pane.appendChild(mk("div", "note", "wrote " + d.wrote));
+    }
   }
 
   function drawEnroll(pane, d) {
@@ -167,8 +171,10 @@ window.LaunchModels = (function () {
     pane.appendChild(mk("div", "note", p.weights.display_key + "  ·  " +
                         gb(p.weights.size_bytes) + "  ·  " + p.fit));
     pane.appendChild(mk("div", "note", "into " + p.writes));
+    if (p.archives) pane.appendChild(mk("div", "note", "replaces a reference — the file is copied beside itself first, as " + p.archives));
     pane.appendChild(argvBlock((p.block || "").split("\n")));
     if (d.enrolled) {
+      if (d.archived) pane.appendChild(mk("div", "note", "archived " + d.archived));
       pane.appendChild(mk("div", "note", "wrote " + d.wrote));
       if (d.note) pane.appendChild(mk("div", "note", d.note));
     }

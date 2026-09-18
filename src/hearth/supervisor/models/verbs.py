@@ -194,16 +194,21 @@ async def _enroll(request: web.Request) -> web.Response:
         "mmproj": str(proj.path) if proj is not None else None,
         "fit": fit, "fit_at_ctx": at,
     }
+    _target = enroll_mod.data_model_toml(model)
+    if not new_name and enroll_mod.has_weights_table(_target):
+        preview["archives"] = str(enroll_mod.archive_name(_target))
     if not bool(body.get("yes")):
         return web.json_response({
             "ok": True, "enrolled": False, "preview": preview,
             "confirm": "enrolling writes the block above into that model.toml "
-                       "and touches nothing else — " + CONFIRM})
+                       "(a file already carrying a reference is copied beside "
+                       "itself first) and touches nothing else — " + CONFIRM})
 
     def _write() -> dict:
         created = _create_from_example(model) if new_name else None
-        written = enroll_mod.enroll(model, cand, proj)
-        return {"created": created, "wrote": str(written)}
+        done = enroll_mod.enroll_archiving(model, cand, proj)
+        return {"created": created, "wrote": str(done.target),
+                "archived": str(done.archived) if done.archived else None}
 
     try:
         done = await asyncio.to_thread(_write)
@@ -231,16 +236,20 @@ async def _unenroll(request: web.Request) -> web.Response:
         return web.json_response(
             {"error": f"{model!r} has no [weights] table — nothing to remove"},
             status=404)
+    target = enroll_mod.data_model_toml(model)
     preview = {"model": model, "weights": str(enrolled.path),
-               "writes": str(enroll_mod.data_model_toml(model)),
+               "writes": str(target),
+               "archives": str(enroll_mod.archive_name(target)),
                "keeps": "the weights file itself is never touched"}
     if not bool(body.get("yes")):
         return web.json_response({
             "ok": True, "unenrolled": False, "preview": preview,
-            "confirm": "this removes the reference and nothing else — " + CONFIRM})
-    written = await asyncio.to_thread(enroll_mod.unenroll, model)
+            "confirm": "this removes the reference (the file is copied beside "
+                       "itself first) and nothing else — " + CONFIRM})
+    done = await asyncio.to_thread(enroll_mod.unenroll_archiving, model)
     return web.json_response({"ok": True, "unenrolled": True, "preview": preview,
-                              "wrote": str(written) if written else None})
+                              "wrote": str(done.target) if done else None,
+                              "archived": str(done.archived) if done else None})
 
 
 # ── render ───────────────────────────────────────────────────────────────────

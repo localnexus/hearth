@@ -60,7 +60,11 @@ architecture, how many layers, how much context it was trained for. That is the 
 weights file is not read again until the model server loads it.
 
 **Un-enrolling** deletes those lines. Nothing else happens. The file is still on your disk, exactly
-where it was, byte for byte.
+where it was, byte for byte. And before the lines go, the whole `model.toml` is copied beside
+itself as `model.toml.prev-<date>` (seconds added if the day's name is taken) — the same habit
+`apply` keeps for the unit — so an un-enroll pressed in the wrong moment is a copy back, not a
+re-enroll. Enrolling over a file that already carries a reference keeps the same copy first.
+Nothing ever deletes one of those archives.
 
 ## The seven things you can ask
 

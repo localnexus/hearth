@@ -183,6 +183,48 @@ class Unenrolling(_Case):
         self.assertEqual(before, self.model_toml.read_text(encoding="utf-8"))
         self.assertTrue(self.weights.is_file(), "the weights file must survive")
 
+    def test_it_archives_the_file_beside_itself_first(self):
+        import importlib
+        enroll_mod = importlib.import_module("hearth.weights.enroll")
+        self.run_cli("enroll", "m1", "--path", str(self.weights), "--yes")
+        enrolled = self.model_toml.read_text(encoding="utf-8")
+        r = self.run_cli("unenroll", "m1")
+        self.assertIn("archived beside itself first, as model.toml.prev-", r.stdout)
+        self.assertEqual([], sorted(self.model_dir.glob("model.toml.prev-*")), "preview archives nothing")
+
+        r = self.run_cli("unenroll", "m1", "--yes")
+        self.assertEqual(r.returncode, 0, r.stderr[-800:])
+        archives = sorted(self.model_dir.glob("model.toml.prev-*"))
+        self.assertEqual(len(archives), 1)
+        self.assertIn(f"archived {archives[0]}", r.stdout)
+        self.assertEqual(enrolled, archives[0].read_text(encoding="utf-8"),
+                         "the archive is the file as it was, reference included")
+        self.assertIsNone(enroll_mod.load_enrolled("m1"))
+
+        # a second archive the same day gets seconds, and the first is never overwritten
+        self.run_cli("enroll", "m1", "--path", str(self.weights), "--yes")
+        r = self.run_cli("unenroll", "m1", "--yes")
+        self.assertEqual(r.returncode, 0, r.stderr[-800:])
+        archives2 = sorted(self.model_dir.glob("model.toml.prev-*"))
+        self.assertEqual(len(archives2), 2)
+        self.assertIn(archives[0], archives2)
+        self.assertEqual(enrolled, archives[0].read_text(encoding="utf-8"))
+
+    def test_enrolling_over_a_reference_archives_too_but_a_first_enroll_does_not(self):
+        r = self.run_cli("enroll", "m1", "--path", str(self.weights), "--yes")
+        self.assertEqual(r.returncode, 0, r.stderr[-800:])
+        self.assertNotIn("archived", r.stdout)
+        self.assertEqual([], list(self.model_dir.glob("model.toml.prev-*")))
+        first = self.model_toml.read_text(encoding="utf-8")
+        r = self.run_cli("enroll", "m1", "--path", str(self.weights))
+        self.assertIn("archives    the file beside itself first", r.stdout)
+        r = self.run_cli("enroll", "m1", "--path", str(self.weights), "--yes")
+        self.assertEqual(r.returncode, 0, r.stderr[-800:])
+        archives = list(self.model_dir.glob("model.toml.prev-*"))
+        self.assertEqual(len(archives), 1)
+        self.assertEqual(first, archives[0].read_text(encoding="utf-8"))
+        self.assertIn("archived ", r.stdout)
+
 
 class ServerKeys(_Case):
 

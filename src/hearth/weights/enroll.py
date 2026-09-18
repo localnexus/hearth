@@ -24,9 +24,10 @@ R3). The door stays down and says why.
 from __future__ import annotations
 
 import re
+import shutil
 import subprocess
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -241,9 +242,54 @@ def remove_weights_table(model_toml_path: Path) -> bool:
     return True
 
 
-def enroll(model_name: str, candidate: Candidate,
-           mmproj: Candidate | None = None) -> Path:
-    """Bind `candidate` to `config/models/<model_name>/model.toml`. → the path."""
+# ── the archive beside the file ──────────────────────────────────────────────
+#
+# A reference is cheap to write and expensive to lose: on 2026-09-16 an
+# unenroll pressed while hunting for the door's "active seat" dropped the
+# incumbent's [weights] blocks with nothing beside the file to put them back
+# from. So a write that REMOVES or REPLACES a reference first copies the whole
+# model.toml beside itself as `model.toml.prev-<date>` — the same rule `apply`
+# keeps for the unit, and the same name a careful hand would choose. An
+# archive is never overwritten (seconds are appended when the day's name is
+# taken) and nothing here deletes one. Rollback is a copy back.
+
+def archive_name(existing: Path, when: datetime | None = None) -> Path:
+    """`<name>.prev-<date>`, seconds appended if that name is taken."""
+    when = when or datetime.now()
+    candidate = existing.with_name(f"{existing.name}.prev-{when:%Y-%m-%d}")
+    if candidate.exists():
+        candidate = existing.with_name(f"{existing.name}.prev-{when:%Y-%m-%d-%H%M%S}")
+    return candidate
+
+
+def archive_copy(existing: Path) -> Path:
+    """Copy `existing` beside itself under `archive_name`; → the copy."""
+    dest = archive_name(Path(existing))
+    shutil.copy2(existing, dest)
+    return dest
+
+
+def has_weights_table(model_toml_path: Path) -> bool:
+    """Whether the file carries a `[weights]` block to archive before a write."""
+    try:
+        lines = Path(model_toml_path).read_text(encoding="utf-8").split("\n")
+    except OSError:
+        return False
+    return _block_span(lines) is not None
+
+
+@dataclass(frozen=True)
+class Written:
+    """What a reference write did: the file it wrote, and the archive it
+    left beside that file first (None when there was nothing to lose)."""
+    target: Path
+    archived: Path | None
+
+
+def enroll_archiving(model_name: str, candidate: Candidate,
+                     mmproj: Candidate | None = None) -> Written:
+    """Bind `candidate` to `config/models/<model_name>/model.toml`. A file
+    that already carries a reference is archived beside itself first."""
     target = data_model_toml(model_name)
     if not target.is_file():
         raise WeightsError(
@@ -252,16 +298,32 @@ def enroll(model_name: str, candidate: Candidate,
             f"(config/models/example/model.toml.example) to "
             f"{cl.MODELS_DIR / model_name / 'model.toml'} and set its `id` — "
             "then enroll. Hearth never writes into the engine tree.")
+    archived = archive_copy(target) if has_weights_table(target) else None
     write_weights_table(target, weights_table(candidate, mmproj))
-    return target
+    return Written(target, archived)
+
+
+def enroll(model_name: str, candidate: Candidate,
+           mmproj: Candidate | None = None) -> Path:
+    """`enroll_archiving`, answering the path alone (the older contract)."""
+    return enroll_archiving(model_name, candidate, mmproj).target
+
+
+def unenroll_archiving(model_name: str) -> Written | None:
+    """Remove the reference, the file archived beside itself first. The
+    weights file is never touched. None when there was no reference."""
+    target = data_model_toml(model_name)
+    if not target.is_file() or not has_weights_table(target):
+        return None
+    archived = archive_copy(target)
+    remove_weights_table(target)
+    return Written(target, archived)
 
 
 def unenroll(model_name: str) -> Path | None:
-    """Remove the reference. The weights file is never touched."""
-    target = data_model_toml(model_name)
-    if not target.is_file():
-        return None
-    return target if remove_weights_table(target) else None
+    """`unenroll_archiving`, answering the path alone (the older contract)."""
+    done = unenroll_archiving(model_name)
+    return done.target if done else None
 
 
 # ── the door's own vocabulary ────────────────────────────────────────────────

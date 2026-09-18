@@ -70,10 +70,12 @@ from .enroll import (
     WeightsError,
     check as check_model,
     data_model_toml,
-    enroll as enroll_weights,
+    archive_name,
+    has_weights_table,
+    enroll_archiving as enroll_weights,
     enrolled_models,
     load_enrolled,
-    unenroll as unenroll_model,
+    unenroll_archiving as unenroll_model,
 )
 
 GB = 1000 ** 3
@@ -296,15 +298,20 @@ def _cmd_enroll(model: str, path: str | None, key: str | None,
     for other in cand.duplicates:
         print(f"  duplicate   the same bytes also at {other}")
 
+    target = data_model_toml(model)
+    if has_weights_table(target):
+        print(f"  archives    the file beside itself first, as {archive_name(target).name}")
     if not yes:
         print("nothing written — re-run with --yes to write", file=sys.stderr)
         return 1
     try:
-        written = enroll_weights(model, cand, proj)
+        done = enroll_weights(model, cand, proj)
     except WeightsError as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    print(f"wrote {written}")
+    if done.archived:
+        print(f"archived {done.archived}")
+    print(f"wrote {done.target}")
     return 0
 
 
@@ -316,11 +323,16 @@ def _cmd_unenroll(model: str, yes: bool) -> int:
         return 1
     print(f"unenroll {model!r} — removes the reference to {got.path}")
     print("  the weights file itself is never touched")
+    print(f"  the file is archived beside itself first, as {archive_name(target).name}")
     if not yes:
         print("nothing written — re-run with --yes to write", file=sys.stderr)
         return 1
-    unenroll_model(model)
-    print(f"wrote {target}")
+    done = unenroll_model(model)
+    if done is None:
+        print(f"{model!r} has no [weights] table under {cl.MODELS_DIR}", file=sys.stderr)
+        return 1
+    print(f"archived {done.archived}")
+    print(f"wrote {done.target}")
     return 0
 
 
