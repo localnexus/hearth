@@ -325,8 +325,10 @@ async def _apply(request: web.Request) -> web.Response:
         "archived": str(done.archived) if done.archived else None,
         "rendered": str(done.unit.path),
         "lines": done.lines,
-        "note": "written, not loaded — press Load (or run the two lines) when "
-                "the moment is yours to choose",
+        "note": "written — the door is still running the OLD unit. Press Load "
+                "to restart it on this one (it stops the old door first, then "
+                "starts this), or run the two lines yourself, when the moment "
+                "is yours to choose",
     }
     if not guard.certain:
         answer["warning"] = guard.text

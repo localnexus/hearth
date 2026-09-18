@@ -1,5 +1,5 @@
-"""models/door.py — the door itself: its facts, its residency, and the two
-built-in actuators that stop and start it.
+"""models/door.py — the door itself: its facts, its residency, and the
+built-in actuators that stop, start and restart it.
 
 Until now the pair of commands that bounce the model server had to be typed
 into `serve.toml` by hand — the exact two lines `weights apply` prints, copied
@@ -9,12 +9,24 @@ them instead:
 
     door-unload   launchctl bootout gui/<uid>/<label>
     door-load     launchctl bootstrap gui/<uid> <LaunchAgents>/<label>.plist
+    door-reload   door-unload, wait for the door to leave, door-load
 
 They are ordinary members of the existing actuator frame — fixed argv, no
 shell, bounded, output to a 0600 log, never children of this daemon — and they
 carry `guard = "companion"`, because taking the door down (or replacing it
 under a load) is a cost the next turn pays. Nothing here runs them: they are
 CONFIG, handed to `ActuatorSet` at mount, and the actuator runner presses them.
+
+The third is the one the card's **Load** button presses. `bootout` returns
+the moment launchd has accepted the order (10 ms on a 38 GB door, measured
+2026-09-16), while the process itself takes seconds to leave — so a bare
+`bootstrap` pressed right after fails with "already loaded", and a bare Load
+pressed against a running door does nothing at all. The stepped shape holds
+the two lines together: bootout (exit 3, "not loaded", counts as done), then
+wait until nothing answers on the door's port, then bootstrap, pressed again
+once a second for a bounded while if launchd is still tearing the old job
+down. Both halves stay the same two launchctl argvs; only the runner presses
+them.
 
 Two rules on registration:
   * they appear only when the operator's `config/weights.toml` actually
@@ -48,13 +60,21 @@ roots_mod = import_module("hearth.weights.roots")
 #: exec'd directly — there is no shell and no PATH lookup.
 LAUNCHCTL = "/bin/launchctl"
 
-#: The two names. Fixed, so the card can find them and the manual can name them.
+#: The three names. Fixed, so the card can find them and the manual can name them.
 UNLOAD = "door-unload"
 LOAD = "door-load"
+RELOAD = "door-reload"
 
 #: A bootstrap that has to read a 38 GB file off a cold disk is not a two
 #: second act; the probe is what actually says "up".
 TIMEOUT_S = 60.0
+#: How long the reload waits for the old door to leave its port, and for how
+#: long it keeps pressing bootstrap while launchd still holds the old job.
+RELOAD_WAIT_S = 45.0
+RELOAD_RETRY_S = 20.0
+#: launchctl's exit for "no such service" on bootout — an unloaded door is
+#: already where a reload's first step wants it.
+_BOOTOUT_NOT_LOADED = 3
 
 
 def door_actuators(cfg: roots_mod.WeightsConfig | None = None,
@@ -82,6 +102,19 @@ def door_actuators(cfg: roots_mod.WeightsConfig | None = None,
             "guard": "companion",
             "note": f"start the door ({door.label}) from the unit `apply` wrote "
                     "— built in from [weights.door]",
+        },
+        RELOAD: {
+            "steps": [
+                {"actuator": UNLOAD, "accept": [0, _BOOTOUT_NOT_LOADED],
+                 "until": "probe-down", "wait_s": RELOAD_WAIT_S},
+                {"actuator": LOAD, "retry_s": RELOAD_RETRY_S},
+            ],
+            "timeout_s": TIMEOUT_S,
+            "probe_url": probe,
+            "guard": "companion",
+            "note": f"restart the door ({door.label}) on the unit `apply` wrote: "
+                    "stop it, wait for it to leave, start it — built in from "
+                    "[weights.door]",
         },
     }
 
@@ -123,6 +156,7 @@ def door_json(cfg: roots_mod.WeightsConfig) -> dict:
         "unit_path": str(render_mod.launch_agents_dir() / f"{door.label}.plist"),
         "rendered_path": str(cl.DATA_DIR / render_mod.RENDER_SUBDIR
                              / f"{door.label}.plist"),
-        "actuators": {"load": LOAD, "unload": UNLOAD} if cfg.door_declared else {},
+        "actuators": ({"load": LOAD, "unload": UNLOAD, "reload": RELOAD}
+                      if cfg.door_declared else {}),
         "source": str(cfg.source) if cfg.source else None,
     }

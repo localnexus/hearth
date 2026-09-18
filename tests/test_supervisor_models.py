@@ -499,11 +499,13 @@ class BuiltInDoorActuators(_Surface):
         acts = self.app["actuators"]
         self.assertIn(models_mod.LOAD, acts)
         self.assertIn(models_mod.UNLOAD, acts)
-        for name in (models_mod.LOAD, models_mod.UNLOAD):
+        self.assertIn(models_mod.RELOAD, acts)
+        for name in (models_mod.LOAD, models_mod.UNLOAD, models_mod.RELOAD):
             self.assertEqual(acts.guard(name), "companion")
         _, body, _ = await self.get("/admin/models/door")
         self.assertEqual(body["actuators"],
-                         {"load": models_mod.LOAD, "unload": models_mod.UNLOAD})
+                         {"load": models_mod.LOAD, "unload": models_mod.UNLOAD,
+                          "reload": models_mod.RELOAD})
 
     def test_the_commands_are_derived_from_the_door_table(self):
         cfg = roots_mod.load_weights_config(self.data / "config" / "weights.toml")
@@ -518,6 +520,20 @@ class BuiltInDoorActuators(_Surface):
                          f"http://127.0.0.1:{DOOR_PORT}/health")
         self.assertEqual(derived[models_mod.LOAD]["timeout_s"], 60.0)
 
+    def test_the_reload_is_the_two_lines_held_together(self):
+        cfg = roots_mod.load_weights_config(self.data / "config" / "weights.toml")
+        derived = models_mod.door_actuators(cfg, uid=501)
+        reload = derived[models_mod.RELOAD]
+        self.assertNotIn("command", reload)          # it presses the other two
+        self.assertEqual([s["actuator"] for s in reload["steps"]],
+                         [models_mod.UNLOAD, models_mod.LOAD])
+        first, second = reload["steps"]
+        self.assertIn(3, first["accept"])            # "not loaded" is already there
+        self.assertEqual(first["until"], "probe-down")
+        self.assertGreater(second["retry_s"], 0)
+        self.assertEqual(reload["guard"], "companion")
+        self.assertEqual(reload["probe_url"], derived[models_mod.LOAD]["probe_url"])
+
     def test_an_operator_declaration_of_the_same_name_wins(self):
         cfg = roots_mod.load_weights_config(self.data / "config" / "weights.toml")
         mine = {models_mod.LOAD: {"command": ["/bin/echo", "mine"]}}
@@ -530,7 +546,7 @@ class BuiltInDoorActuators(_Surface):
         mine = {"lm-load": {"command": ["/bin/launchctl", "bootstrap", "gui/501", "x"]}}
         merged = models_mod.with_door_actuators(mine, cfg, uid=501)
         self.assertEqual(merged["lm-load"], mine["lm-load"])
-        self.assertEqual(len(merged), 3)
+        self.assertEqual(len(merged), 4)
 
 
 class NoDoorTableNoButtons(_Surface):

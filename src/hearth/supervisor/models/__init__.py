@@ -91,7 +91,7 @@ from .facts import (
     fit_text, header_facts, machine_budget, model_ctx, model_id, redact_argv,
     state_from, targets, unit_state)
 from .door import (
-    LAUNCHCTL, LOAD, TIMEOUT_S, UNLOAD, door_actuators, door_json,
+    LAUNCHCTL, LOAD, RELOAD, TIMEOUT_S, UNLOAD, door_actuators, door_json,
     with_door_actuators)
 from .views import (
     PROBE_TIMEOUT_S, _door, _models, _scan, budget_of, candidate_by_identity,
@@ -100,7 +100,7 @@ from .verbs import (
     CONFIRM, NEW_NAME_RE, _apply, _enroll, _render, _unenroll)
 
 __all__ = ["add_routes", "door_actuators", "with_door_actuators", "door_json",
-           "LOAD", "UNLOAD"]
+           "LOAD", "RELOAD", "UNLOAD"]
 
 
 def add_routes(app: web.Application) -> None:

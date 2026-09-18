@@ -130,6 +130,105 @@ class ActuatorEngine(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(acts.status()["cold"]["guard"], "companion")
             self.assertEqual(acts.status()["any"]["guard"], "")
 
+    async def test_stepped_run_presses_each_in_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            mark = Path(tmp) / "order"
+            acts = self._set({
+                "a": {"command": [_PY, "-c",
+                                  f"open({str(mark)!r}, 'a').write('a')"]},
+                "b": {"command": [_PY, "-c",
+                                  f"open({str(mark)!r}, 'a').write('b')"]},
+                "both": {"steps": ["a", "b"]},
+            }, tmp)
+            rec = await acts.run("both")
+            self.assertTrue(rec["ok"])
+            self.assertIsNone(rec["failed_step"])
+            self.assertEqual([s["actuator"] for s in rec["steps"]], ["a", "b"])
+            self.assertEqual(mark.read_text(), "ab")
+            log = Path(rec["log"]).read_text(encoding="utf-8")
+            self.assertIn("step a: exit 0", log)
+            self.assertIn("step b: exit 0", log)
+            self.assertEqual(acts.status()["a"]["last"]["exit"], 0)   # each step is a run
+
+    async def test_stepped_run_stops_at_the_first_bad_exit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            mark = Path(tmp) / "reached"
+            acts = self._set({
+                "no": {"command": [_PY, "-c", "import sys; sys.exit(3)"]},
+                "b": {"command": [_PY, "-c", f"open({str(mark)!r}, 'w').write('x')"]},
+                "seq": {"steps": ["no", "b"]},
+                "lenient": {"steps": [{"actuator": "no", "accept": [0, 3]}, "b"]},
+            }, tmp)
+            rec = await acts.run("seq")
+            self.assertFalse(rec["ok"])
+            self.assertEqual(rec["failed_step"], "no")
+            self.assertEqual(rec["exit"], 3)
+            self.assertFalse(mark.exists())
+            rec = await acts.run("lenient")         # exit 3 accepted → goes on
+            self.assertTrue(rec["ok"])
+            self.assertTrue(mark.exists())
+
+    async def test_stepped_run_retries_until_the_step_takes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            flag = Path(tmp) / "second-time"
+            body = (f"import os, sys; p={str(flag)!r}; "
+                    "sys.exit(0) if os.path.exists(p) else (open(p, 'w').close(), sys.exit(5))")
+            acts = self._set({
+                "flaky": {"command": [_PY, "-c", body]},
+                "keep": {"steps": [{"actuator": "flaky", "retry_s": 10.0}]},
+                "once": {"steps": [{"actuator": "flaky"}]},
+            }, tmp)
+            rec = await acts.run("keep")
+            self.assertTrue(rec["ok"])              # failed once, then took
+            self.assertIn("pressing again", Path(rec["log"]).read_text(encoding="utf-8"))
+            flag.unlink()
+            rec = await acts.run("once")
+            self.assertFalse(rec["ok"])             # no retry_s → one press
+
+    async def test_stepped_run_waits_for_the_probe_port_to_close(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            server = await asyncio.start_server(lambda r, w: w.close(), "127.0.0.1", 0)
+            port = server.sockets[0].getsockname()[1]
+            acts = self._set({
+                "stop": {"command": [_PY, "-c", "pass"], "probe_url": f"http://127.0.0.1:{port}/health"},
+                "go": {"command": [_PY, "-c", "pass"]},
+                "bounce": {"steps": [{"actuator": "stop", "until": "probe-down", "wait_s": 5.0},
+                                     "go"]},
+                "hurry": {"steps": [{"actuator": "stop", "until": "probe-down", "wait_s": 0.6},
+                                    "go"]},
+            }, tmp)
+            try:
+                rec = await acts.run("hurry")       # the port stays open → fails there
+                self.assertFalse(rec["ok"])
+                self.assertEqual(rec["failed_step"], "stop")
+                self.assertEqual([s["actuator"] for s in rec["steps"]], ["stop"])
+
+                async def close_soon():
+                    await asyncio.sleep(0.8)
+                    server.close()
+                    await server.wait_closed()
+                closer = asyncio.ensure_future(close_soon())
+                rec = await acts.run("bounce")      # waits, sees it leave, goes on
+                await closer
+                self.assertTrue(rec["ok"])
+                self.assertEqual([s["actuator"] for s in rec["steps"]], ["stop", "go"])
+                self.assertGreaterEqual(rec["duration_s"], 0.5)
+            finally:
+                server.close()
+
+    async def test_stepped_run_refuses_a_busy_step(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            acts = self._set({
+                "hold": {"command": [_PY, "-c", "import time; time.sleep(1.2)"], "timeout_s": 10.0},
+                "seq": {"steps": ["hold"]},
+            }, tmp)
+            task = asyncio.ensure_future(acts.run("hold"))
+            await asyncio.sleep(0.2)
+            rec = await acts.run("seq")
+            self.assertFalse(rec["ok"])
+            self.assertEqual(rec["failed_step"], "hold")
+            self.assertTrue((await task)["ok"])
+
     def test_commandless_block_skipped_never_fatal(self):
         with tempfile.TemporaryDirectory() as tmp:
             acts = self._set({"bad": {}, "good": {"command": ["/bin/true"]}}, tmp)

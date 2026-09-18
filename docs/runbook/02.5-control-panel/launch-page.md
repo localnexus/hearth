@@ -76,7 +76,10 @@ WebRTC). Open `http://<facade-host>:65001/admin/launch`; it asks for the serve a
   its whole shelf is read-only. Full account: [session continuity](../../config-manual/session-continuity.md).
 - **Models** (only when weights are enrolled or a door is declared): which weights the door
   serves, one row per enrolled model, with enroll · render · apply · unenroll and the door's own
-  Load / Unload. Every button shows what it would do and waits for a second press.
+  Load / Unload. Load presses the built-in `door-reload` actuator (stop, wait for the port to
+  close, start — the two launchctl lines held together); Unload presses `door-unload`. While a
+  companion is up the card says so, and either press asks before bouncing the door under it.
+  Every other button shows what it would do and waits for a second press.
 - **First run** (new installs only): while the selected model config still carries the shipped
   placeholder id, or no companion on this install has a session yet, a card at the top offers the
   first-run page (`/admin/first-run`, [admin surface](admin-surface.md)) — and while the id is the

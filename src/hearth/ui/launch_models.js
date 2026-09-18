@@ -195,8 +195,10 @@ window.LaunchModels = (function () {
       } else if (r.status === 409) report(name + " is already running", true);
       else if (r.status === 404) report("no built-in " + name +
                                         " — config/weights.toml declares no [weights.door]", true);
-      else if (d.ok) report(name + " ok in " + d.duration_s + "s");
-      else report(name + " failed: " + (d.timed_out ? "timed out"
+      else if (d.ok) report(name + " ok in " + d.duration_s + "s"
+                            + (d.steps ? " (" + d.steps.length + " steps)" : ""));
+      else report(name + " failed" + (d.failed_step ? " at " + d.failed_step : "")
+                  + ": " + (d.timed_out ? "timed out"
                   : d.exit === null || d.exit === undefined ? "could not start"
                   : "exit " + d.exit) + " — the log is on the machine", true);
     } catch (e) {
@@ -353,13 +355,17 @@ window.LaunchModels = (function () {
     const line = mk("div", "grow", "door " + doorFacts.label + " · " +
       doorFacts.host + ":" + doorFacts.port + " · access key " + doorFacts.api_key +
       (doorFacts.load_mode ? " · load " + doorFacts.load_mode : ""));
+    // Load = the RELOAD actuator: stop the old door, wait for it to leave,
+    // start the unit apply wrote. A bare bootstrap against a running door
+    // fails ("already loaded"), which is how a Load press came to do nothing
+    // on 2026-09-16. Older doors without the stepped block fall back to load.
     const load = mk("button", "", "Load");
+    load.title = "restart the door on the unit Apply wrote — stops the old one first";
     const unload = mk("button", "", "Unload");
-    load.disabled = unload.disabled = companionUp;
-    if (companionUp) load.title = unload.title =
-      "a companion is up — stop it first, or confirm the press";
+    unload.title = "stop the door; nothing serves until Load";
+    const loadName = doorFacts.actuators.reload || doorFacts.actuators.load;
     load.addEventListener("click", () =>
-      press(api, report, doorFacts.actuators.load, load, false));
+      press(api, report, loadName, load, false));
     unload.addEventListener("click", () =>
       press(api, report, doorFacts.actuators.unload, unload, false));
     const scan = mk("button", "", "Enroll from disk…");
@@ -373,6 +379,12 @@ window.LaunchModels = (function () {
     const row = mk("div", "row");
     row.appendChild(load); row.appendChild(unload); row.appendChild(scan);
     host.appendChild(row);
+    // The guard, in words on the card rather than a tooltip: the buttons stay
+    // pressable, and the press asks before bouncing the door under a sitting.
+    if (companionUp)
+      host.appendChild(mk("div", "note",
+        "a companion is up — Load and Unload will ask before bouncing the door "
+        + "under it; stopping the companion first is the quiet way"));
   }
 
   async function refresh(api, report, up) {

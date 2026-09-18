@@ -21,7 +21,18 @@ Containment shape:
   * an optional guard = "companion": refused while a companion is running,
     unless the press carries ?force=1 — the shape for a command whose cost
     the NEXT TURN pays (freeing the model server's models: a live session
-    owns its model's residency, and only a confirmed press may take it).
+    owns its model's residency, and only a confirmed press may take it);
+  * a STEPPED actuator names other actuators instead of a command —
+    ``steps = [{actuator, accept, until, wait_s, retry_s}, …]`` — and runs
+    them in order, each through the same bounded runner and its own log:
+    ``accept`` lists the exit codes that count as done (default [0]);
+    ``until = "probe-down"`` waits (≤ ``wait_s``) after the step for the
+    actuator's own probe_url host:port to stop accepting connections — the
+    shape of "stop the door, then wait for it to actually leave"; ``retry_s``
+    presses a step again, once a second, until it exits 0 or the seconds run
+    out — the shape of "start it as soon as launchd will let you". A stepped
+    actuator has no command of its own; it is only built-in blocks that use
+    the shape today (models/door.py's door-reload).
 """
 
 from __future__ import annotations
@@ -34,6 +45,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlsplit
 
 from loguru import logger
 
@@ -60,13 +72,15 @@ class ActuatorSet:
         for name, raw in dict(cfg or {}).items():
             entry = dict(raw or {})
             command = [str(a) for a in (entry.get("command") or [])]
-            if not command:
+            steps = _parse_steps(entry.get("steps"))
+            if not command and not steps:
                 # the registry catches this at check time; at runtime a bad
                 # block costs only itself, never the mount (containment posture)
                 logger.warning("[supervisor] actuator {!r} has no command — skipped", name)
                 continue
             self._acts[str(name)] = {
                 "command": command,
+                "steps": steps,
                 "timeout_s": float(entry.get("timeout_s", DEFAULT_TIMEOUT_S)),
                 "cwd": str(entry.get("cwd") or ""),
                 "note": str(entry.get("note") or ""),
@@ -101,10 +115,82 @@ class ActuatorSet:
             raise ActuatorBusy(name)
         self._running.add(name)
         try:
-            record = await self._run_bounded(name, act)
+            if act["steps"]:
+                record = await self._run_steps(name, act)
+            else:
+                record = await self._run_bounded(name, act)
         finally:
             self._running.discard(name)
         self._last[name] = record
+        return record
+
+    async def _run_steps(self, name: str, act: dict) -> dict:
+        """The steps in order, each an ordinary run of the actuator it names;
+        the first one that does not come out right ends the sequence. The
+        stepped actuator's own log carries one line per step; the step's
+        output is in the step's log, as always."""
+        started, t0 = _now_iso(), time.monotonic()
+        self._log_dir.mkdir(parents=True, exist_ok=True)
+        os.chmod(self._log_dir, 0o700)
+        log_path = self._log_dir / f"{name}.log"
+        fd = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        os.chmod(log_path, 0o600)
+        steps_out: list[dict] = []
+        ok, failed_step, last_exit = True, None, None
+
+        def note(line: str) -> None:
+            os.write(fd, (line + "\n").encode("utf-8"))
+
+        try:
+            note(f"\n── {started} — run ({len(act['steps'])} steps)")
+            for step in act["steps"]:
+                target = step["actuator"]
+                if target not in self._acts:
+                    note(f"step {target}: not declared — stopping")
+                    ok, failed_step = False, target
+                    break
+                deadline = time.monotonic() + step["retry_s"]
+                while True:
+                    try:
+                        rec = await self.run(target)
+                    except ActuatorBusy:
+                        note(f"step {target}: busy — stopping")
+                        ok, failed_step = False, target
+                        break
+                    last_exit = rec["exit"]
+                    done = (not rec["timed_out"]) and rec["exit"] in step["accept"]
+                    if done or time.monotonic() >= deadline:
+                        break
+                    note(f"step {target}: exit {rec['exit']} — pressing again")
+                    await asyncio.sleep(1.0)
+                if failed_step is not None:
+                    break
+                steps_out.append({"actuator": target, "exit": rec["exit"],
+                                  "timed_out": rec["timed_out"],
+                                  "duration_s": rec["duration_s"], "ok": done})
+                note(f"step {target}: exit {rec['exit']}"
+                     f"{' (timeout)' if rec['timed_out'] else ''} in {rec['duration_s']}s")
+                if not done:
+                    ok, failed_step = False, target
+                    break
+                if step["until"] == "probe-down":
+                    probe = self._acts[target]["probe_url"] or act["probe_url"]
+                    gone = await _wait_port_closed(probe, step["wait_s"])
+                    note(f"step {target}: probe {'down' if gone else 'STILL UP'} "
+                         f"after the wait ({probe or 'no probe_url'})")
+                    if not gone:
+                        ok, failed_step = False, target
+                        break
+        finally:
+            os.close(fd)
+        duration = round(time.monotonic() - t0, 2)
+        record = {"ok": ok, "exit": last_exit, "timed_out": False,
+                  "started": started, "duration_s": duration,
+                  "log": str(log_path), "steps": steps_out,
+                  "failed_step": failed_step}
+        logger.info("[supervisor] actuator {} → {} ({} steps) in {}s",
+                    name, "ok" if ok else f"failed at {failed_step}",
+                    len(steps_out), duration)
         return record
 
     async def _run_bounded(self, name: str, act: dict) -> dict:
@@ -155,3 +241,49 @@ class ActuatorSet:
         with contextlib.suppress(asyncio.TimeoutError):
             return await asyncio.wait_for(proc.wait(), 1.0)
         return proc.returncode
+
+
+def _parse_steps(raw) -> list[dict]:
+    """The steps of a stepped actuator, leniently: a bare string is the name
+    of an actuator with the defaults; anything unreadable is dropped."""
+    out: list[dict] = []
+    for item in list(raw or []):
+        if isinstance(item, str):
+            item = {"actuator": item}
+        if not isinstance(item, dict) or not item.get("actuator"):
+            continue
+        accept = item.get("accept")
+        try:
+            accept_set = {int(a) for a in (accept if accept is not None else [0])}
+        except (TypeError, ValueError):
+            accept_set = {0}
+        out.append({
+            "actuator": str(item["actuator"]),
+            "accept": accept_set,
+            "until": str(item.get("until") or ""),
+            "wait_s": float(item.get("wait_s", 30.0)),
+            "retry_s": float(item.get("retry_s", 0.0)),
+        })
+    return out
+
+
+async def _wait_port_closed(probe_url: str, wait_s: float) -> bool:
+    """True once nothing accepts a TCP connection at the probe's host:port
+    (or at once when there is no probe to ask) — a process that has left
+    holds no listener. False when it is still there after `wait_s`."""
+    parts = urlsplit(probe_url or "")
+    host, port = parts.hostname, parts.port
+    if not host or not port:
+        return True
+    deadline = time.monotonic() + max(0.0, wait_s)
+    while True:
+        try:
+            _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), 1.0)
+        except (OSError, asyncio.TimeoutError):
+            return True
+        writer.close()
+        with contextlib.suppress(Exception):
+            await writer.wait_closed()
+        if time.monotonic() >= deadline:
+            return False
+        await asyncio.sleep(0.5)

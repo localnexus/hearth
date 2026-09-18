@@ -246,10 +246,17 @@ class R1_TheModelSurfaceStartsNothing(unittest.TestCase):
 
         cfg = roots_mod.WeightsConfig(door_declared=True)
         derived = door_mod.door_actuators(cfg, uid=501)
-        self.assertEqual(sorted(derived), [door_mod.LOAD, door_mod.UNLOAD])
+        self.assertEqual(sorted(derived),
+                         [door_mod.LOAD, door_mod.RELOAD, door_mod.UNLOAD])
         for name, block in derived.items():
-            self.assertEqual(block["command"][0], "/bin/launchctl")
             self.assertEqual(block["guard"], "companion")
+            if name == door_mod.RELOAD:
+                # the stepped one names the other two; it holds no argv itself
+                self.assertNotIn("command", block)
+                self.assertTrue({s["actuator"] for s in block["steps"]}
+                                <= {door_mod.LOAD, door_mod.UNLOAD})
+                continue
+            self.assertEqual(block["command"][0], "/bin/launchctl")
         # …and no module in the package ever calls one.
         for path in self.modules():
             for call in _launch_calls(_tree(path)):
