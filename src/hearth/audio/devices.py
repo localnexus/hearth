@@ -15,15 +15,15 @@ choose from. So a pair now ENROLS: one row per device, in
 
 Three properties this file is written for:
 
-  * **Only two acts write it** — the claim on the pairing page, and "forget" on
-    the launch page (plus one ``last_seen`` stamp per conversation started).
-    Nothing on a hot path writes it, and the overrides layer never touches it.
+  * **Only two acts write it** — the claim on the pairing page and "forget" on
+    the launch page, plus one ``last_seen`` stamp per conversation started.
+    Nothing on a hot path writes it; the overrides layer never touches it.
   * **Every write is atomic** — emitted to ``devices.toml.tmp`` beside the file
     and ``os.replace``d onto it, so a reader never sees half a registry.
-  * **The one lossy write archives first.** ``enrol`` and ``touch`` rewrite the
-    file additively — nothing is lost, so nothing is archived. ``forget``
-    removes a row, and the house rule for a load-bearing file outside version
-    control is that it is copied beside itself before it can lose anything:
+  * **The one lossy write archives first.** ``enrol`` and ``touch`` rewrite
+    additively, so nothing is lost and nothing is archived. ``forget`` removes
+    a row, and the house rule for a load-bearing file outside version control
+    is that it is copied beside itself before it can lose anything:
     ``devices.toml.prev-<date>``, seconds appended when the day's name is
     taken, never overwritten.
 
@@ -68,8 +68,8 @@ HEADER = """\
 # the last time it paired again — not a heartbeat and not a connection.
 """
 
-#: The label's ceiling. It is somebody's words for their own phone, shown in a
-#: radio button; past this it is not a name any more.
+#: The label's ceiling: somebody's words, in a radio button. Past this it is
+#: not a name any more.
 LABEL_MAX = 40
 
 #: The slug half of a minted id.
@@ -115,12 +115,10 @@ def stamp(now: datetime | None = None) -> str:
 
 
 def clean_label(label: str | None) -> str:
-    """Somebody's words for their own device, made safe to write and to read.
-
-    Control characters out, whitespace collapsed, trimmed to LABEL_MAX, and
-    "device" when there is nothing left. It is never validated beyond that:
-    a label is not an identifier and never becomes one.
-    """
+    """Somebody's words for their own device, made safe to write and to read:
+    control characters out, whitespace collapsed, trimmed to LABEL_MAX, and
+    "device" when nothing is left. Never validated beyond that — a label is not
+    an identifier and never becomes one."""
     text = _CONTROL.sub("", str(label or ""))
     text = " ".join(text.split())[:LABEL_MAX].strip()
     return text or "device"
