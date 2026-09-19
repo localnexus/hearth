@@ -77,6 +77,30 @@ The page never asks for a name. A browser that has not paired on this address
 has no name to send, and says so — *not paired on this device — open the pairing
 page first* — with **Start** held down until it has.
 
+## Three things a device can get wrong, and the fix for each
+
+Found on the first sitting from a Linux laptop (Firefox, a Bluetooth headset,
+2026-09-18); none of them is a fault in the route.
+
+- **Connected, but the companion hears nothing.** The browser is capturing
+  from a device that is not your microphone. Firefox keeps its own per-site
+  choice and does not follow the system default: when it asks for the
+  microphone, pick the headset **by name** rather than allowing all devices,
+  or click the microphone icon in the address bar afterwards and change it
+  there. A Bluetooth headset has a microphone only in its headset profile
+  (HSP/HFP); in the high-quality A2DP profile it is output only and the system
+  quietly falls back to another input.
+- **"Unable to connect" before any page loads.** The tailnet name is not
+  resolving on the device. On Linux, `sudo tailscale set --accept-dns=true`
+  turns MagicDNS on for that machine; a browser running DNS-over-HTTPS in its
+  strict mode also hides tailnet names until it is set back to the default.
+  `getent hosts <the tailnet name>` says which it is.
+- **No Start button anywhere.** You are on the control panel, not the talk
+  page. After Start on the launch page the next stop for a remote route is
+  `/admin/voice` *on that device*; the start card's route note links it as
+  "the talk page". The control-panel link goes to the proxied `:65000` panel,
+  which has no audio controls.
+
 ## The hello — how the socket knows who it is talking to
 
 The desk route pins a device by identity and never re-opens on another one. The
