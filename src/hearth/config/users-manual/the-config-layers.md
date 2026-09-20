@@ -51,6 +51,7 @@ secret you only ever manage, never read.
 | **`config/serve.toml`** | **You** — but it holds an **access key** | Manage the switch; **never print its contents** | This page, below · `config/serve.toml.example` |
 | **`config/tts/<engine>/tts.toml`**, **`config/vad.toml`** | **Shipped baselines** (calibrated) | Leave alone unless you're re-calibrating by ear/mic — or use the panel's **VOICE** / **LISTENING** boxes, which layer live values over these from `overrides.toml`. A copy under your data folder replaces the shipped file whole | `docs/config-manual/voice-tts.md` · `docs/config-manual/listening-vad-barge-in.md` · [The live knobs panel](the-live-knobs-panel.md) |
 | **`characters/<name>/profile.toml`**, **`…/overrides.toml`** (and per voice) | **The panel** | The companion's saved knob preset, and a live mirror of its identity-scope knobs — they travel with the companion. Hands off | `docs/config-manual/README.md` · [The live knobs panel](the-live-knobs-panel.md) |
+| **`characters/<name>/capabilities.toml`** | **You** — by hand only | The character's tool grant: `[tools] tier` = `none` (the default, and what an absent file means) · `read-only` · `write-in-class` · `full`. The settings page shows it and refuses to write it; edit it in an editor and restart | [The OpenClaw voice lane](the-openclaw-voice-lane.md) → *Which characters get hands* · `docs/config-manual/settings-reference-gates.md` |
 | **`config/audio.toml`** | **You** (the settings page) | The remote route's two waits, in minutes — set them on `/admin/settings/ui`; the first save copies the shipped file into your data folder, and that copy counts from the next conversation start | `docs/runbook/02.5-control-panel/remote-audio-route.md` |
 | **`config/memory.toml`**, **`config/openclaw.toml`** | **You** | Two more switches, both OFF by default: cross-session memory, and the companion's dispatch "hands" | `docs/memory.md` · `docs/config-manual/settings-reference-gates.md` |
 
@@ -145,8 +146,10 @@ Both ship **off**, and both are byte-identical no-ops while off — the same hou
   voice recall) is the single exception to "this file decides": it's a runtime-only poke that never writes
   back to `memory.toml`.
 - **`config/openclaw.toml`** gives the companion two narrow tools for dispatching work to an OpenClaw agent.
-  One switch drives both the tools and the prompt paragraph that mentions them, so capability and prompt can
-  never disagree. (Unrelated to [The OpenClaw voice lane](the-openclaw-voice-lane.md), which is about
+  One gate drives both the tools and the prompt paragraph that mentions them, so capability and prompt can
+  never disagree. This switch is only half of it: each character also needs its own grant in
+  `characters/<name>/capabilities.toml`, and a character without one has **no hands** — see *Which characters
+  get hands* in [The OpenClaw voice lane](the-openclaw-voice-lane.md). (Unrelated to [The OpenClaw voice lane](the-openclaw-voice-lane.md), which is about
   OpenClaw *speaking* in a Hearth voice.)
 
 Which services keep these files loaded, and on which ports, is

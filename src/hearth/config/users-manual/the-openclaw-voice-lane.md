@@ -21,6 +21,50 @@ a short, honest orientation; that record governs.
 
 ---
 
+## Which characters get hands
+
+*This section is about the OTHER feature named above — the companion's two dispatch tools, not its voice.*
+It belongs here because the two are confused constantly, and the answer to "why does my companion have no
+tools?" is usually this file.
+
+**No hands by default.** Turning the switch on in `config/openclaw.toml` is only half the decision. The other
+half is per character, in a file beside that character's `persona.md`:
+
+```toml
+# characters/<character>/capabilities.toml
+[tools]
+tier = "none"        # none · read-only · write-in-class · full
+```
+
+**A character with no `capabilities.toml` has no hands** — which is every character until you write one. That
+is the point: a new companion, or a deliberately mischievous one, is safe because you never granted it
+anything, not because you remembered to take something away. The two keys are ANDed: with the switch off,
+tier `full` still means no tools; with the switch on, tier `none` (or no file) means the tools are never put
+into that character's request at all — and the prompt paragraph that would mention them stays out of the
+system prompt too, so the companion is never told about hands it does not have.
+
+**It fails closed.** A file that does not parse, a missing `[tools]` table, a tier word that is not one of the
+four, a tier that is not a word at all — every one of them reads as `none`, with a single
+`[capabilities]` warning in the log naming the file and the reason. The safe answer is always the one you get
+by accident. To check a file before you rely on it, run `python -m hearth.config.check`, which validates it
+strictly and names the key (never the value).
+
+**The three grant words above `none` all do the same thing today.** They attach the same two dispatch tools;
+the tier is recorded, shown, and logged, but the difference between reading and writing is enforced on the
+*hands* side — the agent's own box of allowed paths and actions — and that wiring is a later build. So read
+`write-in-class` as a declaration of what you intend, not a fence that exists yet. Until it does, grant
+`read-only` and mean it.
+
+**The settings page will not write this file.** It lists it, validates it, and shows you the tier, but a write
+is refused: granting a character hands is a deliberate act at the desk, in an editor, not a field a browser
+session can flip. Edit it by hand, then restart the companion — the grant is read at startup.
+
+**Where you see it.** The :65000 panel's `Engine` line carries a `hands:` item: `off` when the switch in
+`config/openclaw.toml` is off, otherwise the live character's tier — `none` for a character that was never
+granted, or the granted word. The startup log line for a bridge that did attach names the tier too.
+
+---
+
 ## The idea in one line
 
 OpenClaw's reply-to-speech goes to a **local, OpenAI-compatible TTS server** (the mlx-audio shim on
