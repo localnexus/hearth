@@ -77,10 +77,11 @@ The page never asks for a name. A browser that has not paired on this address
 has no name to send, and says so — *not paired on this device — open the pairing
 page first* — with **Start** held down until it has.
 
-## Three things a device can get wrong, and the fix for each
+## Four things a device can get wrong, and the fix for each
 
-Found on the first sitting from a Linux laptop (Firefox, a Bluetooth headset,
-2026-09-18); none of them is a fault in the route.
+The first three were found on the first sitting from a Linux laptop (Firefox, a
+Bluetooth headset, 2026-09-18), the fourth on a Pixel the day after; none of
+them is a fault in the route.
 
 - **Connected, but the companion hears nothing.** The browser is capturing
   from a device that is not your microphone. Firefox keeps its own per-site
@@ -100,6 +101,17 @@ Found on the first sitting from a Linux laptop (Firefox, a Bluetooth headset,
   `/admin/voice` *on that device*; the start card's route note links it as
   "the talk page". The control-panel link goes to the proxied `:65000` panel,
   which has no audio controls.
+- **The line drops when the phone's screen goes off, or on the home screen.**
+  The talk page is a browser tab, and a phone browser is free to discard a tab
+  it cannot see. Measured on a Pixel with Chrome: any page of the browser app
+  in the foreground keeps the line, a short Wi-Fi blip is survived without the
+  server even noticing, but the screen going off or a trip to the home screen
+  drops the socket. When you come back the page has been reloaded — it says
+  `idle` and Start is live again — and pressing Start rejoins inside the wait
+  window. Keep the browser app in front, or lengthen the window (next section).
+  A Bluetooth headset is not used just because it is connected: Chrome on
+  Android tends to keep the phone's own microphone and media speaker; that is
+  the phone's choice, not the page's.
 
 ## The hello — how the socket knows who it is talking to
 
@@ -191,6 +203,10 @@ the hello:
 - A device that arrives during the few seconds the socket takes to come down is
   closed with **4410** and the word `ended` — not a refusal, because nothing was
   refused: there is nothing left to join. The talk page says so and stops retrying.
+- Where to set it: `[serve.supervisor.env]` in `config/serve.toml` (for instance
+  `HEARTH_AUDIO_GRACE_S = "900"` for fifteen minutes). Hearth hands that block
+  to every conversation it starts and reads it once, when it comes up — so
+  restart Hearth, with nothing running, for a new value to take.
 - A wrong `HEARTH_AUDIO_GRACE_S` (a word, a zero, a negative) leaves the 180 standing.
   A conversation that closes the moment a phone blinks is the expensive mistake.
 
