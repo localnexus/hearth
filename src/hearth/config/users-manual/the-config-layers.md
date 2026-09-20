@@ -146,7 +146,7 @@ Both ship **off**, and both are byte-identical no-ops while off — the same hou
   voice recall) is the single exception to "this file decides": it's a runtime-only poke that never writes
   back to `memory.toml`.
 - **`config/openclaw.toml`** gives the companion two narrow tools for dispatching work to an OpenClaw agent.
-  One gate drives both the tools and the prompt paragraph that mentions them, so capability and prompt can
+  One switch drives both the tools and the prompt paragraph that mentions them, so capability and prompt can
   never disagree. This switch is only half of it: each character also needs its own grant in
   `characters/<name>/capabilities.toml`, and a character without one has **no hands** — see *Which characters
   get hands* in [The OpenClaw voice lane](the-openclaw-voice-lane.md). (Unrelated to [The OpenClaw voice lane](the-openclaw-voice-lane.md), which is about
