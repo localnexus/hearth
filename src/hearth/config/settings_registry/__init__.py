@@ -46,8 +46,8 @@ point — the split is a source-layout change and nothing else.
                    factories (_live / _secret / _effect), and the _Cfg base
     schema_files   the per-FILE schemas: active, model, voice, overrides,
                    tts-baseline, vad, and the profile mirror
-    schema_tables  the per-TABLE schemas: [serve], [memory], [openclaw] —
-                   each a gate living inside a shared config file
+    schema_tables  the per-TABLE schemas: [serve], [memory], [openclaw],
+                   [tools] — each a gate living inside a shared config file
     registry       FileEntry, REGISTRY, ENV_VARS
     validate       SchemaError and the shape checks, plus json_schema()
     manual         the generated settings reference (markdown)
@@ -96,6 +96,7 @@ from .schema_files import (
 )
 from .schema_tables import (
     AudioTable,
+    CapabilitiesFile,
     MemoryTable,
     OpenclawTable,
     ServeTable,
@@ -153,7 +154,8 @@ from .derived import (
 #: change dressed up as a move.
 __all__ = [
     "ActiveFile", "CANONICAL_TAGS", "ENGINE_LIVE_KNOBS", "ENV_VARS",
-    "AudioTable", "FileEntry", "MANUAL_PAGES", "MemoryTable", "ModelFile", "OpenclawTable",
+    "AudioTable", "CapabilitiesFile", "FileEntry", "MANUAL_PAGES", "MemoryTable",
+    "ModelFile", "OpenclawTable",
     "OverridesFile", "ProfileFile", "REGISTRY", "SERVE_SPEECH_KNOBS",
     "SchemaError", "ServeTable", "TEMP_CEILING", "TURBO_LIVE_KNOBS",
     "TtsBaselineFile", "VadFile", "VoiceFile", "WeightsFile",

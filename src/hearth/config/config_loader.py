@@ -74,6 +74,14 @@ _PERSONA_SLOT = "{{persona}}"
 _DATETIME_SLOT = "{{datetime}}"
 _OPENCLAW_SLOT = "{{openclaw_tools}}"
 
+# The per-character tool grant (characters/<c>/capabilities.toml, [tools].tier).
+# Default-deny: a character has no hands unless its own file says otherwise, and
+# anything unreadable, unknown or mistyped reads as "none" (fail closed). Only
+# none-vs-not-none changes behaviour today; the three grant words are declared
+# here so the file, the panel and the manual share one vocabulary.
+TOOL_TIERS: tuple[str, ...] = ("none", "read-only", "write-in-class", "full")
+TOOL_TIER_NONE = "none"
+
 
 class ConfigError(RuntimeError):
     """A config file is missing, malformed, or missing a required key.
@@ -117,6 +125,16 @@ def model_dir(model_name: str) -> Path:
 def character_dir(character: str) -> Path:
     """characters/<character>/ (the DEFINITION, keyed on its persona.md) — DATA, else ROOT."""
     return _lookup(f"characters/{character}/persona.md").parent
+
+
+def capabilities_path(character: str) -> Path:
+    """characters/<character>/capabilities.toml — the per-character tool grant.
+
+    DATA root only, beside profile.toml. Deliberately NOT the DATA-then-ROOT
+    lookup the definition files use: a grant is the operator's own act, so a
+    file shipped in the engine tree must never hand a character hands.
+    """
+    return CHARACTERS_DIR / character / "capabilities.toml"
 
 
 def voice_dir(character: str, voice: str) -> Path:
@@ -429,9 +447,11 @@ def load_openclaw_config() -> dict | None:
     """Read config/openclaw.toml — the OpenClaw dispatch-bridge activation gate.
 
     Returns the [openclaw] table with defaults applied, or None when the file is
-    absent or enabled=false. The SAME gate drives both consumers, so they can
-    never disagree: openclaw_bridge.maybe_attach() (tool registration) and the
-    {{openclaw_tools}} prompt slot below (capability paragraph). Malformed file
+    absent or enabled=false. This is the INSTALL-wide half of the gate; the
+    per-character half is load_character_capabilities, and the two meet in
+    openclaw_effective() — the single function both consumers ask (tool
+    registration in openclaw_bridge.maybe_attach, and the {{openclaw_tools}}
+    prompt paragraph below), so they can never disagree. Malformed file
     ⇒ ConfigError naming it (fail-fast, per this module's contract); an absent
     optional file is NOT an error — it just means "bridge off".
     """
@@ -454,12 +474,98 @@ def load_openclaw_config() -> dict | None:
     return cfg
 
 
-def _openclaw_prompt_block() -> str:
-    """The {{openclaw_tools}} slot body: [openclaw].prompt_block when the bridge
-    is enabled, else "" (the slot line is then removed entirely so a disabled
-    bridge leaves the composed prompt byte-identical to the pre-bridge render).
+def load_character_capabilities(character: str) -> str:
+    """characters/<character>/capabilities.toml → the [tools].tier word.
+
+    The per-character half of the two-key grant: the model may be ABLE to call a
+    tool and the bridge may be enabled, and this file still decides whether THIS
+    character gets hands. Default-deny, and fail CLOSED at every step — absent
+    file, unreadable file, no [tools] table, a tier that is not one of
+    TOOL_TIERS, a tier that is not a string: all read "none", each with one
+    warning naming the file and the reason.
+
+    Why closed rather than fail-fast (this module's usual contract): withholding
+    tools is always the safe answer, while a hard raise on a typo would take a
+    working voice loop down over a file that only ever GRANTS. The strict read
+    lives in `python -m hearth.config.check`, where a typo is loud and harmless.
+    """
+    if not isinstance(character, str) or not _NAME_RE.match(character or ""):
+        logger.warning("[capabilities] unusable character name — no tools granted")
+        return TOOL_TIER_NONE
+    path = capabilities_path(character)
+    if not path.is_file():
+        return TOOL_TIER_NONE  # absent = none; the ordinary case, not a warning
+    try:
+        with open(path, "rb") as f:
+            data = tomllib.load(f)
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        logger.warning("[capabilities] {} unreadable ({}) — no tools granted",
+                       path, type(exc).__name__)
+        return TOOL_TIER_NONE
+    tools = data.get("tools")
+    if not isinstance(tools, dict):
+        logger.warning("[capabilities] {} has no [tools] table — no tools granted", path)
+        return TOOL_TIER_NONE
+    tier = tools.get("tier")
+    if not isinstance(tier, str) or isinstance(tier, bool):
+        logger.warning("[capabilities] {} [tools].tier is not a tier word ({}) — "
+                       "no tools granted", path, type(tier).__name__)
+        return TOOL_TIER_NONE
+    if tier not in TOOL_TIERS:
+        logger.warning("[capabilities] {} [tools].tier {!r} is not one of {} — "
+                       "no tools granted", path, tier, ", ".join(TOOL_TIERS))
+        return TOOL_TIER_NONE
+    return tier
+
+
+def _live_character() -> str:
+    """The selected character, for the callers that do not carry one (the live
+    persona re-compose). Unresolvable ⇒ "" , which grants nothing."""
+    try:
+        return str(load_active_selection()["character"])
+    except (ConfigError, KeyError, TypeError):
+        return ""
+
+
+def openclaw_effective(character: str | None = None) -> dict:
+    """The ONE gate both consumers ask: the openclaw cfg, or {} for "no hands".
+
+    Non-empty only when the bridge is enabled in config AND this character's
+    grant is not "none" — so tool registration (openclaw_bridge.maybe_attach)
+    and the {{openclaw_tools}} prompt paragraph can never disagree, whichever
+    of the two keys is shut. The returned dict carries the granted tier under
+    "tier" for the bridge and the panel. character=None resolves the live
+    selection; unresolvable ⇒ {}.
     """
     cfg = load_openclaw_config()
+    if not cfg:
+        return {}
+    name = character if character is not None else _live_character()
+    tier = load_character_capabilities(name)
+    if tier == TOOL_TIER_NONE:
+        return {}
+    return {**cfg, "tier": tier}
+
+
+def hands_label(character: str) -> str:
+    """The panel's one-word answer for the Engine line's `hands:` item:
+    "off" when the bridge is off in config, else this character's tier word."""
+    if not load_openclaw_config():
+        return "off"
+    return load_character_capabilities(character)
+
+
+def _openclaw_prompt_block(character: str | None = None) -> str:
+    """The {{openclaw_tools}} slot body: [openclaw].prompt_block when this
+    character effectively HAS hands, else "" (the slot line is then removed
+    entirely so an ungranted character leaves the composed prompt byte-identical
+    to the pre-bridge render).
+
+    Reads the same openclaw_effective gate the bridge attaches on, so prompt
+    prose can never promise hands the character was not granted — the whitelist
+    is the wall, the persona paragraph only the paint.
+    """
+    cfg = openclaw_effective(character)
     return str(cfg.get("prompt_block", "")).strip() if cfg else ""
 
 
@@ -608,7 +714,8 @@ def _session_datetime_str() -> str:
     return datetime.now().astimezone().strftime("%A, %B %-d, %Y at %-I:%M %p %Z")
 
 
-def compose_with_persona(model_name: str, persona_text: str, *, datetime_str: str | None = None) -> str:
+def compose_with_persona(model_name: str, persona_text: str, *, datetime_str: str | None = None,
+                         character: str | None = None) -> str:
     """Render the MODEL template with {{persona}} filled by the given persona text.
 
     The composition primitive shared by two callers:
@@ -635,15 +742,17 @@ def compose_with_persona(model_name: str, persona_text: str, *, datetime_str: st
         stamp = datetime_str if datetime_str is not None else _session_datetime_str()
         composed = composed.replace(_DATETIME_SLOT, stamp)
     # Optional OpenClaw-bridge capability paragraph (D3: model layer). Present in
-    # the rendered prompt ONLY while config/openclaw.toml enables the bridge —
-    # the same gate that registers the tools (openclaw_bridge.maybe_attach), so
-    # prompt and capability appear/disappear together. Slot filling is
+    # the rendered prompt ONLY while config/openclaw.toml enables the bridge AND
+    # this character's own grant is not "none" — the same gate that registers the
+    # tools (openclaw_bridge.maybe_attach), so prompt and capability
+    # appear/disappear together. `character=None` (the live persona re-compose)
+    # resolves the selected character. Slot filling is
     # deterministic, so it participates in the drift fingerprint: toggling the
     # bridge (or editing prompt_block) warns on resume of pre-toggle sessions,
     # by design. Disabled ⇒ the slot LINE is removed (with its following blank
     # line) so the composed prompt stays byte-identical to the pre-bridge render.
     if _OPENCLAW_SLOT in composed:
-        block = _openclaw_prompt_block()
+        block = _openclaw_prompt_block(character)
         if block:
             composed = composed.replace(_OPENCLAW_SLOT, block)
         else:
@@ -663,7 +772,8 @@ def compose_system_instruction(model_name: str, character: str, *, persona: str 
     fingerprint (ActiveConfig.prompt_fingerprint = this with datetime_str=""),
     NOT system_instruction — see load_active + session_store.prompt_sha256.
     """
-    return compose_with_persona(model_name, compose_persona(character, persona), datetime_str=datetime_str)
+    return compose_with_persona(model_name, compose_persona(character, persona),
+                                datetime_str=datetime_str, character=character)
 
 
 # ── top-level entry point ────────────────────────────────────────────────────

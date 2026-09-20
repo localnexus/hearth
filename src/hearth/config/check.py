@@ -73,6 +73,9 @@ def discover() -> list[tuple[str, Path]]:
     add("openclaw", _dedup([cl.OPENCLAW_TOML]))
     add("audio", _both_roots("config/audio.toml"))
     add("weights", _dedup([cl.CONFIG_DIR / "weights.toml"]))
+    # Per-character tool grants (read-only: discovered, validated, never written
+    # by the settings page).
+    add("capabilities", _both_roots("characters/*/capabilities.toml"))
     # Panel-written per-companion presets + their live mirrors (same shape).
     add("profile", _both_roots("characters/*/profile.toml")
         + _both_roots("characters/*/voices/*/profile.toml")

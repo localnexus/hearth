@@ -1,5 +1,5 @@
-"""settings_registry/schema_tables.py — the per-TABLE schemas — [serve], [memory]
-and [openclaw], each a gate inside a shared config file.
+"""settings_registry/schema_tables.py — the per-TABLE schemas — [serve], [memory],
+[openclaw] and [tools], each a gate inside a shared config file.
 
 Sliced out of the single settings_registry.py it used to share; see the
 package __init__ for the layout and the order the parts import in.
@@ -7,7 +7,7 @@ package __init__ for the layout and the order the parts import in.
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import Field
 
@@ -217,3 +217,15 @@ class OpenclawTable(_Cfg):
     prompt_block: str = Field("", description="{{openclaw_tools}} capability paragraph injected while enabled")
 
 
+# ── characters/<c>/capabilities.toml [tools] (the per-character grant) ───────
+
+class CapabilitiesFile(_Cfg):
+    tier: Literal["none", "read-only", "write-in-class", "full"] = Field(
+        "none",
+        description="how much this character may do with hands; a character with no "
+                    "capabilities.toml is \"none\", which is the default for every "
+                    "character, and the write tiers are declared here but not yet "
+                    "enforced anywhere",
+        json_schema_extra=_effect("bot", "read when the companion starts; a character "
+                                         "with no grant never has the tools put into "
+                                         "its request at all"))

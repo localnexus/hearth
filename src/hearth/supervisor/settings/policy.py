@@ -5,6 +5,11 @@ both. What a form may WRITE: eight kinds, and every refusal points somewhere
 real rather than just saying no — the selection has its own orchestrated
 surface, the panel-owned layers belong to the panel.
 
+One kind is left off that list on purpose and stays off: `capabilities`, the
+per-character tool grant. Granting a character hands is a deliberate act at the
+desk, not a form field a browser session can flip, so the page shows the file
+read-only and the set verb refuses it as not form-writable.
+
 What a form may never SHOW: x-hearth `secret` fields are redacted server-side,
 including every value of a secret-marked map. The values never leave the file,
 even behind the bearer, and the redaction happens here rather than in the page
@@ -21,6 +26,7 @@ from .fields import _xh
 _REDACTED = "•••"
 
 
+# Never add "capabilities" here — see the module docstring.
 _WRITABLE = frozenset({"model", "voice", "serve", "memory", "openclaw",
                        "tts-baseline", "vad", "audio"})
 _REFUSALS = {

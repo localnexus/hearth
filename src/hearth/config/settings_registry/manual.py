@@ -110,7 +110,7 @@ MANUAL_PAGES: dict[str, tuple[str, tuple[str, ...]]] = {
     ),
     "settings-reference-gates.md": (
         "Settings reference — the on/off files",
-        ("serve", "memory", "openclaw", "audio"),
+        ("serve", "memory", "openclaw", "capabilities", "audio"),
     ),
 }
 

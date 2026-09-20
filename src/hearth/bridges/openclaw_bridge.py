@@ -11,11 +11,18 @@ The voice model gets exactly two tools:
                                    in the OpenClaw channel (posted by `hands`).
     check_tasks()                — bridge-local status; no gateway round-trip.
 
-Activation = config presence: config/openclaw.toml with [openclaw] enabled=true
-(read via config_loader.load_openclaw_config — same reader that fills the
-{{openclaw_tools}} prompt slot, so tools and prompt block appear/disappear
-together). Absent or disabled ⇒ maybe_attach() returns None and bot.py behavior
-is byte-identical.
+Activation = TWO keys, both of which must say yes (config_loader.openclaw_effective
+— the same call that fills the {{openclaw_tools}} prompt slot, so tools and prompt
+block appear/disappear together):
+
+    1. the install switch — config/openclaw.toml with [openclaw] enabled=true;
+    2. the character grant — characters/<character>/capabilities.toml [tools].tier
+       not "none" (absent file = "none"; default-deny).
+
+Either one shut ⇒ maybe_attach() returns None and bot.py behavior is byte-identical.
+The grant tiers above "none" all attach these same two tools today; the tier rides
+on the bridge and into the log line, and what a granted character may actually TOUCH
+is bounded on the hands side, not here.
 
 Secrets: the gateway bearer token is read once at construction —
 env OPENCLAW_GATEWAY_TOKEN wins, else gateway.auth.token from the token_source
@@ -88,6 +95,12 @@ class OpenClawBridge:
     """Holds gateway credentials + task state; registered as tool handlers."""
 
     def __init__(self, cfg: dict):
+        # The granted tier, as read from the character's capabilities.toml. Only
+        # none-vs-not-none gates the attach today (a "none" bridge is never
+        # built); the word is kept for the log line and the panel's hands item.
+        # maybe_attach always supplies it — the fallback only shows if something
+        # constructs the bridge from a raw config table.
+        self.tier: str = str(cfg.get("tier", "unspecified"))
         self._url: str = str(cfg["gateway_url"]).rstrip("/")
         self._agent: str = str(cfg["agent"])
         self._quick_wait_s: float = float(cfg["quick_wait_s"])
@@ -247,14 +260,26 @@ class OpenClawBridge:
         asyncio.get_running_loop().create_task(_warm())
 
 
-def maybe_attach(llm, context) -> Optional[OpenClawBridge]:
-    """Attach the bridge iff config/openclaw.toml enables it. The single bot.py seam.
+def maybe_attach(llm, context, character: str | None = None) -> Optional[OpenClawBridge]:
+    """Attach the bridge iff the install switch AND this character's grant allow it.
+    The single bot.py seam.
 
-    Disabled/absent ⇒ returns None having touched nothing: no tools registered,
-    context.set_tools never called, prompt unchanged (the {{openclaw_tools}} slot
-    renders empty via the same load_openclaw_config gate).
+    Capability-absence is the boundary: a character without a grant never has the
+    tools put into its request, so there is nothing to invoke, nothing to inject
+    into, and nothing to talk past — the whitelist is the wall, and persona prose
+    is only paint (a mischief persona can talk itself out of its own restraint,
+    and a tool result it reads can tell it to). So the refusal here is not a
+    check the model could argue with: it is the absence of the tools.
+
+    Switch off, or grant "none"/absent ⇒ returns None having touched nothing: no
+    register_function, context.set_tools never called, prompt unchanged (the
+    {{openclaw_tools}} slot renders empty through the same openclaw_effective
+    gate). Byte-identical to the bridge being off, even with enabled=true.
+
+    `character` is the live character (bot.py passes _CFG.character); omitted, the
+    selected character is resolved the way the persona composition does.
     """
-    cfg = config_loader.load_openclaw_config()
+    cfg = config_loader.openclaw_effective(character)
     if not cfg:
         return None
     bridge = OpenClawBridge(cfg)
@@ -262,5 +287,6 @@ def maybe_attach(llm, context) -> Optional[OpenClawBridge]:
     llm.register_function("check_tasks", bridge._on_check)
     context.set_tools(ToolsSchema(standard_tools=[_DISPATCH_SCHEMA, _CHECK_SCHEMA]))
     bridge._schedule_prewarm()
-    logger.info("[openclaw] bridge attached (agent={}, gateway={})", bridge._agent, bridge._url)
+    logger.info("[openclaw] bridge attached (agent={}, gateway={}, tier={})",
+                bridge._agent, bridge._url, bridge.tier)
     return bridge

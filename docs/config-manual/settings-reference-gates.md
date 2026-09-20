@@ -127,6 +127,18 @@ All keys below live under the `[openclaw]` table.
 | `max_in_flight` | int | `2` | 1– | — | concurrent dispatch cap |
 | `prompt_block` | str | `` |  | — | {{openclaw_tools}} capability paragraph injected while enabled |
 
+## `characters/<character>/capabilities.toml` — What a character may do with hands
+
+*identity scope · operator-owned · on/off switch · restart: the companion*
+
+READ-ONLY here: the settings page will not write this file, by design — a grant is a deliberate act at the desk. A character with no capabilities.toml has no hands, which is the default for every character; any file that cannot be read, or carries an unknown tier, reads the same way. Only none-vs-granted changes behaviour today: the three grant words all attach the same two dispatch tools, and what a granted character may actually touch is bounded on the hands side, not here. Needs config/openclaw.toml enabled too — either key shut means no tools and no prompt paragraph.
+
+All keys below live under the `[tools]` table.
+
+| key | type | default | range | live path | what it sets |
+|---|---|---|---|---|---|
+| `tier` | enum(none | read-only | write-in-class | full) | `none` |  | — (lands at the next restart of the companion) | how much this character may do with hands; a character with no capabilities.toml is "none", which is the default for every character, and the write tiers are declared here but not yet enforced anywhere |
+
 ## `config/audio.toml` — The remote route's waits
 
 *place scope · operator-owned · on/off switch · restart: none*

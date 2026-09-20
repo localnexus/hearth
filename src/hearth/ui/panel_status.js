@@ -13,7 +13,7 @@
 // growth / cumulative input) ride the polled /usage snapshot.
 const DASH = '—';
 const fmt = n => (n === null || n === undefined) ? DASH : Number(n).toLocaleString();
-let engine = {provider: null, model_id: null, allotted: null, model_max: null, reliable: null, session: null, character: null, voice: null, memory_mode: null, served_model: null, configured_model: null, model_match: null};
+let engine = {provider: null, model_id: null, allotted: null, model_max: null, reliable: null, session: null, character: null, voice: null, memory_mode: null, served_model: null, configured_model: null, model_match: null, hands: null};
 
 // The model server serves ONE model, and nothing refuses a sitting whose
 // configured model is not that one (bot.py warns and proceeds). Until
@@ -25,10 +25,20 @@ function engineMismatch(eng) {
   return `⚠ The model server is serving ${eng.served_model || 'something else'} — this conversation was set up for ${eng.configured_model || DASH}. To put the one you chose behind it: on the launch page's Models card, Apply its row, then press Load.`;
 }
 
+// What hands this character was granted, in one word: 'off' when the dispatch
+// bridge is off in config, otherwise the tier from the character's own
+// capabilities.toml — 'none' (the default for every character without a grant
+// file) meaning the bridge is on but this one got no tools. Pure: the word, or
+// a dash when the server did not say.
+function handsWord(eng) {
+  return (eng && eng.hands) ? String(eng.hands) : DASH;
+}
+
 function renderEngine() {
   const mismatch = engineMismatch(engine);
   $('s-engine').textContent =
     `Engine | Inference Provider: ${engine.provider || DASH} · Model ID: ${engine.model_id || DASH}`
+    + ` · hands: ${handsWord(engine)}`
     + (mismatch ? ' · ⚠ not the configured model' : '');
   const w = $('enginewarn');
   if (w) {

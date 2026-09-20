@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from .schema_files import (ActiveFile, ModelFile, OverridesFile, ProfileFile, TtsBaselineFile,
                            VadFile, VoiceFile, WeightsFile)
-from .schema_tables import AudioTable, MemoryTable, OpenclawTable, ServeTable
+from .schema_tables import AudioTable, CapabilitiesFile, MemoryTable, OpenclawTable, ServeTable
 
 # ── the registry ─────────────────────────────────────────────────────────────
 
@@ -81,6 +81,17 @@ REGISTRY: dict[str, FileEntry] = {e.kind: e for e in (
               "gate", "operator", "place", "bot", top_key="openclaw",
               note="One switch drives tool registration AND the {{openclaw_tools}} prompt slot, so "
                    "capability and prompt can never disagree."),
+    FileEntry("capabilities", CapabilitiesFile, "What a character may do with hands",
+              "characters/<character>/capabilities.toml",
+              "gate", "operator", "identity", "bot", top_key="tools",
+              note="READ-ONLY here: the settings page will not write this file, by design — a "
+                   "grant is a deliberate act at the desk. A character with no capabilities.toml "
+                   "has no hands, which is the default for every character; any file that cannot "
+                   "be read, or carries an unknown tier, reads the same way. Only none-vs-granted "
+                   "changes behaviour today: the three grant words all attach the same two "
+                   "dispatch tools, and what a granted character may actually touch is bounded "
+                   "on the hands side, not here. Needs config/openclaw.toml enabled too — either "
+                   "key shut means no tools and no prompt paragraph."),
     FileEntry("weights", WeightsFile, "Weights roots and the door", "config/weights.toml",
               "load facts", "operator", "place", "none", top_key="weights",
               note="WHERE Hearth is willing to look for model weights — directories, "

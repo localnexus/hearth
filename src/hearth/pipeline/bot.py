@@ -413,9 +413,10 @@ async def build_pipeline(
 
     # OpenClaw dispatch bridge: the voice model's
     # narrow "hands" — dispatch_task/check_tasks via the local gateway. Activation
-    # = config presence (config/openclaw.toml enabled=true); absent/disabled ⇒
-    # returns None having registered nothing, behavior byte-identical.
-    openclaw_bridge.maybe_attach(llm, context)
+    # = two keys: config/openclaw.toml enabled=true AND this character's own grant
+    # (characters/<c>/capabilities.toml [tools].tier, absent = "none"). Either one
+    # shut ⇒ returns None having registered nothing, behavior byte-identical.
+    openclaw_bridge.maybe_attach(llm, context, character=_CFG.character)
 
     # No vad_analyzer here — the upstream VADProcessor is the sole VAD source.
     # The aggregator's UserTurnController consumes the VAD frames it emits.
@@ -694,6 +695,12 @@ async def main(
     engine_info["character"] = _CFG.character
     engine_info["voice"] = _CFG.voice_name
     engine_info["persona"] = _CFG.persona_name
+    # And the hands the character was granted, as the panel's one-word item:
+    # "off" when the bridge is off in config, else the tier from the character's
+    # own capabilities.toml ("none" = no tools were registered this sitting).
+    # Read from config rather than from the bridge object, which build_pipeline
+    # keeps to itself.
+    engine_info["hands"] = config_loader.hands_label(_CFG.character)
     # Gauge the panel against the MEASURED reliable-context line, not the advertised
     # window. None → the panel falls back to `allotted` (advertised) — see control.py.
     engine_info["reliable"] = _CFG.reliable_context
