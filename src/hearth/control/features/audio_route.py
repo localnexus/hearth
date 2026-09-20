@@ -19,9 +19,10 @@ rather than reporting both with one word:
                the device reached us, which is what sets the buffer depth below
     buffer_ms  the depth the device was told to hold at its last hello
     shed_ms    audio dropped on the way out because the far end fell behind
-    grace_left seconds left of the wait for a device that is away — null
-               unless a remote device is actually lost, and null always on the
-               desk, which waits for its headset for as long as it takes
+    grace_left seconds left of the wait: for a device that is away (state
+               "lost"), or for one that has not arrived yet (state "waiting",
+               the start wait) — null otherwise, and null always on the desk,
+               which waits for its headset for as long as it takes
 
 **Names and numbers only.** No address, no access key, no audio, nothing said.
 The launch page reads it through the facade's ``/admin/state`` as ``bot.route``;

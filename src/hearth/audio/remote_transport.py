@@ -130,6 +130,13 @@ def allowed_origins() -> list:
 class RemoteAudioInputTransport(SingleClientWebsocketServerInputTransport):
     """The device's microphone, in — behind the hello gate."""
 
+    async def start(self, frame) -> None:
+        # The socket server comes up here. From this moment a device CAN
+        # arrive, so this is where the wait for one begins — not at process
+        # start, which would count the model's own load against the phone.
+        await super().start(frame)
+        self._transport.note_listening()
+
     async def _client_handler(self, websocket) -> None:
         # pipecat's own rule, kept in front of the gate: one device at a time,
         # and the one already talking keeps the socket.
@@ -261,7 +268,8 @@ class RemoteAudioTransport(SingleClientWebsocketServerTransport):
     ``/route`` reports."""
 
     def __init__(self, params, *, host: str, port: int, device_id: str,
-                 token: str, grace=None, stop_sitting=None, **kwargs) -> None:
+                 token: str, grace=None, start_wait=None, stop_sitting=None,
+                 **kwargs) -> None:
         super().__init__(params, host=host, port=port, **kwargs)
         self._device_id = str(device_id)
         self._token = str(token)           # compared, never logged, never sent
@@ -269,8 +277,11 @@ class RemoteAudioTransport(SingleClientWebsocketServerTransport):
         self._path = None
         self._buffer_ms = None
         self._grace = grace if grace is not None else remote_grace.GraceWindow()
+        self._start = (start_wait if start_wait is not None
+                       else remote_grace.GraceWindow(remote_grace.start_wait_seconds()))
         self._stop_sitting = stop_sitting or stop_this_sitting
         self._grace_task = None
+        self._start_task = None
         self._stop_fired = False           # the self-stop happens once, or not
         self._shutting_down = False
 
@@ -290,6 +301,11 @@ class RemoteAudioTransport(SingleClientWebsocketServerTransport):
         return int(round(self._grace.seconds))
 
     @property
+    def start_wait_s(self) -> int:
+        """How long this conversation waits for its device to arrive at all."""
+        return int(round(self._start.seconds))
+
+    @property
     def ended(self) -> bool:
         """True once the wait ran out. From here a device that arrives is told
         the conversation is over rather than refused."""
@@ -307,6 +323,10 @@ class RemoteAudioTransport(SingleClientWebsocketServerTransport):
         if self._state == "lost":
             self._cancel_grace()
             gap = self._grace.rejoin()
+        elif self._state == "waiting":
+            # The device it was started for is here: the start wait is over.
+            self._cancel_start()
+            self._start.rejoin()
         self._state = "connected"
         self._path = path
         self._buffer_ms = int(buffer_ms)
@@ -356,6 +376,52 @@ class RemoteAudioTransport(SingleClientWebsocketServerTransport):
         """
         self._shutting_down = True
         self._cancel_grace()
+        self._cancel_start()
+
+    # ── the wait before any device ────────────────────────────────────────
+    def note_listening(self) -> None:
+        """The socket is up and a device can arrive: the start wait begins.
+
+        Opened once, on the input half's start. A conversation that already has
+        its device (a restart of the transport under a connected socket does
+        not happen, but the guard costs nothing) or is already coming down
+        opens nothing.
+        """
+        if self._state != "waiting" or self._shutting_down or self._start.active:
+            return
+        self._start.lose()
+        logger.info("[audio] waiting up to {} s for {} to arrive",
+                    self.start_wait_s, self._device_id)
+        try:
+            self._start_task = asyncio.get_running_loop().create_task(
+                self._wait_out_start())
+        except RuntimeError:
+            self._start_task = None
+
+    def _cancel_start(self) -> None:
+        task, self._start_task = self._start_task, None
+        if task is not None and not task.done():
+            task.cancel()
+
+    async def _wait_out_start(self) -> None:
+        while True:
+            remaining = self._start.remaining()
+            if remaining <= 0:
+                break
+            await asyncio.sleep(min(GRACE_POLL_S, remaining))
+        self._close_over_no_device()
+
+    def _close_over_no_device(self) -> None:
+        """The start wait ran out with nobody on the socket. Say so, remember
+        which absence it was, and press Stop from inside — once."""
+        if self._stop_fired or self._shutting_down or self._state != "waiting":
+            return
+        self._stop_fired = True
+        self._state = "ended"
+        logger.warning("[audio] no device arrived within {} s — "
+                       "closing the sitting", self.start_wait_s)
+        audio_route.mark_device_never_came()
+        self._stop_sitting()
 
     # ── the wait ──────────────────────────────────────────────────────────
     def _cancel_grace(self) -> None:
@@ -410,20 +476,27 @@ class RemoteAudioTransport(SingleClientWebsocketServerTransport):
         """The sitting's route, for ``GET /route`` and the Stop card. Names
         and numbers only — no address, no key, no audio.
 
-        ``grace_left`` is the countdown the Stop card shows, in whole seconds,
-        and it is null unless a device is actually away.
+        ``grace_left`` is the countdown the Stop card shows, in whole seconds:
+        the loss window while a device is away, the start wait while none has
+        arrived yet, and null otherwise.
         """
         shed = self._output.backlog.shed_ms if self._output is not None else 0.0
+        if self._state == "lost":
+            left = self._grace.left()
+        elif self._state == "waiting" and self._start.active:
+            left = self._start.left()
+        else:
+            left = None
         return {"kind": "remote", "device": self._device_id, "state": self._state,
                 "path": self._path, "buffer_ms": self._buffer_ms,
-                "shed_ms": int(shed),
-                "grace_left": self._grace.left() if self._state == "lost" else None}
+                "shed_ms": int(shed), "grace_left": left}
 
 
 def build_remote_transport(device_id: str, *, token: str | None = None,
                            host: str | None = None, port: int | None = None,
                            origins: list | None = None,
-                           grace_s: float | None = None, clock=None,
+                           grace_s: float | None = None,
+                           start_wait_s: float | None = None, clock=None,
                            stop_sitting=None) -> RemoteAudioTransport:
     """The one factory ``bot.py`` calls for a remote sitting.
 
@@ -449,8 +522,12 @@ def build_remote_transport(device_id: str, *, token: str | None = None,
         session_timeout=None,      # the wait below is ours, not pipecat's
         allowed_origins=origins if origins is not None else allowed_origins(),
     )
-    window = remote_grace.GraceWindow(
-        grace_s, **({"clock": clock} if clock is not None else {}))
+    clock_kw = {"clock": clock} if clock is not None else {}
+    window = remote_grace.GraceWindow(grace_s, **clock_kw)
+    start_wait = remote_grace.GraceWindow(
+        start_wait_s if start_wait_s is not None else remote_grace.start_wait_seconds(),
+        **clock_kw)
     return RemoteAudioTransport(
         params, host=host or WS_HOST, port=port if port is not None else ws_port(),
-        device_id=device_id, token=key, grace=window, stop_sitting=stop_sitting)
+        device_id=device_id, token=key, grace=window, start_wait=start_wait,
+        stop_sitting=stop_sitting)

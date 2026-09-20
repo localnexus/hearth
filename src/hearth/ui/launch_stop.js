@@ -83,14 +83,19 @@ function routeLine(switches, route, graceLeft, devices) {
     else if (route.state === "recovered") line += " — the headset came back";
     else if (route.state === "unpinned") line += " — no device pinned";
   } else if (route && route.kind === "remote") {
-    if (route.state === "waiting")
-      line += " — waiting for it to connect (open the talk page on it)";
+    if (route.state === "waiting") {
+      const left = graceLeft == null ? null : graceText(graceLeft);
+      line += " — waiting for it to connect (open the talk page on it)" +
+              (left ? ", " + left + " left; then this conversation closes" : "");
+    }
     else if (route.state === "lost") {
       const left = graceLeft == null ? null : graceText(graceLeft);
       line += " — waiting for " + where + (left ? ", " + left + " left" : "") +
               "; then this conversation closes";
     }
-    else if (route.state === "ended") line += " — it did not come back; closing";
+    else if (route.state === "ended")
+      line += route.path ? " — it did not come back; closing"
+                         : " — it never arrived; closing";
     else if (route.state === "connected") {
       line += " — connected";
       if (route.path) line += " (" + route.path + ", " + (route.buffer_ms || 0) + " ms buffer)";
@@ -127,7 +132,8 @@ function graceNow() {
 }
 
 function noteGrace(route) {
-  const counting = route && route.kind === "remote" && route.state === "lost" &&
+  const counting = route && route.kind === "remote" &&
+                   (route.state === "lost" || route.state === "waiting") &&
                    route.grace_left != null;
   if (!counting) { graceLeft = null; return; }
   const showing = graceNow();

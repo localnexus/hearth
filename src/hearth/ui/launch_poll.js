@@ -38,14 +38,21 @@ function clearOnEdge(wasUp, nowUp, armed) {
 
 // Why the last conversation ended, when the answer is one the page can give.
 // A sitting that closed itself over a device that never came back exits with
-// status 3 and nothing else does, so that number plus the route word is the
+// status 3, one that closed over a device that never arrived with status 4,
+// and nothing else uses either — so that number plus the route word is the
 // whole of the inference. Pure; empty whenever it cannot say.
 function lastExitLine(bot) {
   const exit = bot && bot.last_exit;
   const word = (bot && bot.switches && bot.switches.route) || "";
-  if (!exit || exit.code !== 3 || word.indexOf("remote:") !== 0) return "";
-  return "the last conversation closed itself: " + word.replace(/^remote:/, "") +
-         " did not come back within the wait";
+  if (!exit || word.indexOf("remote:") !== 0) return "";
+  const device = word.replace(/^remote:/, "");
+  if (exit.code === 3)
+    return "the last conversation closed itself: " + device +
+           " did not come back within the wait";
+  if (exit.code === 4)
+    return "the last conversation closed itself: " + device +
+           " never connected within the start wait";
+  return "";
 }
 
 function needToken(prompt) {

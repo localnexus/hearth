@@ -44,8 +44,9 @@ WebRTC). Open `http://<facade-host>:65001/admin/launch`; it asks for the serve a
   states where this conversation's audio is, as a fact fixed at the start — `audio: the desk`,
   or `audio: Pixel — connected (direct, 120 ms buffer)`, naming the device the way the list
   names it (and falling back to its id, which is what a device forgotten mid-conversation looks
-  like), with `waiting for it to connect`
-  before the device arrives. It is seeded from the start-time choice the same way the keep
+  like), with `waiting for it to connect (open the talk page on it), 2:55 left; then this
+  conversation closes` before the device arrives — that count is the start wait, and the
+  device's first hello ends it. It is seeded from the start-time choice the same way the keep
   switch is, so it is right from the moment the companion is up, and filled out from what the
   running conversation reports.
 - **When a device goes away, that line tells you which kind of away it is**, because the two
@@ -54,7 +55,8 @@ WebRTC). Open `http://<facade-host>:65001/admin/launch`; it asks for the serve a
     There is no countdown: silence is something you can wait out, and the conversation does.
     (`the headset came back` after it does; `no device pinned` when there is none.)
   - *a paired device* — `waiting for Pixel, 2:40 left; then this conversation closes`, counting
-    down each second, and `it did not come back; closing` at the end of it. A phone is a
+    down each second, and `it did not come back; closing` at the end of it (`it never
+    arrived; closing` when no device ever came). A phone is a
     countdown because a conversation left open all night is not waiting, it is stranded. See
     [the wait](remote-audio-route.md) for what closing means (short version: exactly what your
     Stop button means, keep switch and all).
@@ -63,8 +65,9 @@ WebRTC). Open `http://<facade-host>:65001/admin/launch`; it asks for the serve a
 - A live state line (companion / pid / uptime / externals / switch phase, polled every few seconds).
   **With nothing running it also names why the last conversation ended, when it can**: a
   conversation that closed itself over a device that never came back says so — *the last
-  conversation closed itself: Pixel did not come back within the wait*. That ending is the one
-  nobody witnessed, and it is the only one the page can name this way.
+  conversation closed itself: Pixel did not come back within the wait* — and one that closed
+  over a device that never arrived says *Pixel never connected within the start wait*. Those
+  endings are the ones nobody witnessed, and they are the only ones the page can name this way.
 - **Externals** (only when actuators are declared): one row per
   `[serve.supervisor.actuators.<name>]` with its note, its reachability probe, and the last
   run's outcome — plus a **Run** button. The request holds until the command finishes, so a

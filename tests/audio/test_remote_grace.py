@@ -148,5 +148,41 @@ class TheWindowLength(unittest.TestCase):
         self.assertIs(default, time.monotonic)
 
 
+class TheStartWaitLength(unittest.TestCase):
+    """The wait before any device: its own word, the same rule, the same
+    default — and independent of the loss window's word, so lengthening one
+    (a fifteen-minute loss window) does not silently lengthen the other."""
+
+    def setUp(self):
+        self._unset(); self.addCleanup(self._unset)
+
+    def _unset(self):
+        import os
+        os.environ.pop(remote_grace.START_WAIT_ENV, None)
+        os.environ.pop(remote_grace.GRACE_ENV, None)
+
+    def test_the_default_is_the_same_proven_figure(self):
+        self.assertEqual(remote_grace.DEFAULT_START_WAIT_S, 180)
+        self.assertEqual(remote_grace.start_wait_seconds(), 180.0)
+
+    def test_its_own_environment_word_sets_it(self):
+        import os
+        os.environ[remote_grace.START_WAIT_ENV] = "45"
+        self.assertEqual(remote_grace.start_wait_seconds(), 45.0)
+
+    def test_the_loss_windows_word_does_not_reach_it(self):
+        import os
+        os.environ[remote_grace.GRACE_ENV] = "900"
+        self.assertEqual(remote_grace.start_wait_seconds(), 180.0)
+        self.assertEqual(remote_grace.grace_seconds(), 900.0)
+
+    def test_nonsense_and_non_positive_values_leave_the_default_standing(self):
+        import os
+        for bad in ("", "   ", "soon", "0", "-5", "nan", "inf"):
+            with self.subTest(bad=bad):
+                os.environ[remote_grace.START_WAIT_ENV] = bad
+                self.assertEqual(remote_grace.start_wait_seconds(), 180.0)
+
+
 if __name__ == "__main__":
     unittest.main()

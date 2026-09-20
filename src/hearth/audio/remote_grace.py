@@ -14,6 +14,13 @@ goes, closes when the device says hello again, and runs out into a close that
 takes the Stop button's own path. The length is the away lane's proven figure,
 180 seconds, overridable by ``HEARTH_AUDIO_GRACE_S``.
 
+The same object serves a second wait: the one **before** any device has
+arrived. A conversation started for a device that never opens its talk page
+(the wrong radio picked, a phone left in a drawer) would otherwise sit with the
+model resident for ever. That window opens when the socket starts listening,
+closes at the first hello, and runs out the same way; its length is
+``HEARTH_AUDIO_START_WAIT_S``, default 180 seconds as well.
+
 Everything here is pure and clock-injected: no sleeping, no loop, no socket, so
 every case in the window's life is a unit test rather than a thing you find out
 about four minutes into a conversation.
@@ -33,25 +40,43 @@ DEFAULT_GRACE_S = 180
 #: The environment word that overrides it.
 GRACE_ENV = "HEARTH_AUDIO_GRACE_S"
 
+#: How long a conversation waits for its device to arrive in the first place.
+#: The same figure: long enough to unlock a phone and open a page, not long
+#: enough to hold the model for a device that was never going to come.
+DEFAULT_START_WAIT_S = 180
 
-def grace_seconds() -> float:
-    """The window length from the environment, else the default.
+#: The environment word that overrides that one.
+START_WAIT_ENV = "HEARTH_AUDIO_START_WAIT_S"
+
+
+def _seconds_from_env(env: str, default: float) -> float:
+    """A window length from the environment, else ``default``.
 
     A value that is missing, unreadable or non-positive falls back rather than
     failing a conversation: an operator who typed the wrong thing should get
     the proven window, not a route that refuses to wait at all (or one that
     closes the moment a device blinks).
     """
-    raw = os.environ.get(GRACE_ENV, "").strip()
+    raw = os.environ.get(env, "").strip()
     if not raw:
-        return float(DEFAULT_GRACE_S)
+        return float(default)
     try:
         value = float(raw)
     except ValueError:
-        return float(DEFAULT_GRACE_S)
+        return float(default)
     if value <= 0 or math.isinf(value) or math.isnan(value):
-        return float(DEFAULT_GRACE_S)
+        return float(default)
     return value
+
+
+def grace_seconds() -> float:
+    """The loss window's length from the environment, else the default."""
+    return _seconds_from_env(GRACE_ENV, DEFAULT_GRACE_S)
+
+
+def start_wait_seconds() -> float:
+    """The start wait's length from the environment, else its default."""
+    return _seconds_from_env(START_WAIT_ENV, DEFAULT_START_WAIT_S)
 
 
 class GraceWindow:

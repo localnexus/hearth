@@ -187,6 +187,7 @@ the hello:
 |---|---|---|
 | the desk | indefinitely | nothing; the headset is waited for as long as it takes |
 | a paired device | **180 seconds**, `HEARTH_AUDIO_GRACE_S` | the device comes back, or the conversation closes itself |
+| a paired device that has **not arrived yet** | **180 seconds**, `HEARTH_AUDIO_START_WAIT_S` | the device's first hello, or the conversation closes itself |
 
 - **It comes back inside the wait.** The device sends its hello again and rejoins a
   conversation that was never torn down — mid-answer, with the answer's tail still
@@ -200,14 +201,25 @@ the hello:
 - Afterwards the companion is simply down, and the launch page's status line says
   why: *the last conversation closed itself: Pixel did not come back within the
   wait*. Underneath, the process exits with status **3**, which nothing else uses.
+- **It never arrived.** The other absence: a conversation started for a device
+  whose talk page nobody opens — the wrong radio picked, a phone in a drawer. The
+  wait for it begins the moment the socket is listening (not at Start, so the
+  model's own load is not counted against the phone), the Stop card counts it
+  down from the start — `waiting for it to connect (open the talk page on it),
+  2:55 left; then this conversation closes` — and the first hello ends it. Run
+  out, it closes the same way, exits with status **4**, and the launch page says
+  *Pixel never connected within the start wait*. Its length is its own word,
+  `HEARTH_AUDIO_START_WAIT_S`, so lengthening the loss window to fifteen minutes
+  does not also hold the model for fifteen minutes for a device that was never
+  coming.
 - A device that arrives during the few seconds the socket takes to come down is
   closed with **4410** and the word `ended` — not a refusal, because nothing was
   refused: there is nothing left to join. The talk page says so and stops retrying.
-- Where to set it: `[serve.supervisor.env]` in `config/serve.toml` (for instance
+- Where to set either: `[serve.supervisor.env]` in `config/serve.toml` (for instance
   `HEARTH_AUDIO_GRACE_S = "900"` for fifteen minutes). Hearth hands that block
   to every conversation it starts and reads it once, when it comes up — so
   restart Hearth, with nothing running, for a new value to take.
-- A wrong `HEARTH_AUDIO_GRACE_S` (a word, a zero, a negative) leaves the 180 standing.
+- A wrong value for either word (a word, a zero, a negative) leaves the 180 standing.
   A conversation that closes the moment a phone blinks is the expensive mistake.
 
 **On the device**, the page counts the same wait down: `reconnecting in 8 s… (the
@@ -231,13 +243,14 @@ this conversation closes` — and the count ticks between polls rather than jump
 
 | state | means |
 |---|---|
-| `waiting` | started, no device has joined yet — it waits as long as it takes |
+| `waiting` | started, no device has joined yet; `grace_left` is the start wait still to run |
 | `connected` | the hello was accepted; audio is moving |
 | `lost` | the device went; `grace_left` is the seconds still to wait |
-| `ended` | the wait ran out; the conversation is closing itself |
+| `ended` | a wait ran out; the conversation is closing itself |
 
-`grace_left` is null unless a remote device is actually away, and null always on the
-desk — which is the difference between the two routes, not a gap in one of them.
+`grace_left` is null unless a remote device is actually away or has not arrived yet,
+and null always on the desk — which is the difference between the two routes, not a
+gap in one of them.
 
 Names and numbers only — no addresses, no key, and nothing anyone said.
 
@@ -249,6 +262,8 @@ Names and numbers only — no addresses, no key, and nothing anyone said.
 | `[audio] remote client rejoined after 34 s (path=direct, buffer=120ms)` | the same device came back inside the wait; the conversation continued |
 | `[audio] remote client lost — waiting up to 180 s` | the device went; the countdown started |
 | `[audio] remote device did not return within 180 s — closing the sitting` | the wait ran out; the close ladder is running |
+| `[audio] waiting up to 180 s for pixel to arrive` | the socket is listening; the start wait began |
+| `[audio] no device arrived within 180 s — closing the sitting` | the start wait ran out with nobody on the socket; the close ladder is running (exit status 4) |
 | `[audio] remote client refused` | a first message that was not this conversation's device with the key |
 | `[audio] remote output stalled (N ms shed)` | the far end fell behind; N is the total thrown away so far. At most one line every five seconds |
 | `[audio] remote route needs config/serve-token — not starting` | there was nothing to check the hello against |

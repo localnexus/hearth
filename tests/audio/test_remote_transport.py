@@ -601,6 +601,144 @@ class TheWaitForADeviceThatWentAway(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(transport.grace_s, 300)
 
 
+class TheWaitForADeviceThatNeverArrives(unittest.IsolatedAsyncioTestCase):
+    """The other absence: a conversation started for a device that never opens
+    its talk page. The window opens when the socket starts listening, the
+    first hello closes it, and running out is the same self-stop — with its
+    own reason, because the launch page must not say "did not come back" of a
+    device that was never there."""
+
+    async def asyncSetUp(self):
+        patch = mock.patch.object(remote_path, "tailscale_status",
+                                  return_value=STATUS)
+        patch.start()
+        self.addCleanup(patch.stop)
+        audio_route.clear_device_gone()
+        self.addCleanup(audio_route.clear_device_gone)
+        self.clock = _Clock()
+        self.stops = []
+        self.transport = remote_transport.build_remote_transport(
+            "pixel", token="key", clock=self.clock, start_wait_s=30,
+            stop_sitting=lambda: self.stops.append("stop"))
+        self.addCleanup(self.transport.note_shutdown)
+        self.input = self.transport.input()
+        self.transport.output()
+        self.input.push_audio_frame = self._swallow
+        self.input.push_frame = lambda *a, **k: asyncio.sleep(0)
+        self.server = await websockets.serve(
+            self.input._client_handler, "127.0.0.1", 0)
+        self.url = f"ws://127.0.0.1:{self.server.sockets[0].getsockname()[1]}"
+        self.addAsyncCleanup(self._close_server)
+
+    async def _swallow(self, frame):
+        pass
+
+    async def _close_server(self):
+        self.server.close()
+        await self.server.wait_closed()
+
+    def _state(self) -> dict:
+        return self.transport.route_state()
+
+    async def _settle(self, ready, timeout=3.0) -> None:
+        end = asyncio.get_running_loop().time() + timeout
+        while asyncio.get_running_loop().time() < end:
+            if ready():
+                return
+            await asyncio.sleep(0.02)
+        self.fail(f"the transport never got there: {self._state()}")
+
+    async def _join(self):
+        socket = await websockets.connect(
+            self.url, additional_headers={"X-Forwarded-For": "100.64.0.2"})
+        await socket.send(json.dumps({"hello": {"device": "pixel",
+                                                "token": "key"}}))
+        answer = json.loads(await socket.recv())
+        await self._settle(lambda: self._state()["state"] == "connected")
+        return socket, answer
+
+    def test_before_the_socket_listens_nothing_is_counting(self):
+        state = self._state()
+        self.assertEqual(state["state"], "waiting")
+        self.assertIsNone(state["grace_left"])
+        self.assertEqual(self.transport.start_wait_s, 30)
+
+    async def test_listening_opens_the_wait_and_the_stop_card_counts_it(self):
+        self.transport.note_listening()
+        self.assertEqual(self._state()["state"], "waiting")
+        self.assertEqual(self._state()["grace_left"], 30)
+        self.clock.tick(12)
+        self.assertEqual(self._state()["grace_left"], 18)
+        self.assertEqual(self.stops, [])
+
+    async def test_a_second_listening_does_not_restart_the_count(self):
+        self.transport.note_listening()
+        self.clock.tick(20)
+        self.transport.note_listening()
+        self.assertEqual(self._state()["grace_left"], 10)
+
+    async def test_the_first_hello_ends_the_wait(self):
+        self.transport.note_listening()
+        self.clock.tick(25)
+        socket, answer = await self._join()
+        self.assertTrue(answer["ok"])
+        self.assertIsNone(self._state()["grace_left"])
+        self.clock.tick(600)
+        await asyncio.sleep(0.4)             # past several polls
+        self.assertEqual(self.stops, [], "a device that arrived is not one that never came")
+        self.assertEqual(self._state()["state"], "connected")
+        await socket.close()
+
+    async def test_running_out_closes_the_sitting_once_with_its_own_reason(self):
+        self.transport.note_listening()
+        self.clock.tick(31)
+        await self._settle(lambda: self.stops == ["stop"])
+        self.assertEqual(self._state()["state"], "ended")
+        self.assertIsNone(self._state()["grace_left"])
+        self.assertTrue(audio_route.device_never_came())
+        self.assertFalse(audio_route.device_gone())
+        self.assertEqual(audio_route.exit_status(), audio_route.EXIT_DEVICE_NEVER_CAME)
+        self.clock.tick(31)
+        await asyncio.sleep(0.4)
+        self.assertEqual(self.stops, ["stop"], "once")
+
+    async def test_a_device_arriving_after_the_end_is_told_it_is_over(self):
+        self.transport.note_listening()
+        self.clock.tick(31)
+        await self._settle(lambda: self.stops == ["stop"])
+        socket = await websockets.connect(self.url)
+        with self.assertRaises(websockets.exceptions.ConnectionClosed) as caught:
+            await socket.recv()
+        self.assertEqual(caught.exception.rcvd.code, 4410)
+
+    async def test_a_stop_during_the_wait_cancels_it(self):
+        self.transport.note_listening()
+        self.clock.tick(10)
+        self.transport.note_shutdown()
+        self.clock.tick(60)
+        await asyncio.sleep(0.4)
+        self.assertEqual(self.stops, [], "the button's stop is already in flight")
+        self.assertFalse(audio_route.device_never_came())
+
+    async def test_the_loss_window_is_untouched_by_the_start_wait(self):
+        """A device that arrives late and then goes gets the loss window, not
+        whatever was left of the start wait."""
+        self.transport.note_listening()
+        self.clock.tick(25)
+        socket, _ = await self._join()
+        await socket.close()
+        await self._settle(lambda: self._state()["state"] == "lost")
+        self.assertEqual(self._state()["grace_left"], 180)
+
+    def test_the_length_follows_its_own_environment_word(self):
+        with mock.patch.dict(remote_transport.os.environ,
+                             {remote_grace.START_WAIT_ENV: "42",
+                              remote_grace.GRACE_ENV: "900"}):
+            transport = remote_transport.build_remote_transport("pixel", token="k")
+        self.assertEqual(transport.start_wait_s, 42)
+        self.assertEqual(transport.grace_s, 900)
+
+
 class TheSelfStopTakesTheButtonsOwnPath(unittest.TestCase):
     """No second close path, no new file, no marker of its own: the sitting
     sends itself the signal the button sends, and everything downstream of it

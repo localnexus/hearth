@@ -310,6 +310,8 @@ class TheStopCardsRouteLine(_NodeCase):
           const r = {};
           const sw = {route: "remote:Pixel"};
           r.waiting = routeLine(sw, {kind: "remote", state: "waiting"});
+          r.waiting_counting = routeLine(sw, {kind: "remote", state: "waiting", grace_left: 175}, 175);
+          r.never_came = routeLine(sw, {kind: "remote", state: "ended", path: null});
           r.connected = routeLine(sw,
             {kind: "remote", state: "connected", path: "direct", buffer_ms: 120, shed_ms: 0});
           r.behind = routeLine(sw,
@@ -319,12 +321,16 @@ class TheStopCardsRouteLine(_NodeCase):
           r.lost = routeLine(sw, {kind: "remote", state: "lost", grace_left: 160}, 160);
           r.nearly = routeLine(sw, {kind: "remote", state: "lost", grace_left: 5}, 5);
           r.lost_unknown = routeLine(sw, {kind: "remote", state: "lost"}, null);
-          r.ended = routeLine(sw, {kind: "remote", state: "ended"});
+          r.ended = routeLine(sw, {kind: "remote", state: "ended", path: "direct"});
           r.no_report_yet = routeLine(sw, null);
           console.log(JSON.stringify(r));
         """)
         self.assertEqual(out["waiting"], "audio: Pixel — waiting for it to "
                                          "connect (open the talk page on it)")
+        self.assertEqual(out["waiting_counting"],
+                         "audio: Pixel — waiting for it to connect (open the talk "
+                         "page on it), 2:55 left; then this conversation closes")
+        self.assertEqual(out["never_came"], "audio: Pixel — it never arrived; closing")
         self.assertEqual(out["connected"],
                          "audio: Pixel — connected (direct, 120 ms buffer)")
         self.assertIn("relayed, 200 ms buffer", out["behind"])
@@ -363,6 +369,8 @@ class TheStopCardsRouteLine(_NodeCase):
         out = self._run("last_exit", self._helpers("lastExitLine") + """
           const r = {};
           r.gone = lastExitLine({last_exit: {code: 3}, switches: {route: "remote:Pixel"}});
+          r.never = lastExitLine({last_exit: {code: 4}, switches: {route: "remote:Pixel"}});
+          r.never_desk = lastExitLine({last_exit: {code: 4}, switches: {route: "desk"}});
           r.desk = lastExitLine({last_exit: {code: 3}, switches: {route: "desk"}});
           r.stopped = lastExitLine({last_exit: {code: 0}, switches: {route: "remote:Pixel"}});
           r.crashed = lastExitLine({last_exit: {code: 1}, switches: {route: "remote:Pixel"}});
@@ -374,6 +382,9 @@ class TheStopCardsRouteLine(_NodeCase):
         self.assertEqual(out["gone"], "the last conversation closed itself: "
                                       "Pixel did not come back within the wait")
         self.assertEqual(out["desk"], "", "the desk waits forever; it cannot be this")
+        self.assertEqual(out["never"], "the last conversation closed itself: "
+                                       "Pixel never connected within the start wait")
+        self.assertEqual(out["never_desk"], "")
         for quiet in ("stopped", "crashed", "unknowable", "never_ran", "nothing"):
             with self.subTest(case=quiet):
                 self.assertEqual(out[quiet], "")
