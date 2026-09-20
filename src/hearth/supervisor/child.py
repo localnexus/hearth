@@ -59,6 +59,7 @@ class BotChild:
         *,
         argv: Optional[list] = None,
         env_overlay: Optional[dict] = None,
+        env_per_start=None,
         log_path: Optional[Path] = None,
         pattern: str = _PATTERN,
         stop_grace_s: float = STOP_GRACE_S,
@@ -66,6 +67,10 @@ class BotChild:
     ) -> None:
         self._argv = list(argv) if argv else [sys.executable, "-m", "hearth.pipeline.bot"]
         self._env_overlay = dict(env_overlay or {})
+        # A callable answering extra env words at EVERY start — a settings file
+        # read fresh each time, so a change lands on the next Start with nothing
+        # relaunched. Its values win over the boot-time overlay; never logged.
+        self._env_per_start = env_per_start
         self._log_path = Path(log_path) if log_path else None
         self._pattern = pattern
         self._stop_grace_s = float(stop_grace_s)
@@ -181,6 +186,12 @@ class BotChild:
 
         env = dict(os.environ)
         env.update(self._env_overlay)  # values never logged
+        if self._env_per_start is not None:
+            try:
+                env.update({str(k): str(v) for k, v in dict(self._env_per_start() or {}).items()})
+            except Exception as exc:  # noqa: BLE001 — a bad settings file must not refuse a start
+                logger.warning("[supervisor] per-start settings not read ({}) — "
+                               "starting on the boot-time values", type(exc).__name__)
         env[SUPERVISED_ENV] = "1"  # tells the bot its parent is the facade (no attach)
         stdout = asyncio.subprocess.DEVNULL
         if self._log_path is not None:

@@ -95,6 +95,7 @@ from .schema_files import (
     _VadLive,
 )
 from .schema_tables import (
+    AudioTable,
     MemoryTable,
     OpenclawTable,
     ServeTable,
@@ -152,7 +153,7 @@ from .derived import (
 #: change dressed up as a move.
 __all__ = [
     "ActiveFile", "CANONICAL_TAGS", "ENGINE_LIVE_KNOBS", "ENV_VARS",
-    "FileEntry", "MANUAL_PAGES", "MemoryTable", "ModelFile", "OpenclawTable",
+    "AudioTable", "FileEntry", "MANUAL_PAGES", "MemoryTable", "ModelFile", "OpenclawTable",
     "OverridesFile", "ProfileFile", "REGISTRY", "SERVE_SPEECH_KNOBS",
     "SchemaError", "ServeTable", "TEMP_CEILING", "TURBO_LIVE_KNOBS",
     "TtsBaselineFile", "VadFile", "VoiceFile", "WeightsFile",

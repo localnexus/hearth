@@ -66,6 +66,7 @@ ACTIVE_TOML = CONFIG_DIR / "active.toml"
 OPENCLAW_TOML = CONFIG_DIR / "openclaw.toml"
 SERVE_TOML = CONFIG_DIR / "serve.toml"
 MEMORY_TOML = CONFIG_DIR / "memory.toml"
+AUDIO_TOML = CONFIG_DIR / "audio.toml"      # the remote route's waits (data-root copy only)
 
 _HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _NAME_RE = re.compile(r"^[A-Za-z0-9._-]+$")  # dir-name / variant-name safe; blocks traversal
@@ -378,6 +379,50 @@ def compose_persona(character: str, persona: str | None = None) -> str:
         if required not in sections or not sections[required]:
             raise ConfigError(f"persona.md missing non-empty '## {required}' section: {path}")
     return sections["IDENTITY"] + "\n\n" + sections["SOUL"]
+
+
+#: The two environment words the remote route reads (audio/remote_grace.py), and
+#: the minutes key in config/audio.toml that sets each.
+AUDIO_WAIT_WORDS = (("lost_device_wait_min", "HEARTH_AUDIO_GRACE_S"),
+                    ("arrival_wait_min", "HEARTH_AUDIO_START_WAIT_S"))
+
+
+def load_audio_waits() -> dict | None:
+    """Read config/audio.toml — the remote route's two waits, in minutes.
+
+    Returns the [audio] table with defaults applied, or None when the DATA-root
+    file is absent. Deliberately NOT data-then-root: the shipped copy in the
+    engine tree is a template for the settings form to copy-on-write, and
+    treating it as live would have its 3-minute defaults override an operator's
+    env words the moment the engine tree carried the file. Malformed ⇒
+    ConfigError naming the file (the caller decides what a bad file costs).
+    """
+    if not AUDIO_TOML.exists():
+        return None
+    table = _read_toml(AUDIO_TOML).get("audio")
+    if not isinstance(table, dict):
+        raise ConfigError(f"{AUDIO_TOML}: no [audio] table")
+    _schema_check("audio", table, AUDIO_TOML)
+    cfg: dict = {"lost_device_wait_min": 3, "arrival_wait_min": 3}
+    cfg.update(table)
+    return cfg
+
+
+def audio_wait_env() -> dict:
+    """The env words a conversation start should carry for the remote route's
+    waits — the data-root file's minutes as seconds; empty when there is no
+    file, so the operator's own env block (or the built-in default) stands.
+    A key that is not a positive whole number is skipped, never guessed."""
+    cfg = load_audio_waits()
+    if not cfg:
+        return {}
+    out: dict = {}
+    for key, word in AUDIO_WAIT_WORDS:
+        value = cfg.get(key)
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            continue
+        out[word] = str(value * 60)
+    return out
 
 
 def load_openclaw_config() -> dict | None:

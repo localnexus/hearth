@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from .schema_files import (ActiveFile, ModelFile, OverridesFile, ProfileFile, TtsBaselineFile,
                            VadFile, VoiceFile, WeightsFile)
-from .schema_tables import MemoryTable, OpenclawTable, ServeTable
+from .schema_tables import AudioTable, MemoryTable, OpenclawTable, ServeTable
 
 # ── the registry ─────────────────────────────────────────────────────────────
 
@@ -68,6 +68,15 @@ REGISTRY: dict[str, FileEntry] = {e.kind: e for e in (
               note="Cross-session continuity per companion. Records are the truth; backends are "
                    "derived indexes (`forget --session <id>` deletes one conversation from both; "
                    "see docs/memory.md)."),
+    FileEntry("audio", AudioTable, "The remote route's waits", "config/audio.toml",
+              "gate", "operator", "place", "none", top_key="audio",
+              note="How long a conversation on a paired device (a phone over the tailnet) "
+                   "waits — for the device to come back, and for it to arrive at all — "
+                   "before closing itself. Minutes, 1 to 999. Read at EVERY conversation "
+                   "start, so a change lands on the next Start with nothing relaunched. "
+                   "Your copy in the data folder wins; without one, the env words in "
+                   "[serve.supervisor.env] (HEARTH_AUDIO_GRACE_S / HEARTH_AUDIO_START_WAIT_S, "
+                   "seconds) or the built-in 3 minutes apply."),
     FileEntry("openclaw", OpenclawTable, "The OpenClaw on/off switch", "config/openclaw.toml",
               "gate", "operator", "place", "bot", top_key="openclaw",
               note="One switch drives tool registration AND the {{openclaw_tools}} prompt slot, so "

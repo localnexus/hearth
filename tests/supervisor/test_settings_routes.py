@@ -110,13 +110,18 @@ class SettingsRoutes(AioHTTPTestCase):
         (self.eng / "config" / "vad.toml").write_text(
             "# shipped calibration\n[live]\nconfidence = 0.7\n",
             encoding="utf-8")
+        # The remote route's waits: shipped template only, no data-root copy yet.
+        (self.eng / "config" / "audio.toml").write_text(
+            "# shipped\n[audio]\nlost_device_wait_min = 3\narrival_wait_min = 3\n",
+            encoding="utf-8")
         cfg = self.data / "config"
         for name, value in (("_DATA", self.data), ("DATA_DIR", self.data),
                             ("_ROOT", self.eng), ("CONFIG_DIR", cfg),
                             ("ACTIVE_TOML", cfg / "active.toml"),
                             ("MEMORY_TOML", cfg / "memory.toml"),
                             ("SERVE_TOML", cfg / "serve.toml"),
-                            ("OPENCLAW_TOML", cfg / "openclaw.toml")):
+                            ("OPENCLAW_TOML", cfg / "openclaw.toml"),
+                            ("AUDIO_TOML", cfg / "audio.toml")):
             p = mock.patch.object(config_loader, name, value)
             p.start()
             self.addCleanup(p.stop)
@@ -228,6 +233,47 @@ class SettingsRoutes(AioHTTPTestCase):
         self.assertTrue(parsed["per_turn"]["enabled"])
         self.assertEqual(parsed["companions"],
                          {"zz-a": "floor", "zz-new": "hindsight"})
+
+    async def test_audio_waits_are_a_form_that_lands_on_the_next_start(self):
+        """The remote route's waits: the shipped template shows on the page,
+        the first save copies it into the data root, and from then on the
+        facade hands the file's minutes to every conversation start as the
+        two env words, in seconds. Until that first save the file is NOT live
+        — an operator's env block (or the 3-minute default) stands."""
+        import tomllib
+
+        from hearth.config import config_loader
+
+        self.assertEqual(config_loader.audio_wait_env(), {})   # no data-root copy yet
+        resp = await self.client.get("/admin/settings", headers=self.BEARER)
+        kinds = {k["kind"]: k for k in (await resp.json())["kinds"]}
+        self.assertIn("audio", kinds)
+        self.assertEqual(kinds["audio"]["restart"], "none")
+        label = "ROOT/config/audio.toml"
+        resp = await self._set(label, "lost_device_wait_min", 15)
+        self.assertEqual(resp.status, 200, await resp.text())
+        d = await resp.json()
+        self.assertFalse(d["written"])
+        self.assertEqual((d["old"], d["new"]), (3, 15))
+        self.assertEqual(d["effect"]["effect"], "none")
+        self.assertIn("next conversation start", d["effect"]["effect_note"])
+
+        resp = await self._set(label, "lost_device_wait_min", 15, yes=True)
+        self.assertEqual(resp.status, 200, await resp.text())
+        d = await resp.json()
+        self.assertTrue(d["written"])
+        self.assertIn("copied to your data folder", d["target"])
+        copy = self.data / "config" / "audio.toml"
+        self.assertEqual(tomllib.loads(copy.read_text(encoding="utf-8"))["audio"],
+                         {"lost_device_wait_min": 15, "arrival_wait_min": 3})
+        self.assertEqual(config_loader.audio_wait_env(),
+                         {"HEARTH_AUDIO_GRACE_S": "900",
+                          "HEARTH_AUDIO_START_WAIT_S": "180"})
+
+        # Out of range is refused before anything is written.
+        resp = await self._set("DATA/config/audio.toml", "arrival_wait_min", 1000, yes=True)
+        self.assertEqual(resp.status, 422, await resp.text())
+        self.assertEqual(config_loader.audio_wait_env()["HEARTH_AUDIO_START_WAIT_S"], "180")
 
     async def test_set_refusals_are_honest_pointers(self):
         label = "DATA/config/memory.toml"

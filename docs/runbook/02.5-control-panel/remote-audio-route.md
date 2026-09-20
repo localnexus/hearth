@@ -215,10 +215,14 @@ the hello:
 - A device that arrives during the few seconds the socket takes to come down is
   closed with **4410** and the word `ended` — not a refusal, because nothing was
   refused: there is nothing left to join. The talk page says so and stops retrying.
-- Where to set either: `[serve.supervisor.env]` in `config/serve.toml` (for instance
-  `HEARTH_AUDIO_GRACE_S = "900"` for fifteen minutes). Hearth hands that block
-  to every conversation it starts and reads it once, when it comes up — so
-  restart Hearth, with nothing running, for a new value to take.
+- **Where to set either: the settings page**, `/admin/settings/ui`, under *The
+  remote route's waits* — two numbers in minutes, 1 to 999. The first save copies
+  the shipped `config/audio.toml` into your data folder; that copy is read at
+  **every** conversation start, so a change lands on the next Start with nothing
+  relaunched. Until you have saved once, the file is not live: the env words in
+  `[serve.supervisor.env]` of `config/serve.toml` (`HEARTH_AUDIO_GRACE_S = "900"`
+  for fifteen minutes, seconds) stand, and without those the built-in 180 s.
+  That env block is read once, when Hearth comes up.
 - A wrong value for either word (a word, a zero, a negative) leaves the 180 standing.
   A conversation that closes the moment a phone blinks is the expensive mistake.
 

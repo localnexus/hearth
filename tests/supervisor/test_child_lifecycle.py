@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import asyncio
 import os
+import tempfile
+from pathlib import Path
 import subprocess
 import sys
 import unittest
@@ -57,6 +59,14 @@ SLOW_GRACEFUL = (
 
 
 _NOMATCH = "zz-hearth-test-nomatch-zz"
+
+# Prints two env words the facade hands over per start, then waits to be stopped.
+REPORTS_ENV = (
+    "import os, signal, sys, time\n"
+    "print('WORDS', os.environ.get('ZZ_PER_START', '-'), os.environ.get('ZZ_BOOT', '-'), flush=True)\n"
+    "signal.signal(signal.SIGINT, lambda *a: sys.exit(0))\n"
+    "while True: time.sleep(0.1)\n"
+)
 
 
 class ChildLifecycle(unittest.IsolatedAsyncioTestCase):
@@ -338,6 +348,47 @@ class ChildLifecycle(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(c2.status()["switches"]["keep_name"])
         await c2.stop()
         c2.close()
+
+class PerStartEnv(unittest.IsolatedAsyncioTestCase):
+    """The facade hands a settings file's words to EVERY start, read fresh each
+    time, on top of the boot-time overlay — and a reader that fails never
+    refuses a start."""
+
+    async def _start_and_read(self, child) -> str:
+        with tempfile.TemporaryDirectory() as d:
+            log = Path(d) / "bot.log"
+            child._log_path = log
+            r = await child.start()
+            self.assertTrue(r["ok"], r)
+            try:
+                for _ in range(50):
+                    await asyncio.sleep(0.1)
+                    if log.exists() and "WORDS" in log.read_text():
+                        break
+                return log.read_text()
+            finally:
+                await child.stop()
+                child.close()
+
+    async def test_the_words_are_read_at_each_start_and_win_over_the_overlay(self):
+        calls = []
+
+        def reader():
+            calls.append(1)
+            return {"ZZ_PER_START": f"v{len(calls)}", "ZZ_BOOT": "from-file"}
+
+        child = _fake(REPORTS_ENV, env_overlay={"ZZ_BOOT": "from-boot"}, env_per_start=reader)
+        self.assertIn("WORDS v1 from-file", await self._start_and_read(child))
+        child = _fake(REPORTS_ENV, env_overlay={"ZZ_BOOT": "from-boot"}, env_per_start=reader)
+        self.assertIn("WORDS v2 from-file", await self._start_and_read(child))
+
+    async def test_a_reader_that_fails_does_not_refuse_the_start(self):
+        def broken():
+            raise ValueError("bad file")
+
+        child = _fake(REPORTS_ENV, env_overlay={"ZZ_BOOT": "from-boot"}, env_per_start=broken)
+        self.assertIn("WORDS - from-boot", await self._start_and_read(child))
+
 
 if __name__ == "__main__":
     unittest.main()

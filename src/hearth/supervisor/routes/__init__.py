@@ -199,6 +199,7 @@ def build_mount(sup_cfg: dict):
 
         child = BotChild(
             env_overlay=overlay,
+            env_per_start=config_loader.audio_wait_env,   # config/audio.toml, each Start
             log_path=config_loader.DATA_DIR / "logs" / "bot.log",
             stop_grace_s=stop_grace_for(sup_cfg, config_loader.load_memory_config()),
             term_grace_s=float(sup_cfg.get("term_grace_s", TERM_GRACE_S)),

@@ -71,6 +71,7 @@ def discover() -> list[tuple[str, Path]]:
     add("serve", _dedup([cl.SERVE_TOML]))
     add("memory", _dedup([cl.MEMORY_TOML]))
     add("openclaw", _dedup([cl.OPENCLAW_TOML]))
+    add("audio", _both_roots("config/audio.toml"))
     add("weights", _dedup([cl.CONFIG_DIR / "weights.toml"]))
     # Panel-written per-companion presets + their live mirrors (same shape).
     add("profile", _both_roots("characters/*/profile.toml")

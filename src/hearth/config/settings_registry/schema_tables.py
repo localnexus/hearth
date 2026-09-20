@@ -13,6 +13,22 @@ from pydantic import Field
 
 from .knobs import _Cfg, _NAME, _effect, _secret
 
+# ── config/audio.toml [audio] (the remote route's waits) ─────────────────────
+
+class AudioTable(_Cfg):
+    lost_device_wait_min: int = Field(
+        3, ge=1, le=999,
+        description="how long a conversation on a paired device waits for that device "
+                    "to come back before closing itself, in minutes",
+        json_schema_extra=_effect("none", "read at the next conversation start; the "
+                                          "talk page follows what it is told at hello"))
+    arrival_wait_min: int = Field(
+        3, ge=1, le=999,
+        description="how long a conversation started for a paired device waits for it to "
+                    "arrive at all before closing itself, in minutes",
+        json_schema_extra=_effect("none", "read at the next conversation start"))
+
+
 # ── config/serve.toml [serve] (the facade gate) ──────────────────────────────
 
 class _ServeIdentityTts(_Cfg):

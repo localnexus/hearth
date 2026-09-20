@@ -1,7 +1,7 @@
 """settings/policy.py — what a form may write, and what it may never show.
 
 Two rules that both halves of the surface consult, which is why they sit above
-both. What a form may WRITE: seven kinds, and every refusal points somewhere
+both. What a form may WRITE: eight kinds, and every refusal points somewhere
 real rather than just saying no — the selection has its own orchestrated
 surface, the panel-owned layers belong to the panel.
 
@@ -22,7 +22,7 @@ _REDACTED = "•••"
 
 
 _WRITABLE = frozenset({"model", "voice", "serve", "memory", "openclaw",
-                       "tts-baseline", "vad"})
+                       "tts-baseline", "vad", "audio"})
 _REFUSALS = {
     "active": "the selection pointer has its own orchestrated surface — "
               "switch via /admin/switch (the COMPANION button applies it live)",

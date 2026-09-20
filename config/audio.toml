@@ -1,0 +1,7 @@
+# config/audio.toml — the remote route's waits (a conversation on a paired device).
+# Minutes, 1 to 999. Edit on the settings page (/admin/settings/ui), which copies this
+# file into your data folder on the first save; the copy there is the one that counts.
+# Read at every conversation start — nothing needs relaunching.
+[audio]
+lost_device_wait_min = 3   # the device went (screen off, no signal): how long to wait for it
+arrival_wait_min = 3       # the device never arrived (wrong pick, phone in a drawer)

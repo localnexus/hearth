@@ -77,6 +77,7 @@ class ShippedFilesValidateClean(unittest.TestCase):
         ("vad", "config/vad.toml", None),
         ("serve", "config/serve.toml.example", "serve"),
         ("memory", "config/memory.toml.example", "memory"),
+        ("audio", "config/audio.toml", "audio"),
     ]
 
     def test_shipped_files(self):

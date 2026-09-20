@@ -127,6 +127,19 @@ All keys below live under the `[openclaw]` table.
 | `max_in_flight` | int | `2` | 1– | — | concurrent dispatch cap |
 | `prompt_block` | str | `` |  | — | {{openclaw_tools}} capability paragraph injected while enabled |
 
+## `config/audio.toml` — The remote route's waits
+
+*place scope · operator-owned · on/off switch · restart: none*
+
+How long a conversation on a paired device (a phone over the tailnet) waits — for the device to come back, and for it to arrive at all — before closing itself. Minutes, 1 to 999. Read at EVERY conversation start, so a change lands on the next Start with nothing relaunched. Your copy in the data folder wins; without one, the env words in [serve.supervisor.env] (HEARTH_AUDIO_GRACE_S / HEARTH_AUDIO_START_WAIT_S, seconds) or the built-in 3 minutes apply.
+
+All keys below live under the `[audio]` table.
+
+| key | type | default | range | live path | what it sets |
+|---|---|---|---|---|---|
+| `lost_device_wait_min` | int | `3` | 1–999 | — (lands at the next restart of none) | how long a conversation on a paired device waits for that device to come back before closing itself, in minutes |
+| `arrival_wait_min` | int | `3` | 1–999 | — (lands at the next restart of none) | how long a conversation started for a paired device waits for it to arrive at all before closing itself, in minutes |
+
 ## Prose layers (deliberately not schema'd)
 
 | file | what it is |
