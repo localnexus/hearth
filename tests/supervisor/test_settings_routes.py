@@ -2,7 +2,8 @@
 
 The overview with strict-check verdicts, the schema contract served verbatim,
 server-side redaction of secret fields, the preview-then-confirm single-key
-set with comment-preserving line surgery, and the fifth unauthed shell.
+set with comment-preserving line surgery, the read-only per-character tool
+grant, and the fifth unauthed shell.
 
 Run:  .venv/bin/python -m unittest discover -s tests
 """
@@ -95,6 +96,10 @@ class SettingsRoutes(AioHTTPTestCase):
         self.data = base / "data"
         self.eng = base / "engine"
         (self.data / "config" / "models" / "zz-m").mkdir(parents=True)
+        # A per-character tool grant: shown by the overview, never writable.
+        (self.data / "characters" / "zz-a").mkdir(parents=True)
+        (self.data / "characters" / "zz-a" / "capabilities.toml").write_text(
+            '[tools]\ntier = "read-only"\n', encoding="utf-8")
         (self.eng / "config").mkdir(parents=True)
         (self.data / "config" / "memory.toml").write_text(
             self.MEMORY_TOML, encoding="utf-8")
@@ -172,6 +177,33 @@ class SettingsRoutes(AioHTTPTestCase):
         self.assertEqual(
             schema["memory"]["schema"]["properties"]["enabled"]["x-hearth"]["effect"],
             "bot+facade")
+
+    async def test_the_tool_grant_is_read_only(self):
+        """A character's hands are granted at the desk, never through a web
+        form: the file shows with its verdict, and the set verb refuses it."""
+        resp = await self.client.get("/admin/settings", headers=self.BEARER)
+        kinds = {k["kind"]: k for k in (await resp.json())["kinds"]}
+        grant = kinds["capabilities"]
+        self.assertFalse(grant["writable"])
+        self.assertEqual(grant["top_key"], "tools")
+        label = "DATA/characters/zz-a/capabilities.toml"
+        self.assertEqual([f["file"] for f in grant["files"]], [label])
+        self.assertEqual(grant["files"][0]["verdict"], "ok")
+
+        resp = await self.client.get(f"/admin/settings/file?file={label}",
+                                     headers=self.BEARER)
+        self.assertEqual(resp.status, 200)
+        d = await resp.json()
+        self.assertFalse(d["writable"])
+        self.assertEqual(d["values"]["tier"], "read-only")
+
+        path = self.data / "characters" / "zz-a" / "capabilities.toml"
+        before = path.read_text(encoding="utf-8")
+        for confirmed in (False, True):
+            resp = await self._set(label, "tier", "full", yes=confirmed)
+            self.assertEqual(resp.status, 409, await resp.text())
+            self.assertIn("not form-writable", (await resp.json())["error"])
+        self.assertEqual(before, path.read_text(encoding="utf-8"))
 
     async def test_file_values_redact_secrets(self):
         resp = await self.client.get(
