@@ -479,7 +479,13 @@ def load_character_capabilities(character: str) -> str:
 
     The per-character half of the two-key grant: the model may be ABLE to call a
     tool and the bridge may be enabled, and this file still decides whether THIS
-    character gets hands. Default-deny, and fail CLOSED at every step — absent
+    character gets hands. Granting by file rather than by persona prose is the
+    whole point — a character told in its persona to be careful can talk itself
+    out of that, and a tool result it reads can tell it to; a tool that was never
+    put into the request cannot be invoked, injected, or talked past. The
+    whitelist is the wall; persona prose is the paint.
+
+    Default-deny, and fail CLOSED at every step — absent
     file, unreadable file, no [tools] table, a tier that is not one of
     TOOL_TIERS, a tier that is not a string: all read "none", each with one
     warning naming the file and the reason.
