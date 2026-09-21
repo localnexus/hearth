@@ -12,6 +12,7 @@
 #         --dir DIR        where to put Hearth (default $HEARTH_HOME or ~/hearth)
 #         --no-weights     do not fetch the speech models (~4.6 GB)
 #         --model REPO     the Hugging Face GGUF repo for your llama-server line
+#                          (default: the model this project recommends and measured)
 #         --lm-url URL     your model server, if not http://127.0.0.1:8080/v1
 #         --memory on|off  answer the memory question up front
 #         --update         git pull --ff-only, then reinstall (the guide's update recipe)
@@ -25,6 +26,9 @@ set -euo pipefail
 
 REPO_URL="https://github.com/localnexus/hearth"
 DEFAULT_LM_URL="http://127.0.0.1:8080/v1"
+# The README's recommendation, so the line this script prints is runnable as pasted.
+# Quant tag explicit: a bare repo name lets -hf pick. Q8_0 is the measured full-quality file.
+DEFAULT_MODEL="unsloth/Qwen3.6-35B-A3B-MTP-GGUF:Q8_0"
 # ── the banner (byte-identical to hearth/init/banner.py ART; tests/test_banner.py checks) ──
 IFS= read -r -d '' BANNER <<'ART' || true
             (
@@ -37,7 +41,36 @@ IFS= read -r -d '' BANNER <<'ART' || true
 ART
 
 YES=0; DIR=""; WEIGHTS=1; MODEL=""; LM_URL="$DEFAULT_LM_URL"; MEMORY=""; UPDATE=0; INIT=1; QUIET=0
-usage() { sed -n '2,22p' "$0" 2>/dev/null || echo "see the comment block at the top of install.sh"; }
+# The flag summary, embedded. Under `curl … | bash` there is no script file to read: $0 is
+# the bare word "bash", so the old sed found nothing and --help degraded to a pointer at
+# a file the reader never downloaded (or, in a cwd holding a file named bash, printed it).
+# tests/test_install_usage.py keeps this in step with the comment block at the top.
+IFS= read -r -d '' USAGE <<'USG' || true
+install.sh — Hearth, from a bare Apple Silicon Mac to the first-run setup, in one command.
+
+  curl -fsSL https://raw.githubusercontent.com/localnexus/hearth/main/install.sh | bash
+  git clone https://github.com/localnexus/hearth && cd hearth && ./install.sh   # same script
+
+Every step checks first and does only what is missing, then prints one line:
+  +  done now      ·  already there      !  a note      -  skipped      x  failed
+Re-running repairs; it never pulls the repo unless you say --update.
+
+Flags:  --yes            take every default, ask nothing (speech models yes; no start)
+        --dir DIR        where to put Hearth (default $HEARTH_HOME or ~/hearth)
+        --no-weights     do not fetch the speech models (~4.6 GB)
+        --model REPO     the Hugging Face GGUF repo for your llama-server line
+                         (default: the model this project recommends and measured)
+        --lm-url URL     your model server, if not http://127.0.0.1:8080/v1
+        --memory on|off  answer the memory question up front
+        --update         git pull --ff-only, then reinstall (the guide's update recipe)
+        --no-init        stop before the first-run setup and print what to run
+        --quiet          no banner
+Exit codes: 0 done · 1 a step failed · 2 stopped for something only you can do.
+Two stops are honest ones: the Xcode command-line tools and Homebrew. Both ask you
+for a password or a click; this script prints their command and gets out of the way.
+Nothing here runs long-lived — the model server is your own process in another window.
+USG
+usage() { printf '%s\n' "$USAGE"; }
 
 main() {
   while [ $# -gt 0 ]; do
@@ -206,9 +239,11 @@ PY
 model_server() {
   say "model server"
   if curl -fsS -m 3 "${LM_URL%/}/models" >/dev/null 2>&1; then have "answering at $LM_URL"; return 0; fi
-  local line="llama-server -hf ${MODEL:-<user>/<model-repo>} -c 0 --port 8080 -a my-model"
+  local line="llama-server -hf ${MODEL:-$DEFAULT_MODEL} -c 0 --port 8080 -a my-model"
   note "nothing answers at $LM_URL yet. In another terminal window, serve a model:"
   say "      $line"
+  [ -n "$MODEL" ] || \
+    say "    (that is this project's recommendation, ~38 GB; smaller ones and which fits your Mac: docs/HARDWARE-REQUIREMENTS.md)"
   say "    (or -m /path/to/model.gguf for one you have; how to choose: docs/installing.md)"
 }
 

@@ -141,8 +141,9 @@ Three things Hearth deliberately does **not** bundle:
 
 - **The model.** You choose and download it. Hearth talks to any local server that speaks the
   common chat API.
-- **The model server.** None ships. `llama-server` from llama.cpp is the recommended default;
-  you install and run it. LM Studio works as an alternative.
+- **The model server.** None is bundled. `llama-server` from llama.cpp is the recommended
+  default, and the installer fetches it with Homebrew; what you run *in* it is your choice.
+  LM Studio works as an alternative.
 - **Voices.** Beyond the default, voices are yours to supply, under the consent rule above.
 
 This keeps the project small and permissively licensed, and puts the choices that carry legal
