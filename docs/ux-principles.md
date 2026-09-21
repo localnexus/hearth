@@ -90,7 +90,5 @@ included, and groups them, rather than counting the fold as free.
   <https://developer.apple.com/design/human-interface-guidelines>; Google, *Material Design 3*:
   <https://m3.material.io/>. Both landing pages were checked and resolve; their deep pages render in the
   browser and were not quoted, so no figure above is attributed to either.
-- **Hearth instances** — file references are paths in this repository, and layer and owner come from
-  `src/hearth/config/settings_registry/`, so both can be opened here. The row numbers cannot: they belong to
-  the seven-page control inventory, a build-side record kept outside this repository. Every row cited above
-  also names its page and control, which is enough to find the element without it.
+- **Hearth instances** — row numbers are the control inventory's; file references are paths in this
+  repository; layer and owner come from `src/hearth/config/settings_registry/`.
