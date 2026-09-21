@@ -16,6 +16,62 @@ It checks your Mac, installs the few tools Hearth needs, copies Hearth into a fo
 printed per step, so you can see what happened. Running the command again is safe. It fixes
 what is missing and repeats nothing.
 
+Each of those lines starts with one mark:
+
+| mark | meaning |
+|---|---|
+| `+` | done now |
+| `·` | already there — a re-run repairs, it repeats nothing |
+| `!` | a note (for example: no model server answering yet) |
+| `-` | skipped (a flag, or you said no) |
+| `x` | stopped — the line says why and what to run |
+
+### What a good run looks like
+
+After the Hearth drawing, a first run on a Mac that has none of this yet reads like this. The
+numbers are one machine's, and `<you>` stands in for your own home folder; yours will differ.
+
+<!-- screenshot: install.sh, a full first run -->
+
+```text
+Hearth install — a voice on your own machine. Every step is reported; nothing is hidden.
+preflight
+  · macOS 26.0 on arm64
+  · 412 GB free
+system tools
+  · Xcode command-line tools
+  · Homebrew
+  + PortAudio (the audio library pyaudio is built against)
+  + uv (builds the Python environment; fetches Python 3.12 itself)
+  + llama.cpp (llama-server, the model server)
+Hearth
+  + cloned to /Users/<you>/hearth
+Python environment
+  + .venv with Python 3.12
+    installing ~90 packages — a few minutes the first time
+  + packages installed, speech pins hold
+speech models
+Fetch the speech models now? (~4.6 GB, once; they stay in ~/.cache/huggingface) [Y/n]
+    mlx-community/chatterbox-turbo-fp16
+    mlx-community/S3TokenizerV2
+    mlx-community/whisper-large-v3-turbo
+  + speech models in ~/.cache/huggingface
+model server
+  ! nothing answers at http://127.0.0.1:8080/v1 yet. In another terminal window, serve a model:
+      llama-server -hf unsloth/Qwen3.6-35B-A3B-MTP-GGUF:Q8_0 -c 0 --port 8080 -a my-model
+    (that is this project's recommendation, ~38 GB; smaller ones and which fits your Mac: docs/HARDWARE-REQUIREMENTS.md)
+    (or -m /path/to/model.gguf for one you have; how to choose: docs/installing.md)
+microphone
+Check the microphone now? (2 seconds; macOS asks you to allow it) [Y/n]
+  say something — listening for two seconds
+  + heard you — loudest moment 37% of full scale
+first run
+```
+
+Two of those deserve a word. The `!` at **model server** is normal on a first run: the model
+server is your own program in another window, and nothing is wrong until you have started it.
+After **first run**, the setup below takes over in the same window.
+
 Want to read the script before you run it? Copy the project first and run the same script
 from inside it:
 
