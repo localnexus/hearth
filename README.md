@@ -4,6 +4,14 @@
 <h1 align="center">Hearth</h1>
 <p align="center"><strong>A voice companion that lives on your own computer.</strong></p>
 
+On a Mac with an Apple chip, one command installs it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/localnexus/hearth/main/install.sh | bash
+```
+
+What that command does, step by step: [Quick guide: install](docs/quick/install.md).
+
 You talk. It listens, thinks, and talks back in a voice you chose. The whole conversation
 happens on your own Mac: no account, no subscription, and nothing leaves the machine.
 
