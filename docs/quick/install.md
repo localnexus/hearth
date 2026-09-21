@@ -29,7 +29,8 @@ Each of those lines starts with one mark:
 ### What a good run looks like
 
 After the Hearth drawing, a first run on a Mac that has none of this yet reads like this. The
-numbers are one machine's, and `<you>` stands in for your own home folder; yours will differ.
+lines are the script's own; the numbers are made up for the example, and `<you>` stands in for
+your own home folder.
 
 <!-- screenshot: install.sh, a full first run -->
 
