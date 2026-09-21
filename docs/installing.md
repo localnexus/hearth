@@ -53,7 +53,8 @@ setup (chapter 4 below). Every step checks first, does only what is missing, and
 What it does, in order: checks the Mac (Apple Silicon, not root, disk) · installs PortAudio,
 `uv` and `llama.cpp` with Homebrew · clones Hearth to `~/hearth` (or `--dir`) · builds the Python
 environment and proves the speech pins hold · fetches the speech models (~4.6 GB, **asks first**)
-· tells you if no model server answers · runs `hearth.init`.
+· tells you if no model server answers · offers a two-second microphone check (**asks
+first**) · runs `hearth.init`.
 
 It stops, honestly, at two things only you can do — the Xcode command-line tools (a macOS dialog)
 and Homebrew itself (asks for your password). It prints their command and exits; run it, then run
@@ -148,7 +149,11 @@ A denied mic does **not** raise an error: Hearth simply hears silence, forever.
 2. If there was no prompt, or you clicked the wrong thing: **System Settings → Privacy &
    Security → Microphone → enable your terminal app**, then relaunch the app.
 
-To prove the process actually receives signal, independent of the pipeline:
+`install.sh` closes with this same question — "Check the microphone now?" — and says in one
+line whether anything arrived; run it again at any time with `.venv/bin/python -m
+hearth.init.mic_check`, which records two seconds, plays nothing back, and never fails a run.
+
+To prove the process actually receives signal in more detail, independent of the pipeline:
 
 ```bash
 .venv/bin/python -c "

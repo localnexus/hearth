@@ -103,6 +103,7 @@ main() {
   pyenv
   weights
   model_server
+  mic_check
   first_run
 }
 
@@ -247,7 +248,16 @@ model_server() {
   say "    (or -m /path/to/model.gguf for one you have; how to choose: docs/installing.md)"
 }
 
-# ── 7. hand over to the first-run setup ───────────────────────────────────────────────
+# ── 7. the microphone ─────────────────────────────────────────────────────────────────
+mic_check() { # the number-one first-day failure is a grant macOS was never asked for
+  say "microphone"
+  local later="not checked — any time: .venv/bin/python -m hearth.init.mic_check"
+  if [ "$INIT" = 0 ] || [ "$ASK" = 0 ]; then skip "$later"; return 0; fi
+  ask "Check the microphone now? (2 seconds; macOS asks you to allow it)" y || { skip "$later"; return 0; }
+  .venv/bin/python -m hearth.init.mic_check </dev/tty || true  # a silent mic is a note, not a failure
+}
+
+# ── 8. hand over to the first-run setup ───────────────────────────────────────────────
 first_run() {
   say "first run"
   local args=()

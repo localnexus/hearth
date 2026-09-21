@@ -74,6 +74,10 @@ terminal, not to Python. Pick one terminal app, allow the microphone when macOS 
 keep starting Hearth from that same app. If you skip this, Hearth hears silence and never
 says so.
 
+The install asks one last question for exactly this reason — "Check the microphone now?" Say
+yes, say anything, and it tells you in one line whether it heard you. You can run that check
+again whenever you like with `.venv/bin/python -m hearth.init.mic_check`.
+
 Next: [your first talk](first-talk.md).
 
 **Go deeper:** [Installing Hearth](../installing.md) and
